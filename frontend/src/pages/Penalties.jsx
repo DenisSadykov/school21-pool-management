@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Plus, Check, X } from 'lucide-react';
+import { AlertCircle, Plus, Check, X, Trash2 } from 'lucide-react';
 import '../styles/Penalties.css';
 
 function Penalties() {
@@ -64,7 +64,11 @@ function Penalties() {
           <AlertCircle size={20} />
           <div>
             <strong>Система штрафов:</strong> Каждое нарушение = 2 часа отработки.
-            Если студент не пришёл на отработку → штраф ×2 (4h → 8h → 16h)
+            <br />
+            💡 <strong>Логика ×2:</strong> Если студент НЕ пришёл на отработку, нажми "Не пришёл"
+            на ОДИН ШТРАФ и он умножится (2h → 4h → 8h → 16h...).
+            <br />
+            🗑️ <strong>Удалить:</strong> Если выдал штраф случайно, нажми значок корзины.
           </div>
         </div>
       </div>
@@ -174,12 +178,29 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   const handleMarkOverdue = async () => {
     try {
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const newHours = penalty.total_hours * 2;
       await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'overdue' })
       });
-      alert(`❌ Штраф увеличен ×${penalty.multiplier * 2} часов! Админ уведомлен.`);
+      alert(`❌ Штраф увеличен! ${penalty.total_hours}h → ${newHours}h\nАдмин уведомлен.`);
+      onStatusChange();
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Удалить штраф для ${penalty.student_name}?`)) return;
+
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
+        method: 'DELETE'
+      });
+      alert(`✅ Штраф отменён!`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -209,6 +230,9 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
           </button>
           <button className="btn-overdue" onClick={handleMarkOverdue} title="Не пришёл (×2)">
             <X size={18} /> Не пришёл
+          </button>
+          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <Trash2 size={18} />
           </button>
         </div>
       )}

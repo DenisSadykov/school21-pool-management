@@ -184,7 +184,8 @@
 }
 
 .btn-done,
-.btn-overdue {
+.btn-overdue,
+.btn-delete {
   flex: 1;
   padding: var(--spacing-sm) var(--spacing-md);
   border: none;
@@ -215,6 +216,17 @@
 
 .btn-overdue:hover {
   background: rgba(255, 23, 68, 0.8);
+}
+
+.btn-delete {
+  background: rgba(100, 100, 100, 0.3);
+  color: var(--text-secondary);
+  padding: var(--spacing-sm);
+}
+
+.btn-delete:hover {
+  background: var(--danger);
+  color: var(--bg-dark);
 }
 
 .status-badge {

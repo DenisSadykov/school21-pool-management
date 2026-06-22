@@ -359,6 +359,9 @@ def update_penalty_status(penalty_id):
     # Если не пришёл на отработку - умножить на 2
     if old_status == 'pending' and data.get('workoff_status') == 'overdue':
         penalty.multiplier *= 2
+    # Если опять не пришёл (был overdue, остаётся overdue) - умножить ещё на 2
+    elif old_status == 'overdue' and data.get('workoff_status') == 'overdue':
+        penalty.multiplier *= 2
 
     if data.get('workoff_status') == 'done':
         penalty.date_worked_off = datetime.utcnow()
@@ -369,6 +372,20 @@ def update_penalty_status(penalty_id):
     # TODO: sync_to_sheets(penalty)
 
     return jsonify({'message': 'Penalty updated'})
+
+@app.route('/api/penalties/<int:penalty_id>', methods=['DELETE'])
+def delete_penalty(penalty_id):
+    """Удалить штраф (отменить случайно выданный)"""
+    penalty = StudentPenalty.query.get_or_404(penalty_id)
+    student_name = penalty.student_name
+
+    db.session.delete(penalty)
+    db.session.commit()
+
+    # 🔄 СИНХРОНИЗИРОВАТЬ С GOOGLE SHEETS
+    # TODO: sync_to_sheets_delete(penalty)
+
+    return jsonify({'message': f'Штраф для {student_name} отменён'})
 
 @app.route('/api/events', methods=['GET'])
 def get_events():
