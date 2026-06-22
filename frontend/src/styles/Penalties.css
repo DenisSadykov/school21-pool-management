@@ -229,6 +229,28 @@
   color: var(--bg-dark);
 }
 
+.btn-cancel {
+  flex: 1;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all var(--transition);
+  background: rgba(100, 150, 200, 0.3);
+  color: var(--text-secondary);
+}
+
+.btn-cancel:hover {
+  background: var(--info);
+  color: var(--bg-dark);
+}
+
 .status-badge {
   font-size: 0.8rem;
   padding: var(--spacing-sm);

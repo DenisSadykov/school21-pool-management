@@ -160,6 +160,8 @@ function Penalties() {
 
 function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   const handleMarkDone = async () => {
+    if (!window.confirm(`Отметить что ${penalty.student_name} отработал ${penalty.total_hours} часов?`)) return;
+
     try {
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
       await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
@@ -167,7 +169,23 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'done' })
       });
-      alert(`✅ Отработка подтверждена! Админ получит уведомление.`);
+      onStatusChange();
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
+    }
+  };
+
+  const handleMarkPending = async () => {
+    if (!window.confirm(`Отменить отработку для ${penalty.student_name}?`)) return;
+
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workoff_status: 'pending' })
+      });
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -176,15 +194,16 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   };
 
   const handleMarkOverdue = async () => {
+    const newHours = penalty.total_hours * 2;
+    if (!window.confirm(`Ученик не пришёл на отработку?\n${penalty.total_hours}h → ${newHours}h`)) return;
+
     try {
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      const newHours = penalty.total_hours * 2;
       await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'overdue' })
       });
-      alert(`❌ Штраф увеличен! ${penalty.total_hours}h → ${newHours}h\nАдмин уведомлен.`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -193,14 +212,13 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Удалить штраф для ${penalty.student_name}?`)) return;
+    if (!window.confirm(`Удалить штраф для ${penalty.student_name}?\nЭто действие нельзя отменить.`)) return;
 
     try {
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
       await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
         method: 'DELETE'
       });
-      alert(`✅ Штраф отменён!`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -237,7 +255,17 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         </div>
       )}
 
-      {isDone && <p className="status-badge done">✅ Отработано</p>}
+      {isDone && (
+        <div className="penalty-actions">
+          <p className="status-badge done">✅ Отработано</p>
+          <button className="btn-cancel" onClick={handleMarkPending} title="Отменить отработку">
+            ↶ Отменить
+          </button>
+          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <Trash2 size={18} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
