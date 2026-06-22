@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Shifts from './pages/Shifts';
 import Volunteers from './pages/Volunteers';
 import Rewards from './pages/Rewards';
+import Penalties from './pages/Penalties';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 
@@ -48,6 +49,7 @@ function App() {
               <Route path="/shifts" element={<Shifts />} />
               <Route path="/volunteers" element={<Volunteers />} />
               <Route path="/rewards" element={<Rewards />} />
+              <Route path="/penalties" element={<Penalties />} />
               <Route path="/admin" element={<Admin user={user} />} />
             </Routes>
           </main>

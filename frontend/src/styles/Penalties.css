@@ -1,0 +1,398 @@
+.penalties-page {
+  max-width: 1400px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-xl);
+  gap: var(--spacing-lg);
+}
+
+.page-header > div {
+  flex: 1;
+}
+
+.page-header h1 {
+  font-size: 1.8rem;
+  color: var(--danger);
+  margin-bottom: var(--spacing-sm);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.btn-penalty-primary {
+  background: var(--danger);
+  color: var(--bg-dark);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 1rem;
+}
+
+.btn-penalty-primary:hover {
+  background: rgba(255, 23, 68, 0.8);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.penalties-info {
+  margin-bottom: var(--spacing-xl);
+}
+
+.info-card {
+  background: rgba(255, 23, 68, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  gap: var(--spacing-lg);
+  align-items: flex-start;
+  color: var(--text-secondary);
+}
+
+.info-card svg {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.info-card strong {
+  color: var(--danger);
+}
+
+.penalties-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
+}
+
+.penalties-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.penalties-section h2 {
+  font-size: 1.1rem;
+  margin-bottom: var(--spacing-lg);
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--spacing-md);
+}
+
+.penalties-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.penalties-list .empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: var(--spacing-lg);
+  font-size: 0.9rem;
+}
+
+.penalty-card {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.penalty-card:hover {
+  border-color: var(--danger);
+  background: var(--bg-hover);
+}
+
+.penalty-card.overdue {
+  border-color: var(--danger);
+  background: rgba(255, 23, 68, 0.05);
+}
+
+.penalty-card.done {
+  opacity: 0.6;
+  border-color: var(--success);
+}
+
+.penalty-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.penalty-header h3 {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.penalty-hours {
+  background: var(--danger);
+  color: var(--bg-dark);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.penalty-body {
+  margin-bottom: var(--spacing-sm);
+  font-size: 0.85rem;
+}
+
+.penalty-body p {
+  margin: 4px 0;
+  color: var(--text-secondary);
+}
+
+.penalty-body .volunteer {
+  color: var(--text-secondary);
+}
+
+.penalty-body .description {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.penalty-body .date {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.penalty-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.btn-done,
+.btn-overdue {
+  flex: 1;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all var(--transition);
+}
+
+.btn-done {
+  background: var(--success);
+  color: var(--bg-dark);
+}
+
+.btn-done:hover {
+  background: var(--accent-dim);
+}
+
+.btn-overdue {
+  background: var(--danger);
+  color: var(--bg-dark);
+}
+
+.btn-overdue:hover {
+  background: rgba(255, 23, 68, 0.8);
+}
+
+.status-badge {
+  font-size: 0.8rem;
+  padding: var(--spacing-sm);
+  text-align: center;
+  border-radius: var(--radius-md);
+  margin-top: var(--spacing-sm);
+}
+
+.status-badge.done {
+  background: rgba(0, 255, 0, 0.1);
+  color: var(--success);
+}
+
+.status-badge.overdue {
+  background: rgba(255, 23, 68, 0.1);
+  color: var(--danger);
+}
+
+/* ФОРМА ШТРАФА */
+
+.penalty-form {
+  background: var(--bg-card);
+  border: 2px solid var(--danger);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.penalty-form h2 {
+  color: var(--danger);
+  margin-bottom: var(--spacing-lg);
+  font-size: 1.3rem;
+}
+
+.penalty-form .form-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+.penalty-form label {
+  display: block;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.penalty-form input,
+.penalty-form textarea {
+  width: 100%;
+  padding: var(--spacing-md);
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.penalty-form input:focus,
+.penalty-form textarea:focus {
+  outline: none;
+  border-color: var(--danger);
+  background: var(--bg-hover);
+}
+
+.student-search {
+  position: relative;
+}
+
+.suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-dark);
+  border: 1px solid var(--danger);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.suggestion {
+  padding: var(--spacing-md);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+.suggestion:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+.suggestion:last-child {
+  border-bottom: none;
+}
+
+.penalty-info-box {
+  background: rgba(255, 23, 68, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--spacing-lg);
+  line-height: 1.6;
+}
+
+.penalty-info-box strong {
+  color: var(--danger);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.form-actions button {
+  flex: 1;
+}
+
+/* СТАТИСТИКА */
+
+.penalties-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  text-align: center;
+}
+
+.stat span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--spacing-sm);
+}
+
+.stat strong {
+  display: block;
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.stat strong.alert {
+  color: var(--danger);
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .btn-penalty-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .penalties-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .penalty-actions {
+    flex-direction: column;
+  }
+
+  .btn-done,
+  .btn-overdue {
+    width: 100%;
+  }
+}

@@ -54,6 +54,32 @@ class Reward(db.Model):
     date = db.Column(db.DateTime, default=datetime.utcnow)
     notes = db.Column(db.Text)
 
+class StudentPenalty(db.Model):
+    __tablename__ = 'student_penalties'
+    id = db.Column(db.Integer, primary_key=True)
+    student_name = db.Column(db.String(100), nullable=False)
+    volunteer_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    volunteer_name = db.Column(db.String(100))
+    hours = db.Column(db.Integer, default=2)  # 2 часа за нарушение
+    multiplier = db.Column(db.Integer, default=1)  # x1, x2, x4 и т.д.
+    workoff_status = db.Column(db.String(20), default='pending')  # pending, done, overdue
+    description = db.Column(db.Text)
+    date_issued = db.Column(db.DateTime, default=datetime.utcnow)
+    date_worked_off = db.Column(db.DateTime)
+    pool_id = db.Column(db.Integer)  # Какой бассейн
+
+class Event(db.Model):
+    __tablename__ = 'events'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    tribe = db.Column(db.String(50))  # A, B, C группа
+    tribe_master_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    tribe_master_name = db.Column(db.String(100))
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+    pool_id = db.Column(db.Integer)
+
 # ==================== API Routes ====================
 
 @app.route('/api/health', methods=['GET'])
@@ -203,6 +229,126 @@ def export_data():
     }
 
     return jsonify(data)
+
+@app.route('/api/penalties', methods=['GET'])
+def get_penalties():
+    """Получить все штрафы (волонтер видит свои, админ видит все)"""
+    user_id = request.args.get('user_id')
+
+    if user_id:
+        # Волонтер видит штрафы которые он выдал
+        penalties = StudentPenalty.query.filter_by(volunteer_id=user_id).all()
+    else:
+        # Админ/Team Lead видят все
+        penalties = StudentPenalty.query.all()
+
+    return jsonify([{
+        'id': p.id,
+        'student_name': p.student_name,
+        'volunteer_name': p.volunteer_name,
+        'hours': p.hours,
+        'multiplier': p.multiplier,
+        'total_hours': p.hours * p.multiplier,
+        'workoff_status': p.workoff_status,
+        'description': p.description,
+        'date_issued': p.date_issued.isoformat()
+    } for p in penalties])
+
+@app.route('/api/penalties', methods=['POST'])
+def create_penalty():
+    """Добавить штраф ученику - КРИТИЧНО для синхронизации"""
+    data = request.json
+    user = User.query.get(data.get('volunteer_id', 1))
+
+    penalty = StudentPenalty(
+        student_name=data['student_name'],
+        volunteer_id=user.id if user else 1,
+        volunteer_name=user.name if user else 'Unknown',
+        hours=2,  # Всегда 2 часа за нарушение
+        multiplier=1,
+        description=data.get('description', ''),
+        pool_id=data.get('pool_id', 1)
+    )
+    db.session.add(penalty)
+    db.session.commit()
+
+    # 🔄 СИНХРОНИЗИРОВАТЬ С GOOGLE SHEETS СРАЗУ
+    # TODO: sync_to_sheets(penalty)
+
+    return jsonify({
+        'id': penalty.id,
+        'message': 'Penalty created and synced to Google Sheets'
+    }), 201
+
+@app.route('/api/penalties/<int:penalty_id>', methods=['PATCH'])
+def update_penalty_status(penalty_id):
+    """Обновить статус отработки штрафа"""
+    data = request.json
+    penalty = StudentPenalty.query.get_or_404(penalty_id)
+
+    old_status = penalty.workoff_status
+    penalty.workoff_status = data.get('workoff_status', penalty.workoff_status)
+
+    # Если не пришёл на отработку - умножить на 2
+    if old_status == 'pending' and data.get('workoff_status') == 'overdue':
+        penalty.multiplier *= 2
+
+    if data.get('workoff_status') == 'done':
+        penalty.date_worked_off = datetime.utcnow()
+
+    db.session.commit()
+
+    # 🔄 СИНХРОНИЗИРОВАТЬ С GOOGLE SHEETS
+    # TODO: sync_to_sheets(penalty)
+
+    return jsonify({'message': 'Penalty updated'})
+
+@app.route('/api/events', methods=['GET'])
+def get_events():
+    """Получить все мероприятия (все видят все)"""
+    pool_id = request.args.get('pool_id', 1)
+    events = Event.query.filter_by(pool_id=pool_id, status='approved').all()
+
+    return jsonify([{
+        'id': e.id,
+        'name': e.name,
+        'description': e.description,
+        'tribe': e.tribe,
+        'tribe_master_name': e.tribe_master_name,
+        'date': e.date.isoformat()
+    } for e in events])
+
+@app.route('/api/events', methods=['POST'])
+def create_event():
+    """Создать мероприятие (трайб-мастер)"""
+    data = request.json
+    user = User.query.get(data.get('tribe_master_id', 1))
+
+    event = Event(
+        name=data['name'],
+        description=data.get('description', ''),
+        tribe=data.get('tribe', 'A'),
+        tribe_master_id=user.id if user else 1,
+        tribe_master_name=user.name if user else 'Unknown',
+        status='pending',
+        pool_id=data.get('pool_id', 1)
+    )
+    db.session.add(event)
+    db.session.commit()
+
+    return jsonify({'id': event.id, 'message': 'Event created'}), 201
+
+@app.route('/api/events/<int:event_id>', methods=['PATCH'])
+def approve_event(event_id):
+    """Одобрить мероприятие (Team Lead)"""
+    event = Event.query.get_or_404(event_id)
+    event.status = 'approved'
+    db.session.commit()
+
+    # 🔄 СИНХРОНИЗИРОВАТЬ С GOOGLE SHEETS
+    # TODO: sync_to_sheets(event)
+
+    return jsonify({'message': 'Event approved'})
 
 @app.route('/api/admin/reset', methods=['POST'])
 def reset_database():

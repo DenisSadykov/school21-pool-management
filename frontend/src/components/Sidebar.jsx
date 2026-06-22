@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Users, Trophy, Settings } from 'lucide-react';
+import { Home, Calendar, Users, Trophy, AlertCircle, Settings } from 'lucide-react';
 import '../styles/Sidebar.css';
 
 function Sidebar() {
@@ -11,6 +11,7 @@ function Sidebar() {
     { path: '/', label: 'Главная', icon: Home },
     { path: '/shifts', label: 'Смены', icon: Calendar },
     { path: '/volunteers', label: 'Волонтёры', icon: Users },
+    { path: '/penalties', label: 'Штрафы', icon: AlertCircle },
     { path: '/rewards', label: 'Награды', icon: Trophy },
     { path: '/admin', label: 'Админ', icon: Settings },
   ];

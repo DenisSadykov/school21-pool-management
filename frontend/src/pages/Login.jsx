@@ -5,29 +5,22 @@ function Login({ setUser }) {
   const [formData, setFormData] = useState({ name: '', role: 'volunteer' });
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       setError('Введите имя');
       return;
     }
 
-    try {
-      // Валидация через API
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+    // Демо-версия: вход работает без backend
+    const user = {
+      id: Math.random(),
+      name: formData.name,
+      role: formData.role
+    };
 
-      if (!response.ok) throw new Error('Ошибка аутентификации');
-
-      const user = await response.json();
-      localStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-    } catch (err) {
-      setError(err.message);
-    }
+    localStorage.setItem('user', JSON.stringify(user));
+    setUser(user);
   };
 
   return (
