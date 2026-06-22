@@ -223,7 +223,7 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         <p className="date">📅 {new Date(penalty.date_issued).toLocaleDateString('ru-RU')}</p>
       </div>
 
-      {!isDone && !isOverdue && (
+      {!isDone && (
         <div className="penalty-actions">
           <button className="btn-done" onClick={handleMarkDone} title="Отработал">
             <Check size={18} /> Отработал
@@ -238,9 +238,6 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
       )}
 
       {isDone && <p className="status-badge done">✅ Отработано</p>}
-      {isOverdue && (
-        <p className="status-badge overdue">❌ Переходящий штраф (×{penalty.multiplier})</p>
-      )}
     </div>
   );
 }
