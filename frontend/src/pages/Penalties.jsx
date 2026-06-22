@@ -20,7 +20,8 @@ function Penalties() {
 
   const fetchPenalties = async () => {
     try {
-      const response = await fetch('/api/penalties');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/api/penalties`);
       const data = await response.json();
       setPenalties(data);
     } catch (error) {
@@ -156,7 +157,8 @@ function Penalties() {
 function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   const handleMarkDone = async () => {
     try {
-      await fetch(`/api/penalties/${penalty.id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'done' })
@@ -171,7 +173,8 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
 
   const handleMarkOverdue = async () => {
     try {
-      await fetch(`/api/penalties/${penalty.id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'overdue' })
@@ -240,7 +243,8 @@ function PenaltyForm({ students, onClose, onSuccess }) {
     }
 
     try {
-      const response = await fetch('/api/penalties', {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/api/penalties`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -13,7 +13,8 @@ function Students() {
 
   const fetchStudents = async () => {
     try {
-      const response = await fetch('/api/students');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/api/students`);
       const data = await response.json();
       // Сортировать по количеству штрафов (спереди те с больше штрафами)
       data.sort((a, b) => b.total_penalty_hours - a.total_penalty_hours);
@@ -88,7 +89,8 @@ function StudentCard({ student, onDelete }) {
     if (!window.confirm(`Удалить ученика ${student.name}?`)) return;
 
     try {
-      await fetch(`/api/students/${student.id}`, { method: 'DELETE' });
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      await fetch(`${apiUrl}/api/students/${student.id}`, { method: 'DELETE' });
       onDelete();
     } catch (error) {
       alert('Ошибка: ' + error.message);
@@ -168,7 +170,8 @@ function StudentForm({ onClose, onSuccess }) {
     }
 
     try {
-      const response = await fetch('/api/students', {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/api/students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
