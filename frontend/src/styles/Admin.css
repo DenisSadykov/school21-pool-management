@@ -1,0 +1,122 @@
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
+}
+
+.admin-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.admin-section h2 {
+  font-size: 1.2rem;
+  color: var(--accent);
+  margin: 0;
+}
+
+.admin-section p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.admin-section.warning {
+  border-color: var(--warning);
+  background: rgba(255, 170, 0, 0.05);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: var(--bg-dark);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  border: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(255, 23, 68, 0.8);
+  transform: translateY(-2px);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alert {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  border-left: 4px solid;
+  animation: slideDown 0.3s ease-in-out;
+}
+
+.alert.success {
+  background: rgba(0, 255, 0, 0.1);
+  border-left-color: var(--success);
+  color: var(--success);
+}
+
+.alert.error {
+  background: rgba(255, 23, 68, 0.1);
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-dark);
+  border-radius: var(--radius-md);
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-item span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.info-item strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,118 @@
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-dark);
+}
+
+.login-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+}
+
+.login-box h1 {
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: var(--spacing-md);
+  color: var(--accent);
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xl);
+  font-size: 0.9rem;
+}
+
+.form-group {
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.form-group label {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select {
+  padding: var(--spacing-md);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-dark);
+}
+
+.error-message {
+  color: var(--danger);
+  font-size: 0.9rem;
+  padding: var(--spacing-md);
+  background: rgba(255, 23, 68, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.btn-login {
+  width: 100%;
+  padding: var(--spacing-md);
+  background: var(--accent);
+  color: var(--bg-dark);
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-login:hover {
+  background: var(--accent-dim);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-login:active {
+  transform: translateY(0);
+}
+
+.login-footer {
+  text-align: center;
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border);
+}
+
+.login-footer .text-muted {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+  .login-box {
+    padding: var(--spacing-lg);
+    margin: var(--spacing-md);
+  }
+
+  .login-box h1 {
+    font-size: 1.5rem;
+  }
+}

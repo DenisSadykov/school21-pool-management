@@ -1,0 +1,141 @@
+.dashboard {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.dashboard h1 {
+  font-size: 2rem;
+  margin-bottom: var(--spacing-xl);
+  color: var(--accent);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.stat-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-lg);
+  color: var(--bg-dark);
+  font-weight: 600;
+}
+
+.stat-icon.calendar {
+  background: rgba(100, 200, 255, 0.3);
+  color: #64c8ff;
+}
+
+.stat-icon.users {
+  background: rgba(100, 255, 150, 0.3);
+  color: #64ff96;
+}
+
+.stat-icon.upcoming {
+  background: rgba(255, 200, 100, 0.3);
+  color: #ffc864;
+}
+
+.stat-icon.coins {
+  background: rgba(255, 200, 50, 0.3);
+  color: #ffc832;
+}
+
+.stat-content h3 {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: var(--spacing-sm);
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.dashboard-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.info-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.info-section h2 {
+  font-size: 1.3rem;
+  margin-bottom: var(--spacing-md);
+  color: var(--accent);
+}
+
+.info-section p {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
+  line-height: 1.6;
+}
+
+.info-section ul,
+.info-section ol {
+  margin-left: var(--spacing-lg);
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.info-section li {
+  margin-bottom: var(--spacing-sm);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard h1 {
+    font-size: 1.5rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-card {
+    flex-direction: column;
+    text-align: center;
+  }
+}
