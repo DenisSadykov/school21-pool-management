@@ -161,9 +161,11 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'done' })
       });
+      alert(`✅ Отработка подтверждена! Админ получит уведомление.`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
     }
   };
 
@@ -174,9 +176,11 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workoff_status: 'overdue' })
       });
+      alert(`❌ Штраф увеличен ×${penalty.multiplier * 2} часов! Админ уведомлен.`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
     }
   };
 

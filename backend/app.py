@@ -80,6 +80,16 @@ class Event(db.Model):
     date = db.Column(db.DateTime, default=datetime.utcnow)
     pool_id = db.Column(db.Integer)
 
+class Student(db.Model):
+    __tablename__ = 'students'
+    id = db.Column(db.Integer, primary_key=True)
+    nick = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    tribe = db.Column(db.String(50))  # A, B, C группа
+    pool_id = db.Column(db.Integer)
+    total_penalty_hours = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 # ==================== API Routes ====================
 
 @app.route('/api/health', methods=['GET'])
@@ -230,17 +240,74 @@ def export_data():
 
     return jsonify(data)
 
+@app.route('/api/students', methods=['GET'])
+def get_students():
+    """Получить всех учеников с их штрафами"""
+    pool_id = request.args.get('pool_id', 1)
+    students = Student.query.filter_by(pool_id=pool_id).all()
+
+    result = []
+    for student in students:
+        # Подсчитать все штрафы этого ученика
+        penalties = StudentPenalty.query.filter_by(student_name=student.nick).all()
+        total_hours = sum(p.hours * p.multiplier for p in penalties if p.workoff_status != 'done')
+        pending_count = len([p for p in penalties if p.workoff_status == 'pending'])
+
+        result.append({
+            'id': student.id,
+            'nick': student.nick,
+            'name': student.name,
+            'tribe': student.tribe,
+            'total_penalty_hours': total_hours,
+            'pending_penalties': pending_count,
+            'penalties': [{
+                'id': p.id,
+                'hours': p.hours * p.multiplier,
+                'status': p.workoff_status,
+                'volunteer': p.volunteer_name,
+                'date': p.date_issued.isoformat()
+            } for p in penalties]
+        })
+
+    return jsonify(result)
+
+@app.route('/api/students', methods=['POST'])
+def create_student():
+    """Добавить нового ученика"""
+    data = request.json
+
+    if not data.get('nick') or not data.get('name'):
+        return jsonify({'error': 'Nick and name required'}), 400
+
+    student = Student(
+        nick=data['nick'],
+        name=data['name'],
+        tribe=data.get('tribe', 'A'),
+        pool_id=data.get('pool_id', 1)
+    )
+    db.session.add(student)
+    db.session.commit()
+
+    return jsonify({
+        'id': student.id,
+        'message': f'Ученик {student.name} ({student.nick}) добавлен'
+    }), 201
+
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+def delete_student(student_id):
+    """Удалить ученика"""
+    student = Student.query.get_or_404(student_id)
+    db.session.delete(student)
+    db.session.commit()
+    return jsonify({'message': 'Student deleted'})
+
 @app.route('/api/penalties', methods=['GET'])
 def get_penalties():
-    """Получить все штрафы (волонтер видит свои, админ видит все)"""
-    user_id = request.args.get('user_id')
+    """Получить все штрафы (ВСЕ волонтеры видят ВСЕ штрафы)"""
+    pool_id = request.args.get('pool_id', 1)
 
-    if user_id:
-        # Волонтер видит штрафы которые он выдал
-        penalties = StudentPenalty.query.filter_by(volunteer_id=user_id).all()
-    else:
-        # Админ/Team Lead видят все
-        penalties = StudentPenalty.query.all()
+    # ВСЕ видят ВСЕ штрафы
+    penalties = StudentPenalty.query.all()
 
     return jsonify([{
         'id': p.id,

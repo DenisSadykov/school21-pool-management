@@ -7,6 +7,7 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Shifts from './pages/Shifts';
+import Students from './pages/Students';
 import Volunteers from './pages/Volunteers';
 import Rewards from './pages/Rewards';
 import Penalties from './pages/Penalties';
@@ -47,6 +48,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/shifts" element={<Shifts />} />
+              <Route path="/students" element={<Students />} />
               <Route path="/volunteers" element={<Volunteers />} />
               <Route path="/rewards" element={<Rewards />} />
               <Route path="/penalties" element={<Penalties />} />
