@@ -1,0 +1,246 @@
+.my-tribe-page {
+  max-width: 1400px;
+}
+
+.tribe-switcher {
+  display: flex;
+  min-width: 220px;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+}
+
+.tribe-current {
+  min-width: 220px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+}
+
+.tribe-current span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.tribe-current strong {
+  color: var(--text-primary);
+}
+
+.tribe-switcher select,
+.tribe-panel input,
+.tribe-panel select,
+.tribe-panel textarea {
+  width: 100%;
+  padding: var(--spacing-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.tribe-panel textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.tribe-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.summary-card svg,
+.summary-card strong {
+  color: var(--text-primary);
+}
+
+.summary-card span {
+  color: var(--text-secondary);
+}
+
+.summary-card strong {
+  font-size: 1.7rem;
+}
+
+.tribe-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.tribe-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.tribe-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+.tribe-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.student-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.student-event-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto 40px;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.student-event-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.student-event-row span {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.student-event-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.student-event-links a {
+  color: var(--text-primary);
+}
+
+.event-status {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.event-status.pending {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.event-status.confirmed {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.26);
+}
+
+.event-status.rejected {
+  background: rgba(244, 63, 94, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(244, 63, 94, 0.28);
+}
+
+.student-event-admin {
+  display: flex;
+  gap: 4px;
+}
+
+.student-event-admin button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.student-event-admin button:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.tribe-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.tribe-row.stacked {
+  flex-direction: column;
+}
+
+.tribe-row span,
+.tribe-row small {
+  color: var(--text-secondary);
+}
+
+.tribe-row strong {
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .form-grid,
+  .tribe-layout,
+  .student-event-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tribe-switcher {
+    width: 100%;
+  }
+}

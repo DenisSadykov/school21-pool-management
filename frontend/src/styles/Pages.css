@@ -1,25 +1,29 @@
 .page {
-  max-width: 1200px;
+  max-width: 1400px;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 14px;
   gap: var(--spacing-lg);
 }
 
 .page-header h1 {
-  font-size: 1.8rem;
-  color: var(--accent);
+  font-size: 1.05rem;
+  line-height: 1.15;
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .btn-primary,
 .btn-secondary {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  border-radius: var(--radius-md);
-  font-weight: 500;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -29,23 +33,26 @@
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--bg-dark);
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: 1px solid rgba(63, 185, 80, 0.45);
 }
 
 .btn-primary:hover {
-  background: var(--accent-dim);
-  transform: translateY(-2px);
+  background: var(--button-hover);
+  border-color: rgba(63, 185, 80, 0.6);
 }
 
 .btn-secondary {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background: var(--border);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
 }
 
 .table-container {
@@ -61,27 +68,28 @@
 }
 
 .data-table thead {
-  background: var(--bg-hover);
-  border-bottom: 2px solid var(--border);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
 }
 
 .data-table th {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: 9px 12px;
   text-align: left;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--text-secondary);
   text-transform: uppercase;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
 }
 
 .data-table td {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
 }
 
 .data-table tbody tr:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
 }
 
 .data-table .actions {
@@ -90,11 +98,13 @@
 }
 
 .btn-icon {
-  background: transparent;
+  background: var(--bg-elevated);
   color: var(--text-secondary);
-  padding: var(--spacing-sm);
-  border: none;
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -103,8 +113,9 @@
 }
 
 .btn-icon:hover {
-  color: var(--accent);
-  background: var(--bg-dark);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--text-secondary);
 }
 
 .btn-icon.danger:hover {
@@ -112,21 +123,27 @@
 }
 
 .badge {
-  display: inline-block;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-md);
-  font-size: 0.8rem;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  font-family: 'JetBrains Mono', monospace;
+  border: 1px solid transparent;
 }
 
 .badge-confirmed {
-  background: rgba(0, 255, 0, 0.1);
+  background: rgba(34, 197, 94, 0.1);
   color: var(--success);
+  border-color: rgba(34, 197, 94, 0.28);
 }
 
 .badge-pending {
   background: rgba(255, 170, 0, 0.1);
   color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.28);
 }
 
 .form {
@@ -159,8 +176,8 @@
 .form-group input,
 .form-group select,
 .form-group textarea {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-hover);
+  padding: 7px 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -172,7 +189,7 @@
 .form-group textarea:focus {
   outline: none;
   border-color: var(--accent);
-  background: var(--bg-dark);
+  background: var(--bg-card);
 }
 
 .form-actions {

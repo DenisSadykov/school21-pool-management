@@ -6,7 +6,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 14px;
   gap: var(--spacing-lg);
 }
 
@@ -15,9 +15,10 @@
 }
 
 .page-header h1 {
-  font-size: 1.8rem;
-  color: var(--danger);
+  font-size: 1.05rem;
+  color: var(--text-primary);
   margin-bottom: var(--spacing-sm);
+  font-weight: 700;
 }
 
 .subtitle {
@@ -26,35 +27,35 @@
 }
 
 .btn-penalty-primary {
-  background: var(--danger);
-  color: var(--bg-dark);
-  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--button-bg);
+  color: var(--button-fg);
+  min-height: 30px;
+  padding: 0 12px;
   border-radius: var(--radius-md);
-  border: none;
+  border: 1px solid rgba(63, 185, 80, 0.45);
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   cursor: pointer;
   transition: all var(--transition);
-  font-size: 1rem;
+  font-size: 0.8rem;
 }
 
 .btn-penalty-primary:hover {
-  background: rgba(255, 23, 68, 0.8);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  background: var(--button-hover);
+  border-color: rgba(63, 185, 80, 0.6);
 }
 
 .penalties-info {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 10px;
 }
 
 .info-card {
-  background: rgba(255, 23, 68, 0.1);
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: var(--radius-md);
+  padding: 10px;
   display: flex;
   gap: var(--spacing-lg);
   align-items: flex-start;
@@ -62,12 +63,12 @@
 }
 
 .info-card svg {
-  color: var(--danger);
+  color: var(--info);
   flex-shrink: 0;
 }
 
 .info-card strong {
-  color: var(--danger);
+  color: var(--text-primary);
 }
 
 .penalties-grid {
@@ -87,7 +88,7 @@
 .penalties-section h2 {
   font-size: 1.1rem;
   margin-bottom: var(--spacing-lg);
-  color: var(--accent);
+  color: var(--text-primary);
   border-bottom: 1px solid var(--border);
   padding-bottom: var(--spacing-md);
 }
@@ -108,7 +109,7 @@
 }
 
 .penalty-card {
-  background: var(--bg-dark);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
@@ -117,18 +118,18 @@
 }
 
 .penalty-card:hover {
-  border-color: var(--danger);
-  background: var(--bg-hover);
+  border-color: #3a414d;
+  background: var(--bg-elevated);
 }
 
 .penalty-card.overdue {
-  border-color: var(--danger);
-  background: rgba(255, 23, 68, 0.05);
+  border-color: rgba(244, 63, 94, 0.45);
+  background: rgba(244, 63, 94, 0.065);
 }
 
-.penalty-card.done {
-  opacity: 0.6;
-  border-color: var(--success);
+.penalty-card.awaiting-unlock {
+  border-color: rgba(34, 197, 94, 0.42);
+  background: rgba(34, 197, 94, 0.06);
 }
 
 .penalty-header {
@@ -145,8 +146,9 @@
 }
 
 .penalty-hours {
-  background: var(--danger);
-  color: var(--bg-dark);
+  background: rgba(244, 63, 94, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(244, 63, 94, 0.28);
   padding: 2px 8px;
   border-radius: 20px;
   font-weight: 600;
@@ -168,13 +170,49 @@
 }
 
 .penalty-body .description {
-  color: var(--accent);
+  color: var(--text-primary);
   font-style: italic;
 }
 
 .penalty-body .date {
   color: var(--text-secondary);
   font-size: 0.8rem;
+}
+
+.penalty-history {
+  border-top: 1px solid var(--border);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+}
+
+.penalty-history summary {
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--spacing-sm);
+}
+
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.history-item strong {
+  color: var(--text-primary);
+}
+
+.history-item small {
+  color: var(--text-muted);
 }
 
 .penalty-actions {
@@ -188,7 +226,7 @@
 .btn-delete {
   flex: 1;
   padding: var(--spacing-sm) var(--spacing-md);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-size: 0.8rem;
   font-weight: 500;
@@ -201,21 +239,23 @@
 }
 
 .btn-done {
-  background: var(--success);
-  color: var(--bg-dark);
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.28);
 }
 
 .btn-done:hover {
-  background: var(--accent-dim);
+  background: rgba(34, 197, 94, 0.18);
 }
 
 .btn-overdue {
-  background: var(--danger);
-  color: var(--bg-dark);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.28);
 }
 
 .btn-overdue:hover {
-  background: rgba(255, 23, 68, 0.8);
+  background: rgba(245, 158, 11, 0.18);
 }
 
 .btn-delete {
@@ -226,7 +266,7 @@
 
 .btn-delete:hover {
   background: var(--danger);
-  color: var(--bg-dark);
+  color: #fff;
 }
 
 .btn-cancel {
@@ -260,28 +300,29 @@
 }
 
 .status-badge.done {
-  background: rgba(0, 255, 0, 0.1);
+  background: rgba(34, 197, 94, 0.1);
   color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.26);
 }
 
 .status-badge.overdue {
-  background: rgba(255, 23, 68, 0.1);
+  background: rgba(244, 63, 94, 0.1);
   color: var(--danger);
+  border: 1px solid rgba(244, 63, 94, 0.28);
 }
 
 /* ФОРМА ШТРАФА */
 
 .penalty-form {
   background: var(--bg-card);
-  border: 2px solid var(--danger);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   margin-bottom: var(--spacing-xl);
-  box-shadow: var(--shadow-lg);
 }
 
 .penalty-form h2 {
-  color: var(--danger);
+  color: var(--text-primary);
   margin-bottom: var(--spacing-lg);
   font-size: 1.3rem;
 }
@@ -379,31 +420,31 @@
 .penalties-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-lg);
+  gap: 8px;
 }
 
 .stat {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  text-align: center;
+  border-radius: var(--radius-md);
+  padding: 8px;
+  text-align: left;
 }
 
 .stat span {
   display: block;
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin-bottom: var(--spacing-sm);
+  font-size: 0.75rem;
+  margin-bottom: 2px;
 }
 
 .stat strong {
   display: block;
-  font-size: 2rem;
-  color: var(--accent);
+  font-size: 1.05rem;
+  color: var(--text-primary);
 }
 
-.stat strong.alert {
+.stat strong.danger {
   color: var(--danger);
 }
 

@@ -1,0 +1,103 @@
+.group-reviews-page {
+  max-width: 1400px;
+}
+
+.group-review-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+  align-items: end;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.group-review-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.group-review-form input,
+.group-review-form select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+}
+
+.group-review-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.summary-card span {
+  display: block;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.summary-card strong,
+.coin-value {
+  color: var(--text-primary);
+  font-size: 1.4rem;
+}
+
+.group-review-table-wrap {
+  overflow-x: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.group-review-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+.group-review-table th,
+.group-review-table td {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.group-review-table th {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--bg-elevated);
+}
+
+.reviewer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reviewer-cell span {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 768px) {
+  .group-review-form {
+    grid-template-columns: 1fr;
+  }
+}

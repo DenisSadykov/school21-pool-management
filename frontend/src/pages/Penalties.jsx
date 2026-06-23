@@ -1,28 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Plus, Check, X, Trash2 } from 'lucide-react';
+import { api } from '../api';
 import '../styles/Penalties.css';
+
+const STATUS_LABELS = {
+  pending: 'ожидает отработки',
+  overdue: 'не пришёл',
+  awaiting_unlock: 'ждёт разблокировки',
+  unlocked: 'разблокирован',
+  done: 'отработал',
+};
 
 function Penalties() {
   const [penalties, setPenalties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [students, setStudents] = useState([]);
-  const [searchStudent, setSearchStudent] = useState('');
 
   useEffect(() => {
     fetchPenalties();
-    // Список студентов (в реальности из API)
-    setStudents([
-      'Иван Петров', 'Мария Сидорова', 'Павел Иванов',
-      'Анна Смирнова', 'Олег Федоров', 'Елена Волкова'
-    ]);
+    api.get('/api/students')
+      .then((data) => setStudents(data.map((s) => s.nick)))
+      .catch(() => setStudents([]));
   }, []);
 
   const fetchPenalties = async () => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      const response = await fetch(`${apiUrl}/api/penalties`);
-      const data = await response.json();
+      const data = await api.get('/api/penalties');
       setPenalties(data);
     } catch (error) {
       console.error('Ошибка загрузки штрафов:', error);
@@ -32,13 +36,13 @@ function Penalties() {
   };
 
   if (loading) return <div className="loading">Загрузка штрафов...</div>;
+  const activePenalties = penalties.filter((p) => p.workoff_status !== 'unlocked');
 
   return (
     <div className="page penalties-page">
       <div className="page-header">
         <div>
-          <h1>⚠️ Штрафы учеников</h1>
-          <p className="subtitle">Система штрафов за нарушения (2h → 4h → 8h)</p>
+          <h1>Штрафы учеников</h1>
         </div>
         <button
           className="btn-penalty-primary"
@@ -65,22 +69,22 @@ function Penalties() {
           <div>
             <strong>Система штрафов:</strong> Каждое нарушение = 2 часа отработки.
             <br />
-            💡 <strong>Логика ×2:</strong> Если студент НЕ пришёл на отработку, нажми "Не пришёл"
+            <strong>Логика ×2:</strong> Если студент НЕ пришёл на отработку, нажми "Не пришёл"
             на ОДИН ШТРАФ и он умножится (2h → 4h → 8h → 16h...).
             <br />
-            🗑️ <strong>Удалить:</strong> Если выдал штраф случайно, нажми значок корзины.
+            <strong>Удалить:</strong> Если выдал штраф случайно, нажми значок корзины.
           </div>
         </div>
       </div>
 
       <div className="penalties-grid">
         <div className="penalties-section">
-          <h2>📋 Ожидание отработки</h2>
+          <h2>Ожидание отработки</h2>
           <div className="penalties-list">
-            {penalties.filter(p => p.workoff_status === 'pending').length === 0 ? (
+            {activePenalties.filter(p => p.workoff_status === 'pending').length === 0 ? (
               <p className="empty">Нет активных штрафов</p>
             ) : (
-              penalties
+              activePenalties
                 .filter(p => p.workoff_status === 'pending')
                 .map(penalty => (
                   <PenaltyCard
@@ -93,20 +97,20 @@ function Penalties() {
           </div>
         </div>
 
-        <div className="penalties-section">
-          <h2>✅ Отработано</h2>
+        <div className="penalties-section unlock-section">
+          <h2>Ждут разблокировки</h2>
           <div className="penalties-list">
-            {penalties.filter(p => p.workoff_status === 'done').length === 0 ? (
-              <p className="empty">Нет завершённых штрафов</p>
+            {activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length === 0 ? (
+              <p className="empty">Никто не ждёт разблокировки</p>
             ) : (
-              penalties
-                .filter(p => p.workoff_status === 'done')
+              activePenalties
+                .filter(p => p.workoff_status === 'awaiting_unlock')
                 .map(penalty => (
                   <PenaltyCard
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
-                    isDone={true}
+                    isAwaitingUnlock={true}
                   />
                 ))
             )}
@@ -114,12 +118,12 @@ function Penalties() {
         </div>
 
         <div className="penalties-section">
-          <h2>❌ Переходящие (не пришёл)</h2>
+          <h2>Переходящие (не пришёл)</h2>
           <div className="penalties-list">
-            {penalties.filter(p => p.workoff_status === 'overdue').length === 0 ? (
+            {activePenalties.filter(p => p.workoff_status === 'overdue').length === 0 ? (
               <p className="empty">Нет переходящих штрафов</p>
             ) : (
-              penalties
+              activePenalties
                 .filter(p => p.workoff_status === 'overdue')
                 .map(penalty => (
                   <PenaltyCard
@@ -137,38 +141,45 @@ function Penalties() {
       <div className="penalties-stats">
         <div className="stat">
           <span>Всего штрафов:</span>
-          <strong>{penalties.length}</strong>
+          <strong>{activePenalties.length}</strong>
         </div>
         <div className="stat">
           <span>Ожидает отработки:</span>
-          <strong>{penalties.filter(p => p.workoff_status === 'pending').length}</strong>
+          <strong>{activePenalties.filter(p => p.workoff_status === 'pending').length}</strong>
         </div>
         <div className="stat">
           <span>Переходящие (×2):</span>
-          <strong className="alert">
-            {penalties.filter(p => p.workoff_status === 'overdue').length}
+          <strong className="danger">
+            {activePenalties.filter(p => p.workoff_status === 'overdue').length}
           </strong>
         </div>
         <div className="stat">
-          <span>Завершено:</span>
-          <strong>{penalties.filter(p => p.workoff_status === 'done').length}</strong>
+          <span>Ждут разблокировки:</span>
+          <strong>{activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length}</strong>
         </div>
       </div>
     </div>
   );
 }
 
-function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
+function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
   const handleMarkDone = async () => {
     if (!window.confirm(`Отметить что ${penalty.student_name} отработал ${penalty.total_hours} часов?`)) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workoff_status: 'done' })
-      });
+      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'awaiting_unlock' });
+      onStatusChange();
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
+    }
+  };
+
+  const handleUnlock = async () => {
+    if (!window.confirm(`${penalty.student_name} разблокирован на учебной платформе?`)) return;
+
+    try {
+      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'unlocked' });
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -180,12 +191,7 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
     if (!window.confirm(`Отменить отработку для ${penalty.student_name}?`)) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workoff_status: 'pending' })
-      });
+      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'pending' });
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -198,12 +204,7 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
     if (!window.confirm(`Ученик не пришёл на отработку?\n${penalty.total_hours}h → ${newHours}h`)) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workoff_status: 'overdue' })
-      });
+      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'overdue' });
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -215,10 +216,7 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
     if (!window.confirm(`Удалить штраф для ${penalty.student_name}?\nЭто действие нельзя отменить.`)) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      await fetch(`${apiUrl}/api/penalties/${penalty.id}`, {
-        method: 'DELETE'
-      });
+      await api.del(`/api/penalties/${penalty.id}`);
       onStatusChange();
     } catch (error) {
       console.error('Ошибка:', error);
@@ -227,7 +225,7 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
   };
 
   return (
-    <div className={`penalty-card ${isOverdue ? 'overdue' : ''} ${isDone ? 'done' : ''}`}>
+    <div className={`penalty-card ${isOverdue ? 'overdue' : ''} ${isAwaitingUnlock ? 'awaiting-unlock' : ''}`}>
       <div className="penalty-header">
         <h3>{penalty.student_name}</h3>
         <span className="penalty-hours">
@@ -238,10 +236,34 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
       <div className="penalty-body">
         <p className="volunteer">Выдал: {penalty.volunteer_name}</p>
         {penalty.description && <p className="description">💭 {penalty.description}</p>}
-        <p className="date">📅 {new Date(penalty.date_issued).toLocaleDateString('ru-RU')}</p>
+        <p className="date">{new Date(penalty.date_issued).toLocaleDateString('ru-RU')}</p>
+        {penalty.date_worked_off && (
+          <p className="date">Отработал: {new Date(penalty.date_worked_off).toLocaleString('ru-RU')}</p>
+        )}
       </div>
 
-      {!isDone && (
+      {penalty.history?.length > 0 && (
+        <details className="penalty-history">
+          <summary>История</summary>
+          <div className="history-list">
+            {penalty.history.map((item) => (
+              <div className="history-item" key={item.id}>
+                <strong>{STATUS_LABELS[item.new_status] || item.new_status}</strong>
+                <span>
+                  {item.old_status ? `${STATUS_LABELS[item.old_status] || item.old_status} → ` : ''}
+                  {STATUS_LABELS[item.new_status] || item.new_status}
+                  {item.new_hours ? ` · ${item.new_hours}h` : ''}
+                </span>
+                <small>
+                  {item.actor_nick ? `@${item.actor_nick}` : 'система'} · {new Date(item.created_at).toLocaleString('ru-RU')}
+                </small>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {!isAwaitingUnlock && (
         <div className="penalty-actions">
           <button className="btn-done" onClick={handleMarkDone} title="Отработал">
             <Check size={18} /> Отработал
@@ -255,9 +277,12 @@ function PenaltyCard({ penalty, onStatusChange, isDone, isOverdue }) {
         </div>
       )}
 
-      {isDone && (
+      {isAwaitingUnlock && (
         <div className="penalty-actions">
-          <p className="status-badge done">✅ Отработано</p>
+          <p className="status-badge done">Ждёт разблокировки</p>
+          <button className="btn-done" onClick={handleUnlock} title="Разблокирован">
+            <Check size={18} /> Разблокирован
+          </button>
           <button className="btn-cancel" onClick={handleMarkPending} title="Отменить отработку">
             ↶ Отменить
           </button>
@@ -292,21 +317,11 @@ function PenaltyForm({ students, onClose, onSuccess }) {
     }
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      const response = await fetch(`${apiUrl}/api/penalties`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          student_name: form.student_name,
-          description: form.description,
-          volunteer_id: 1 // TODO: получить из текущего пользователя
-        })
+      await api.post('/api/penalties', {
+        student_name: form.student_name,
+        description: form.description,
       });
-
-      if (response.ok) {
-        alert('✅ Штраф добавлен и синхронизирован с Google Sheets!');
-        onSuccess();
-      }
+      onSuccess();
     } catch (error) {
       alert('❌ Ошибка: ' + error.message);
     }
@@ -314,7 +329,7 @@ function PenaltyForm({ students, onClose, onSuccess }) {
 
   return (
     <form className="penalty-form" onSubmit={handleSubmit}>
-      <h2>⚠️ Добавить штраф студенту</h2>
+      <h2>Добавить штраф студенту</h2>
 
       <div className="form-group">
         <label>Имя студента</label>

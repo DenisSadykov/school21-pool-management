@@ -1,69 +1,102 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { api, setSession } from '../api';
 import '../styles/Login.css';
 
 function Login({ setUser }) {
-  const [formData, setFormData] = useState({ name: '', role: 'volunteer' });
+  const [nick, setNick] = useState('');
+  const [password, setPassword] = useState('');
+  const [needPassword, setNeedPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const passwordRef = useRef(null);
+  const normalizedNick = nick.trim().toLowerCase();
+  const shouldShowPassword = useMemo(
+    () => needPassword || ['admin', 'teamlead', 'team_lead', 'тимлид', 'админ'].includes(normalizedNick),
+    [needPassword, normalizedNick],
+  );
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (shouldShowPassword) {
+      passwordRef.current?.focus();
+    }
+  }, [shouldShowPassword]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
-      setError('Введите имя');
+    setError('');
+    if (!nick.trim()) {
+      setError('Введите ник');
       return;
     }
-
-    // Демо-версия: вход работает без backend
-    const user = {
-      id: Math.random(),
-      name: formData.name,
-      role: formData.role
-    };
-
-    localStorage.setItem('user', JSON.stringify(user));
-    setUser(user);
+    if (shouldShowPassword && !password.trim()) {
+      setError('Введите пароль');
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await api.post('/api/auth/login', {
+        nick: nick.trim(),
+        password,
+      });
+      setSession(data.token, data.user);
+      setUser(data.user);
+    } catch (err) {
+      // если роль требует пароль — покажем поле пароля
+      if (/пароль/i.test(err.message) && !needPassword) {
+        setNeedPassword(true);
+      }
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>🏊 School 21 Pool</h1>
+        <h1>School 21 Pool</h1>
         <p className="subtitle">Система управления бассейном</p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="name">Ваше имя</label>
+            <label htmlFor="nick">Твой ник</label>
             <input
-              id="name"
+              id="nick"
               type="text"
-              placeholder="Введите ваше имя"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="например, nieshays"
+              value={nick}
+              onChange={(e) => setNick(e.target.value)}
               autoFocus
+              autoCapitalize="none"
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="role">Роль</label>
-            <select
-              id="role"
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-            >
-              <option value="volunteer">Волонтёр</option>
-              <option value="team_lead">Team Lead</option>
-              <option value="admin">Администратор</option>
-            </select>
-          </div>
+          {shouldShowPassword && (
+            <div className="form-group">
+              <label htmlFor="password">Пароль (для тимлида / админа)</label>
+              <input
+                ref={passwordRef}
+                id="password"
+                type="password"
+                placeholder="Пароль"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          )}
 
           {error && <div className="error-message">{error}</div>}
 
-          <button type="submit" className="btn-login">
-            Войти
+          <button type="submit" className="btn-login" disabled={loading}>
+            {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
 
         <div className="login-footer">
-          <p className="text-muted">Демо-версия: вход доступен всем</p>
+          <p className="text-muted">
+            Волонтёры и трайб-мастера — вход по нику без пароля.<br />
+            Ник должен быть заранее внесён тимлидом.
+          </p>
         </div>
       </div>
     </div>

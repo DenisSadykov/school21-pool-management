@@ -1,11 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Download, FileUp, Plus, Trash2 } from 'lucide-react';
+import { api } from '../api';
 import '../styles/Students.css';
 
-function Students() {
+const HEADER_MAP = {
+  nick: 'nick',
+  ник: 'nick',
+  login: 'nick',
+  логин: 'nick',
+  name: 'name',
+  имя: 'name',
+  фио: 'name',
+  tribe: 'tribe',
+  группа: 'tribe',
+  триб: 'tribe',
+};
+
+const TRIBES = ['Ленты', 'Короны', 'Олени'];
+
+function splitCsvLine(line, delimiter) {
+  const cells = [];
+  let current = '';
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseStudentsFile(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const delimiter = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
+  const first = splitCsvLine(lines[0], delimiter).map((cell) => HEADER_MAP[cell.toLowerCase()] || null);
+  const hasHeader = first.includes('nick') || first.includes('name');
+  const columns = hasHeader ? first : ['nick', 'name', 'tribe'];
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  return dataLines
+    .map((line) => {
+      const cells = splitCsvLine(line, delimiter);
+      return cells.reduce((student, cell, index) => {
+        const key = columns[index];
+        if (key) student[key] = cell;
+        return student;
+      }, {});
+    })
+    .filter((student) => student.nick || student.name);
+}
+
+function Students({ user }) {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [tribeFilter, setTribeFilter] = useState('all');
+  const [workoffFilter, setWorkoffFilter] = useState('all');
 
   useEffect(() => {
     fetchStudents();
@@ -13,9 +81,7 @@ function Students() {
 
   const fetchStudents = async () => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      const response = await fetch(`${apiUrl}/api/students`);
-      const data = await response.json();
+      const data = await api.get('/api/students');
       // Сортировать по количеству штрафов (спереди те с больше штрафами)
       data.sort((a, b) => b.total_penalty_hours - a.total_penalty_hours);
       setStudents(data);
@@ -26,19 +92,40 @@ function Students() {
     }
   };
 
+  const tribes = [...new Set(students.map((student) => student.tribe).filter(Boolean))].sort();
+  const filteredStudents = students.filter((student) => {
+    if (tribeFilter !== 'all' && student.tribe !== tribeFilter) return false;
+    if (workoffFilter === 'active' && !student.in_workoff) return false;
+    if (workoffFilter === 'overdue' && student.overdue_penalties <= 0) return false;
+    if (workoffFilter === 'clean' && student.in_workoff) return false;
+    return true;
+  });
+
   if (loading) return <div className="loading">Загрузка учеников...</div>;
 
   return (
     <div className="page students-page">
       <div className="page-header">
         <div>
-          <h1>👥 Ученики бассейна</h1>
+          <h1>Ученики бассейна</h1>
           <p className="subtitle">Список всех учеников с их штрафами</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          <Plus size={20} /> Добавить ученика
-        </button>
+        <div className="page-actions">
+          <button className="btn-secondary" onClick={() => setShowImport(!showImport)}>
+            <FileUp size={20} /> Загрузить файл
+          </button>
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            <Plus size={20} /> Добавить ученика
+          </button>
+        </div>
       </div>
+
+      {showImport && (
+        <StudentsImport
+          onClose={() => setShowImport(false)}
+          onSuccess={fetchStudents}
+        />
+      )}
 
       {showForm && (
         <StudentForm
@@ -57,88 +144,256 @@ function Students() {
         </div>
         <div className="stat">
           <span>Со штрафами:</span>
-          <strong className="alert">{students.filter(s => s.total_penalty_hours > 0).length}</strong>
+          <strong className="danger">{students.filter(s => s.total_penalty_hours > 0).length}</strong>
         </div>
         <div className="stat">
-          <span>Всего штрафных часов:</span>
-          <strong>{students.reduce((sum, s) => sum + s.total_penalty_hours, 0)}</strong>
+          <span>В отработке:</span>
+          <strong className="warning">{students.filter(s => s.in_workoff).length}</strong>
+        </div>
+        <div className="stat">
+          <span>Ждут разблокировки:</span>
+          <strong className="warning">
+            {students.reduce((sum, s) => sum + (s.awaiting_unlock_penalties || 0), 0)}
+          </strong>
+        </div>
+        <div className="stat">
+          <span>Мероприятий:</span>
+          <strong>{students.reduce((sum, s) => sum + (s.events_total || 0), 0)}</strong>
         </div>
       </div>
 
-      <div className="students-grid">
-        {students.length === 0 ? (
+      <div className="students-filters">
+        <label>
+          Трайб
+          <select value={tribeFilter} onChange={(e) => setTribeFilter(e.target.value)}>
+            <option value="all">Все трайбы</option>
+            {tribes.map((tribe) => (
+              <option value={tribe} key={tribe}>{tribe}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Отработка
+          <select value={workoffFilter} onChange={(e) => setWorkoffFilter(e.target.value)}>
+            <option value="all">Все статусы</option>
+            <option value="active">Сейчас в отработке</option>
+            <option value="overdue">Просрочена</option>
+            <option value="clean">Без отработки</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="students-table-wrap">
+        {filteredStudents.length === 0 ? (
           <div className="empty-state">
-            <p>Нет учеников. Добавьте первого ученика!</p>
+            <p>Нет учеников под выбранные фильтры.</p>
           </div>
         ) : (
-          students.map(student => (
-            <StudentCard
-              key={student.id}
-              student={student}
-              onDelete={() => fetchStudents()}
-            />
-          ))
+          <table className="students-table">
+            <thead>
+              <tr>
+                <th>Ученик</th>
+                <th>Трайб</th>
+                <th>Нарушения</th>
+                <th>Отработка</th>
+                <th>Мероприятия</th>
+                <th>Последние штрафы</th>
+                <th>Управление</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStudents.map(student => (
+                <StudentRow
+                  key={student.id}
+                  student={student}
+                  onDelete={() => fetchStudents()}
+                />
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
   );
 }
 
-function StudentCard({ student, onDelete }) {
+function StudentsImport({ onClose, onSuccess }) {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [students, setStudents] = useState([]);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    setResult(null);
+    setStudents([]);
+    setSelectedFile(file || null);
+    if (!file) return;
+
+    setFileName(file.name);
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      const text = await file.text();
+      const parsed = parseStudentsFile(text);
+      setStudents(parsed);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) {
+      alert('Выберите файл');
+      return;
+    }
+    const isXlsx = selectedFile.name.toLowerCase().endsWith('.xlsx');
+    if (!isXlsx && students.length === 0) {
+      alert('В файле не нашлось строк для импорта');
+      return;
+    }
+    setLoading(true);
+    try {
+      let res;
+      if (isXlsx) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        res = await api.upload('/api/students/import-file', formData);
+      } else {
+        res = await api.post('/api/students/import', { students });
+      }
+      setResult(res);
+      onSuccess();
+    } catch (error) {
+      alert('❌ Ошибка: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="student-form import-form">
+      <h2>Загрузить учеников из файла</h2>
+      <div className="import-grid">
+        <div className="form-group">
+          <label>CSV или TXT</label>
+          <input type="file" accept=".xlsx,.csv,.txt,text/csv,text/plain" onChange={handleFile} />
+        </div>
+        <div className="import-help">
+          <strong>Формат:</strong> лучше скачать XLSX-шаблон. Также поддерживается CSV/TXT: <code>nick,name,tribe</code>.
+        </div>
+      </div>
+      <a
+        className="btn-secondary template-button"
+        href="/templates/students-template.xlsx"
+        download="students-template.xlsx"
+      >
+        <Download size={16} /> Скачать шаблон
+      </a>
+
+      {fileName && selectedFile?.name.toLowerCase().endsWith('.xlsx') && (
+        <div className="import-preview">
+          <div className="import-summary">
+            <span>Файл: {fileName}</span>
+            <strong>XLSX загрузится при импорте</strong>
+          </div>
+        </div>
+      )}
+
+      {fileName && !selectedFile?.name.toLowerCase().endsWith('.xlsx') && (
+        <div className="import-preview">
+          <div className="import-summary">
+            <span>Файл: {fileName}</span>
+            <strong>Найдено строк: {students.length}</strong>
+          </div>
+          {students.slice(0, 5).map((student, index) => (
+            <div className="import-row" key={`${student.nick}-${index}`}>
+              <span>@{student.nick || '—'}</span>
+              <span>{student.name || '—'}</span>
+              <span>{student.tribe || TRIBES[0]}</span>
+            </div>
+          ))}
+          {students.length > 5 && <p className="text-muted">И ещё {students.length - 5} строк...</p>}
+        </div>
+      )}
+
+      {result && (
+        <div className="alert success">
+          {result.message}
+          {result.skipped?.length > 0 && ` Пропущено строк: ${result.skipped.length}.`}
+        </div>
+      )}
+
+      <div className="form-actions">
+        <button type="button" className="btn-primary" onClick={handleImport} disabled={loading || !selectedFile}>
+          {loading ? 'Загружаю...' : 'Импортировать'}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onClose}>
+          Закрыть
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function StudentRow({ student, onDelete }) {
   const handleDelete = async () => {
     if (!window.confirm(`Удалить ученика ${student.name}?`)) return;
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      await fetch(`${apiUrl}/api/students/${student.id}`, { method: 'DELETE' });
+      await api.del(`/api/students/${student.id}`);
       onDelete();
     } catch (error) {
       alert('Ошибка: ' + error.message);
     }
   };
 
-  const hasPenalties = student.total_penalty_hours > 0;
-  const statusColor = student.total_penalty_hours > 10 ? 'danger' : student.total_penalty_hours > 0 ? 'warning' : 'safe';
+  const hasPenalties = student.total_penalty_hours > 0 || student.violations_count > 0;
+  const rowClass = student.overdue_penalties > 0 ? 'overdue' : student.in_workoff ? 'in-workoff' : '';
+  const latestPenalties = student.penalties?.slice(0, 3) || [];
 
   return (
-    <div className={`student-card status-${statusColor}`}>
-      <div className="student-header">
-        <div>
-          <h3>{student.name}</h3>
-          <p className="nick">@{student.nick}</p>
+    <tr className={rowClass}>
+      <td>
+        <div className="student-person">
+          <strong>@{student.nick}</strong>
+          <span>{student.name}</span>
         </div>
-        <button className="btn-delete" onClick={handleDelete} title="Удалить">
-          <Trash2 size={18} />
-        </button>
-      </div>
-
-      <div className="student-body">
-        {student.tribe && (
-          <div className="tribe-badge">Группа {student.tribe}</div>
-        )}
-
+      </td>
+      <td>
+        {student.tribe ? <span className="tribe-badge">{student.tribe}</span> : <span className="text-muted">—</span>}
+      </td>
+      <td>
         {hasPenalties ? (
-          <div className="penalties-summary">
-            <div className="penalty-stat">
-              <span>Штрафных часов:</span>
-              <strong className="hours">{student.total_penalty_hours}h</strong>
-            </div>
-            <div className="penalty-stat">
-              <span>Ожидает отработки:</span>
-              <strong className="pending">{student.pending_penalties}</strong>
-            </div>
+          <div className="student-counts">
+            <strong>{student.violations_count}</strong>
+            <span>{student.total_penalty_hours}h штрафа</span>
           </div>
         ) : (
-          <div className="no-penalties">
-            ✅ Штрафов нет
-          </div>
+          <span className="no-penalties">Нет</span>
         )}
-      </div>
-
-      {hasPenalties && student.penalties.length > 0 && (
-        <div className="penalties-list">
-          <p className="list-title">Последние штрафы:</p>
-          {student.penalties.slice(0, 3).map((penalty, idx) => (
+      </td>
+      <td>
+        {student.in_workoff ? (
+          <div className="workoff-stack">
+            <span className={`workoff-pill ${student.overdue_penalties > 0 ? 'overdue' : 'active'}`}>
+              {student.overdue_penalties > 0 ? 'Просрочена' : 'В отработке'}
+            </span>
+            <small>ожидает: {student.pending_penalties}, просрочено: {student.overdue_penalties}</small>
+          </div>
+        ) : (
+          <span className="workoff-pill clean">Нет отработки</span>
+        )}
+      </td>
+      <td>
+        <div className="student-events">
+          <strong>{student.events_total || 0}</strong>
+          <span>развл.: {student.entertainment_events || 0}</span>
+          <span>обуч.: {student.education_events || 0}</span>
+          <span>баллы: {student.event_points || 0}</span>
+        </div>
+      </td>
+      <td>
+        {latestPenalties.length > 0 ? (
+          <div className="penalties-list compact">
+          {latestPenalties.map((penalty, idx) => (
             <div key={idx} className="penalty-item">
               <span className={`status ${penalty.status}`}>{penalty.status}</span>
               <span className="hours">{penalty.hours}h</span>
@@ -149,8 +404,18 @@ function StudentCard({ student, onDelete }) {
             <p className="more">+ ещё {student.penalties.length - 3}</p>
           )}
         </div>
-      )}
-    </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+      <td>
+        <div className="student-actions">
+          <button className="btn-delete" onClick={handleDelete} title="Удалить">
+            <Trash2 size={18} />
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -158,7 +423,7 @@ function StudentForm({ onClose, onSuccess }) {
   const [form, setForm] = useState({
     nick: '',
     name: '',
-    tribe: 'A'
+    tribe: TRIBES[0]
   });
 
   const handleSubmit = async (e) => {
@@ -170,17 +435,8 @@ function StudentForm({ onClose, onSuccess }) {
     }
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      const response = await fetch(`${apiUrl}/api/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
-      });
-
-      if (response.ok) {
-        alert(`✅ Ученик ${form.name} добавлен!`);
-        onSuccess();
-      }
+      await api.post('/api/students', form);
+      onSuccess();
     } catch (error) {
       alert('❌ Ошибка: ' + error.message);
     }
@@ -218,9 +474,9 @@ function StudentForm({ onClose, onSuccess }) {
             value={form.tribe}
             onChange={(e) => setForm({ ...form, tribe: e.target.value })}
           >
-            <option value="A">Группа A</option>
-            <option value="B">Группа B</option>
-            <option value="C">Группа C</option>
+            {TRIBES.map((tribe) => (
+              <option value={tribe} key={tribe}>{tribe}</option>
+            ))}
           </select>
         </div>
       </div>

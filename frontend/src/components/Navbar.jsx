@@ -1,48 +1,42 @@
 import React from 'react';
-import { LogOut, Settings } from 'lucide-react';
+import { Calendar, LogOut, Users } from 'lucide-react';
+import { clearSession } from '../api';
 import '../styles/Navbar.css';
+
+const ROLE_LABELS = {
+  volunteer: 'Волонтёр',
+  tribe_master: 'Трайб-мастер',
+  team_lead: 'Тимлид',
+  admin: 'Админ',
+};
 
 function Navbar({ user, setUser }) {
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    clearSession();
     setUser(null);
-  };
-
-  const handleSync = async () => {
-    try {
-      const response = await fetch('/api/sync', { method: 'POST' });
-      if (response.ok) {
-        alert('✅ Синхронизация с Google Sheets успешна!');
-      }
-    } catch (error) {
-      alert('❌ Ошибка синхронизации: ' + error.message);
-    }
   };
 
   return (
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand">
-          <h1>🏊 School 21 Pool Management</h1>
+          <div className="brand-mark">S21</div>
+          <h1>pool</h1>
+          <span className="brand-separator">/</span>
+          <span className="brand-pool">School21 Pool</span>
         </div>
 
         <div className="navbar-actions">
-          <button className="btn-sync" onClick={handleSync} title="Синхронизировать с Google Sheets">
-            🔄 Синхронизировать
-          </button>
-
-          <button className="btn-download" title="Скачать как Google Sheets">
-            ⬇️ Скачать
-          </button>
-
-          <div className="navbar-user">
-            <span className="user-name">{user?.name || 'User'}</span>
-            <span className="user-role">{user?.role || 'volunteer'}</span>
+          <div className="navbar-metrics">
+            <span><Calendar size={12} /> смены</span>
+            <span><Users size={12} /> участники</span>
           </div>
-
-          <button className="btn-icon" title="Настройки">
-            <Settings size={20} />
-          </button>
+          <div className="sync-state"><span /> synced</div>
+          <div className="navbar-user">
+            <span className="user-avatar">{(user?.nick || 'AD').slice(0, 2).toUpperCase()}</span>
+            <span className="user-name">@{user?.nick}</span>
+            <span className="user-role">{ROLE_LABELS[user?.role] || user?.role}</span>
+          </div>
 
           <button className="btn-logout" onClick={handleLogout} title="Выход">
             <LogOut size={20} />

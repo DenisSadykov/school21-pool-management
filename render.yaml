@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: school21-pool-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT wsgi:app
+    plan: free
+    envVars:
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: AUTO_START_WORKERS
+        value: "true"
+      - key: BACKUP_DIR
+        value: /tmp/school21-pool-backups

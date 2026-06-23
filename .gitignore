@@ -55,6 +55,8 @@ build/
 # Logs
 *.log
 logs/
+backend/backups/
+*.bak
 
 # OS
 .DS_Store

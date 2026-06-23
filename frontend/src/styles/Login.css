@@ -10,17 +10,17 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-2xl);
+  padding: 24px;
   width: 100%;
-  max-width: 400px;
-  box-shadow: var(--shadow-lg);
+  max-width: 360px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--border);
 }
 
 .login-box h1 {
-  font-size: 2rem;
+  font-size: 1.05rem;
   text-align: center;
-  margin-bottom: var(--spacing-md);
-  color: var(--accent);
+  margin-bottom: 6px;
+  color: var(--text-primary);
 }
 
 .subtitle {
@@ -45,12 +45,12 @@
 
 .form-group input,
 .form-group select {
-  padding: var(--spacing-md);
-  background: var(--bg-hover);
+  padding: 7px 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 0.85rem;
 }
 
 .form-group input:focus,
@@ -72,23 +72,21 @@
 
 .btn-login {
   width: 100%;
-  padding: var(--spacing-md);
-  background: var(--accent);
-  color: var(--bg-dark);
+  min-height: 30px;
+  padding: 0 12px;
+  background: var(--button-bg);
+  color: var(--button-fg);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all var(--transition);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 .btn-login:hover {
-  background: var(--accent-dim);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  background: var(--button-hover);
 }
 
 .btn-login:active {

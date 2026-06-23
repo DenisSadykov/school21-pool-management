@@ -1,6 +1,6 @@
 .sidebar {
-  width: 250px;
-  background: var(--bg-card);
+  width: 210px;
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -9,7 +9,7 @@
 }
 
 .sidebar.closed {
-  width: 70px;
+  width: 58px;
 }
 
 .sidebar-toggle {
@@ -26,16 +26,26 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-lg);
+  gap: 1px;
+  padding: 10px 8px;
+}
+
+.sidebar-section-label {
+  padding: 0 8px 6px;
+  color: var(--text-muted);
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  color: var(--text-primary);
+  gap: 9px;
+  min-height: 29px;
+  padding: 6px 10px;
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
@@ -45,16 +55,26 @@
 }
 
 .nav-item:hover {
-  background: var(--bg-hover);
-  border-color: var(--border);
-  color: var(--accent);
+  background: var(--bg-elevated);
+  border-color: transparent;
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: var(--accent);
-  color: var(--bg-dark);
-  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: transparent;
   font-weight: 600;
+}
+
+.nav-item svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.75;
+}
+
+.nav-label {
+  font-size: 0.82rem;
 }
 
 .nav-label {
@@ -68,7 +88,7 @@
 
 .sidebar.closed .nav-item {
   justify-content: center;
-  padding: var(--spacing-md);
+  padding: 6px;
 }
 
 .sidebar-footer {
@@ -84,18 +104,18 @@
 }
 
 .sidebar-footer a:hover {
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
-    position: absolute;
+    position: relative;
     left: 0;
-    top: 60px;
-    height: calc(100vh - 60px);
+    top: 0;
+    height: auto;
     z-index: 99;
-    width: 200px;
+    width: 210px;
   }
 
   .sidebar.closed {
