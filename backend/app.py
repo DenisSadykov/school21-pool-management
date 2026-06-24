@@ -2595,6 +2595,18 @@ def reset_database():
     return jsonify({'message': 'База сброшена'})
 
 
+@app.route('/api/admin/seed', methods=['POST'])
+@require_role('admin')
+def seed_database_endpoint():
+    """Заполнить БД тестовыми данными для бассейна."""
+    try:
+        from seed_pool import run
+        run()
+        return jsonify({'message': 'База заполнена данными бассейна'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ==================== Инициализация ====================
 
 
@@ -2612,6 +2624,20 @@ def seed_admin():
         db.session.add(admin)
         db.session.commit()
         print(f'[seed] admin создан: ник="{admin_nick}" пароль="{admin_pass}"')
+
+
+def seed_pool_data():
+    """Автоматически загрузить данные бассейна при первом запуске."""
+    # Проверяем есть ли уже данные в базе
+    if ShiftBlock.query.first() is not None:
+        return  # Данные уже есть, не загружаем
+
+    try:
+        from seed_pool import run
+        run()
+        print('[seed] тестовые данные бассейна загружены автоматически')
+    except Exception as e:
+        print(f'[seed] ошибка при загрузке тестовых данных: {e}')
 
 
 def ensure_user_profile_columns():
@@ -2792,6 +2818,7 @@ with app.app_context():
     db.create_all()
     ensure_user_profile_columns()
     seed_admin()
+    seed_pool_data()
 
 
 if __name__ != '__main__' and os.getenv('AUTO_START_WORKERS', 'false').lower() == 'true':
