@@ -4481,9 +4481,48 @@ def ensure_user_profile_columns():
         conn.commit()
 
 
+def ensure_postgres_profile_columns():
+    """Лёгкая Postgres-миграция для старых production-баз без Alembic."""
+    if db.engine.dialect.name != 'postgresql':
+        return
+    with db.engine.connect() as conn:
+        conn.exec_driver_sql('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_group_reviewer BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE users ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE users ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
+        conn.exec_driver_sql('ALTER TABLE users ADD COLUMN IF NOT EXISTS tribe VARCHAR(50)')
+
+        conn.exec_driver_sql('ALTER TABLE shift_blocks ADD COLUMN IF NOT EXISTS generation_id INTEGER')
+
+        conn.exec_driver_sql('ALTER TABLE student_events ADD COLUMN IF NOT EXISTS post_url VARCHAR(500)')
+        conn.exec_driver_sql('ALTER TABLE student_events ADD COLUMN IF NOT EXISTS proof_url VARCHAR(500)')
+        conn.exec_driver_sql('ALTER TABLE student_events ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0')
+        conn.exec_driver_sql("ALTER TABLE student_events ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'")
+        conn.exec_driver_sql("UPDATE student_events SET status = 'confirmed' WHERE status IS NULL OR status = ''")
+        conn.exec_driver_sql("UPDATE student_events SET points = 2 WHERE event_type = 'entertainment' AND (points IS NULL OR points = 0)")
+        conn.exec_driver_sql("UPDATE student_events SET points = 4 WHERE event_type = 'education' AND (points IS NULL OR points = 0)")
+
+        conn.exec_driver_sql('ALTER TABLE group_reviews ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1')
+        conn.exec_driver_sql('UPDATE group_reviews SET quantity = 1 WHERE quantity IS NULL OR quantity < 1')
+
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE')
+
+        conn.exec_driver_sql("ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS pool_role VARCHAR(20) DEFAULT 'volunteer'")
+        conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
+
+        conn.exec_driver_sql('ALTER TABLE reward_events ADD COLUMN IF NOT EXISTS pool_id INTEGER')
+
+        for table in ('users', 'students', 'tribe_events'):
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Короны' WHERE lower(tribe) IN ('b', '2')")
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Олени' WHERE lower(tribe) IN ('c', '3')")
+        conn.commit()
+
+
 with app.app_context():
     db.create_all()
     ensure_user_profile_columns()
+    ensure_postgres_profile_columns()
     seed_admin()
     seed_pool_data()
 
