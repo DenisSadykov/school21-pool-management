@@ -87,6 +87,8 @@ TELEGRAM_QUIET_HOURS_END = int(os.getenv('TELEGRAM_QUIET_HOURS_END', '7'))
 TELEGRAM_WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '').strip()
 INTERNAL_API_SECRET = os.getenv('INTERNAL_API_SECRET', '').strip()
 SCHOOL_RULES_URL = os.getenv('SCHOOL_RULES_URL', 'https://applicant.21-school.ru/rules')
+EXAM_BRIEF_URL = os.getenv('EXAM_BRIEF_URL', '')
+MOSCOW_OFFSET = timedelta(hours=3)
 
 # ==================== Модели ====================
 
@@ -570,12 +572,140 @@ def telegram_is_quiet_hours(now=None):
     return hour >= TELEGRAM_QUIET_HOURS_START or hour < TELEGRAM_QUIET_HOURS_END
 
 
-def telegram_send_message(chat_id, text, disable_notification=False):
-    return telegram_api('sendMessage', {
+def telegram_send_message(chat_id, text, disable_notification=False, reply_markup=None):
+    payload = {
         'chat_id': chat_id,
         'text': text,
         'disable_notification': disable_notification,
+    }
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
+    return telegram_api('sendMessage', payload)
+
+
+def telegram_delete_message(chat_id, message_id):
+    return telegram_api('deleteMessage', {
+        'chat_id': chat_id,
+        'message_id': message_id,
     })
+
+
+def telegram_answer_callback(callback_query_id, text='Готово'):
+    return telegram_api('answerCallbackQuery', {
+        'callback_query_id': callback_query_id,
+        'text': text,
+    })
+
+
+def _utcnow():
+    return datetime.utcnow()
+
+
+def _moscow_now():
+    return _utcnow() + MOSCOW_OFFSET
+
+
+def _moscow_to_utc(value):
+    return value - MOSCOW_OFFSET
+
+
+def _frontend_base_url():
+    return (frontend_urls[0] if frontend_urls else '').rstrip('/')
+
+
+def _exam_brief_url():
+    if EXAM_BRIEF_URL:
+        return EXAM_BRIEF_URL
+    base = _frontend_base_url()
+    return f'{base}/exam-brief' if base else '/exam-brief'
+
+
+def _tg_link(user):
+    username = _clean_telegram_username(user.telegram)
+    return f'@{username}' if username else f'@{user.nick}'
+
+
+def _format_shift(block):
+    label = f' · {block.label}' if block.label else ''
+    return f'{block.date.strftime("%d.%m")} {block.time_start}-{block.time_end}{label}'
+
+
+def _admin_team_leads(pool_id=None):
+    query = User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead']))
+    return query.order_by(User.role, User.nick).all()
+
+
+def _signed_users_for_block(block):
+    return (
+        db.session.query(User)
+        .join(Signup, Signup.user_id == User.id)
+        .filter(Signup.block_id == block.id, User.active.is_(True))
+        .order_by(User.nick)
+        .all()
+    )
+
+
+def _users_on_shift(pool_id, moment_msk=None):
+    moment_msk = moment_msk or _moscow_now()
+    today = moment_msk.date()
+    current_time = moment_msk.strftime('%H:%M')
+    blocks = (
+        ShiftBlock.query
+        .filter(
+            ShiftBlock.pool_id == pool_id,
+            ShiftBlock.date == today,
+            ShiftBlock.time_start <= current_time,
+            ShiftBlock.time_end >= current_time,
+        )
+        .all()
+    )
+    users = {}
+    for block in blocks:
+        for user in _signed_users_for_block(block):
+            users[user.id] = user
+    return list(users.values())
+
+
+def _queue_notification(user, event_type, text, dedupe_key, pool_id=None, priority='normal',
+                        scheduled_for=None, payload=None, source_entity=None, source_entity_id=None,
+                        created_by=None, action_buttons=None):
+    if not user or not dedupe_key:
+        return None
+    existing = NotificationEvent.query.filter_by(dedupe_key=dedupe_key).first()
+    if existing:
+        return existing
+    full_payload = payload.copy() if isinstance(payload, dict) else {}
+    full_payload['text'] = text
+    if action_buttons:
+        full_payload['action_buttons'] = action_buttons
+    event = NotificationEvent(
+        type=event_type,
+        priority=priority,
+        status='queued',
+        scheduled_for=scheduled_for,
+        recipient_user_id=user.id,
+        pool_id=pool_id,
+        payload=json.dumps(full_payload, ensure_ascii=False),
+        dedupe_key=dedupe_key,
+        source_entity=source_entity,
+        source_entity_id=source_entity_id,
+        created_by=created_by,
+    )
+    db.session.add(event)
+    return event
+
+
+def _cancel_pending_notifications(source_entity, source_entity_id, event_types=None):
+    query = NotificationEvent.query.filter(
+        NotificationEvent.source_entity == source_entity,
+        NotificationEvent.source_entity_id == source_entity_id,
+        NotificationEvent.status.in_(['queued', 'pending']),
+    )
+    if event_types:
+        query = query.filter(NotificationEvent.type.in_(event_types))
+    for event in query.all():
+        event.status = 'cancelled'
+        event.cancelled_at = _utcnow()
 
 
 def sync_telegram_photo(account, telegram_user_id):
@@ -718,6 +848,19 @@ def telegram_handle_message(message):
     return {'ok': True, 'action': 'unknown_command'}
 
 
+def build_notification_reply_markup(event):
+    payload = json.loads(event.payload or '{}')
+    buttons = payload.get('action_buttons') or []
+    if not buttons:
+        return None
+    return {
+        'inline_keyboard': [[{
+            'text': button['text'],
+            'callback_data': button['callback_data'],
+        } for button in buttons]]
+    }
+
+
 def build_notification_text(event):
     payload = json.loads(event.payload or '{}')
     text = (payload.get('text') or '').strip()
@@ -728,16 +871,397 @@ def build_notification_text(event):
     return text
 
 
+def _delete_related_penalty_messages(penalty_id, event_type, exclude_event_id=None):
+    events = NotificationEvent.query.filter_by(
+        source_entity='penalty',
+        source_entity_id=penalty_id,
+        type=event_type,
+    ).all()
+    for event in events:
+        if exclude_event_id and event.id == exclude_event_id:
+            pass
+        if event.status in ('queued', 'pending'):
+            event.status = 'cancelled'
+            event.cancelled_at = _utcnow()
+        deliveries = NotificationDelivery.query.filter_by(notification_id=event.id, delivery_status='sent').all()
+        for delivery in deliveries:
+            if not delivery.telegram_chat_id or not delivery.message_id:
+                continue
+            try:
+                telegram_delete_message(delivery.telegram_chat_id, delivery.message_id)
+            except Exception:
+                pass
+
+
+def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
+    old_status = penalty.workoff_status
+    old_hours = penalty.hours * penalty.multiplier
+    penalty.workoff_status = new_status
+    if new_status == 'in_workoff':
+        penalty.date_worked_off = _utcnow()
+    if new_status in ('done', 'awaiting_unlock'):
+        penalty.date_worked_off = _utcnow()
+    if new_status == 'pending':
+        penalty.date_worked_off = None
+    if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:
+        add_penalty_history(penalty, old_status, new_status, old_hours, comment)
+        log_action(
+            'telegram_update',
+            'penalty',
+            penalty.id,
+            f'Telegram: штраф {penalty.student_name}: {old_status} → {new_status}',
+            {
+                'student': penalty.student_name,
+                'old_status': old_status,
+                'new_status': new_status,
+                'actor_nick': actor.nick if actor else None,
+            },
+            actor=actor,
+        )
+    enqueue_sync('penalty', 'update', {
+        'id': penalty.id,
+        'student': penalty.student_name,
+        'status': new_status,
+        'total_hours': penalty.hours * penalty.multiplier,
+    })
+
+
+def _notify_admins_penalty_created(penalty):
+    for user in _admin_team_leads(penalty.pool_id):
+        _queue_notification(
+            user,
+            'penalty_admin_block',
+            (
+                f'Ученик {penalty.student_name} получил штраф.\n'
+                f'Выдал: {penalty.volunteer_name}.\n'
+                'Нужно заблокировать ученика на учебной платформе.'
+            ),
+            f'penalty:{penalty.id}:admin-block:user:{user.id}',
+            pool_id=penalty.pool_id,
+            priority='urgent',
+            source_entity='penalty',
+            source_entity_id=penalty.id,
+        )
+
+
+def _notify_admins_penalty_awaiting_unlock(penalty):
+    for user in _admin_team_leads(penalty.pool_id):
+        _queue_notification(
+            user,
+            'penalty_admin_unlock',
+            (
+                f'Ученик {penalty.student_name} отработал пенальти.\n'
+                'Нужно снять ограничения на учебной платформе.'
+            ),
+            f'penalty:{penalty.id}:admin-unlock:user:{user.id}',
+            pool_id=penalty.pool_id,
+            priority='urgent',
+            source_entity='penalty',
+            source_entity_id=penalty.id,
+        )
+
+
+def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'):
+    users = _users_on_shift(penalty.pool_id)
+    for user in users:
+        event = _queue_notification(
+            user,
+            'penalty_method_question',
+            (
+                f'Ученик {penalty.student_name} получил пенальти.\n'
+                'Получил ли он метод отработки?'
+            ),
+            f'penalty:{penalty.id}:method:{suffix}:user:{user.id}',
+            pool_id=penalty.pool_id,
+            scheduled_for=scheduled_for,
+            source_entity='penalty',
+            source_entity_id=penalty.id,
+            payload={'penalty_id': penalty.id, 'question': 'method'},
+            action_buttons=[],
+        )
+        if event:
+            db.session.flush()
+            payload = json.loads(event.payload or '{}')
+            payload['action_buttons'] = [
+                {'text': 'Да', 'callback_data': f'p:{penalty.id}:m:y:{event.id}'},
+                {'text': 'Нет', 'callback_data': f'p:{penalty.id}:m:n:{event.id}'},
+                {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:m:s:{event.id}'},
+            ]
+            event.payload = json.dumps(payload, ensure_ascii=False)
+
+
+def _queue_penalty_workoff_check(penalty, scheduled_for=None, suffix='initial'):
+    users = _users_on_shift(penalty.pool_id)
+    for user in users:
+        event = _queue_notification(
+            user,
+            'penalty_workoff_check',
+            f'Проверь пенальти: {penalty.student_name} отработал?',
+            f'penalty:{penalty.id}:complete:{suffix}:user:{user.id}',
+            pool_id=penalty.pool_id,
+            scheduled_for=scheduled_for,
+            source_entity='penalty',
+            source_entity_id=penalty.id,
+            payload={'penalty_id': penalty.id, 'question': 'complete'},
+            action_buttons=[],
+        )
+        if event:
+            db.session.flush()
+            payload = json.loads(event.payload or '{}')
+            payload['action_buttons'] = [
+                {'text': 'Да', 'callback_data': f'p:{penalty.id}:c:y:{event.id}'},
+                {'text': 'Нет', 'callback_data': f'p:{penalty.id}:c:n:{event.id}'},
+                {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:c:s:{event.id}'},
+            ]
+            event.payload = json.dumps(payload, ensure_ascii=False)
+
+
+def telegram_handle_callback(callback):
+    callback_id = callback.get('id')
+    message = callback.get('message') or {}
+    tg_user = callback.get('from') or {}
+    data = callback.get('data') or ''
+    parts = data.split(':')
+    if len(parts) != 5 or parts[0] != 'p':
+        if callback_id:
+            telegram_answer_callback(callback_id, 'Неизвестное действие')
+        return {'ok': False, 'reason': 'unknown_callback'}
+    _, penalty_id_raw, question, answer, event_id_raw = parts
+    try:
+        penalty_id = int(penalty_id_raw)
+        event_id = int(event_id_raw)
+    except ValueError:
+        if callback_id:
+            telegram_answer_callback(callback_id, 'Некорректное действие')
+        return {'ok': False, 'reason': 'bad_callback'}
+
+    account = TelegramAccount.query.filter_by(
+        telegram_username=normalize_tg_username(tg_user.get('username')),
+        is_linked=True,
+    ).first()
+    actor = User.query.get(account.user_id) if account else None
+    penalty = StudentPenalty.query.get(penalty_id)
+    if not penalty:
+        if callback_id:
+            telegram_answer_callback(callback_id, 'Пенальти уже не найдено')
+        return {'ok': False, 'reason': 'penalty_not_found'}
+
+    if question == 'm':
+        event_type = 'penalty_method_question'
+        if answer == 'y' and penalty.workoff_status in ('pending', 'overdue'):
+            _set_penalty_status_from_bot(penalty, 'in_workoff', actor, 'Telegram: метод отработки выдан')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Статус: отрабатывает')
+        elif answer == 'n' and penalty.workoff_status in ('pending', 'overdue'):
+            _queue_penalty_method_question(penalty, scheduled_for=_utcnow() + timedelta(minutes=5), suffix=f'retry-{int(time.time())}')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Спросим ещё раз через 5 минут')
+        else:
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Вопрос пропущен')
+    elif question == 'c':
+        event_type = 'penalty_workoff_check'
+        if answer == 'y' and penalty.workoff_status == 'in_workoff':
+            _set_penalty_status_from_bot(penalty, 'awaiting_unlock', actor, 'Telegram: пенальти отработан')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            _notify_admins_penalty_awaiting_unlock(penalty)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Статус: ожидает разблокировки')
+        elif answer == 'n' and penalty.workoff_status == 'in_workoff':
+            _queue_penalty_workoff_check(penalty, scheduled_for=_utcnow() + timedelta(minutes=5), suffix=f'retry-{int(time.time())}')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Спросим ещё раз через 5 минут')
+        else:
+            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Вопрос пропущен')
+    db.session.commit()
+    return {'ok': True}
+
+
+def _queue_shift_change_notifications(block, target_user, action):
+    now_msk = _moscow_now()
+    if block.date != now_msk.date() + timedelta(days=1) or now_msk.hour < 14:
+        return
+    action_text = 'записан на' if action == 'create' else 'снят со'
+    if action == 'create':
+        coworkers = [u for u in _signed_users_for_block(block) if u.id != target_user.id]
+        text = f'Ты дежуришь завтра: {_format_shift(block)}.'
+        if coworkers:
+            text += '\nС тобой на смене: ' + ', '.join(_tg_link(u) for u in coworkers)
+        if block.label == 'EXAM':
+            text += f'\nБриф экзамена: {_exam_brief_url()}'
+        _queue_notification(
+            target_user,
+            'shift_change_volunteer',
+            text,
+            f'shift-change:{block.id}:{target_user.id}:{action}:{int(time.time())}',
+            pool_id=block.pool_id,
+            scheduled_for=_utcnow() + timedelta(minutes=5),
+            source_entity='shift_block',
+            source_entity_id=block.id,
+        )
+
+    for user in _admin_team_leads(block.pool_id):
+        _queue_notification(
+            user,
+            'shift_change_staff',
+            (
+                f'Изменение в завтрашней смене: {target_user.name or target_user.nick} '
+                f'({_tg_link(target_user)}) {action_text} смены {_format_shift(block)}.'
+            ),
+            f'shift-change-staff:{block.id}:{target_user.id}:{action}:{user.id}:{int(time.time())}',
+            pool_id=block.pool_id,
+            scheduled_for=_utcnow() + timedelta(minutes=5),
+            source_entity='shift_block',
+            source_entity_id=block.id,
+        )
+
+
 def mark_delivery_failed(event, delivery, error_text):
     delivery.delivery_status = 'error'
     delivery.error = (error_text or '')[:500]
     event.status = 'error'
 
 
+def _schedule_daily_shift_notifications():
+    now_msk = _moscow_now()
+    if now_msk.hour != 14:
+        return
+    pool_id = active_pool_id()
+    target_date = now_msk.date() + timedelta(days=1)
+    blocks = ShiftBlock.query.filter_by(pool_id=pool_id, date=target_date).order_by(ShiftBlock.time_start).all()
+    if not blocks:
+        return
+    users_to_blocks = {}
+    for block in blocks:
+        for user in _signed_users_for_block(block):
+            users_to_blocks.setdefault(user.id, {'user': user, 'blocks': []})['blocks'].append(block)
+    for item in users_to_blocks.values():
+        user = item['user']
+        block_lines = []
+        coworker_lines = []
+        has_exam = False
+        for block in item['blocks']:
+            has_exam = has_exam or (block.label == 'EXAM')
+            block_lines.append(f'• {_format_shift(block)}')
+            coworkers = [u for u in _signed_users_for_block(block) if u.id != user.id]
+            if coworkers:
+                coworker_lines.append(f'{block.time_start}-{block.time_end}: ' + ', '.join(_tg_link(u) for u in coworkers))
+        text = 'Завтра ты дежуришь на бассейне:\n' + '\n'.join(block_lines)
+        if coworker_lines:
+            text += '\n\nС тобой на смене:\n' + '\n'.join(coworker_lines)
+        if has_exam:
+            text += f'\n\nБриф экзамена: {_exam_brief_url()}'
+        _queue_notification(
+            user,
+            'shift_reminder_volunteer',
+            text,
+            f'shift-reminder:{target_date.isoformat()}:user:{user.id}',
+            pool_id=pool_id,
+        )
+
+    summary_lines = []
+    for block in blocks:
+        volunteers = _signed_users_for_block(block)
+        people = ', '.join(f'{u.name or u.nick} ({_tg_link(u)})' for u in volunteers) or 'никто не записан'
+        summary_lines.append(f'• {_format_shift(block)}: {people}')
+    for user in _admin_team_leads(pool_id):
+        _queue_notification(
+            user,
+            'shift_reminder_staff',
+            'Кто дежурит завтра:\n' + '\n'.join(summary_lines),
+            f'shift-reminder-staff:{target_date.isoformat()}:user:{user.id}',
+            pool_id=pool_id,
+        )
+
+
+def _schedule_tribe_notifications():
+    now_msk = _moscow_now()
+    pool_id = active_pool_id()
+    tomorrow = now_msk.date() + timedelta(days=1)
+    tomorrow_events = TribeEvent.query.filter_by(pool_id=pool_id, event_date=tomorrow).all()
+    for event in tomorrow_events:
+        masters = User.query.filter(
+            User.active.is_(True),
+            User.role == 'tribe_master',
+            User.tribe == event.tribe,
+        ).all()
+        for user in masters:
+            _queue_notification(
+                user,
+                'tribe_event_tomorrow',
+                (
+                    f'Завтра мероприятие твоего трайба {event.tribe}.\n'
+                    f'{event.title} в {event.time_start or "время не указано"}'
+                    + (f'\nМесто: {event.location}' if event.location else '')
+                ),
+                f'tribe-event:{event.id}:tomorrow:user:{user.id}',
+                pool_id=pool_id,
+                scheduled_for=_moscow_to_utc(datetime.combine(tomorrow - timedelta(days=1), datetime.strptime('14:00', '%H:%M').time())),
+                source_entity='tribe_event',
+                source_entity_id=event.id,
+            )
+
+    today = now_msk.date()
+    today_events = TribeEvent.query.filter_by(pool_id=pool_id, event_date=today).all()
+    for event in today_events:
+        if not event.time_start:
+            continue
+        event_dt_msk = datetime.combine(event.event_date, datetime.strptime(event.time_start, '%H:%M').time())
+        scheduled_for = _moscow_to_utc(event_dt_msk - timedelta(minutes=10))
+        if scheduled_for > _utcnow() + timedelta(minutes=10):
+            continue
+        for user in _users_on_shift(pool_id, event_dt_msk - timedelta(minutes=10)):
+            _queue_notification(
+                user,
+                'tribe_event_first_day_shift',
+                (
+                    f'Через 10 минут мероприятие трайба {event.tribe}: {event.title}.\n'
+                    'Пожалуйста, направь ребят на мероприятие.'
+                    + (f'\nМесто: {event.location}' if event.location else '')
+                ),
+                f'tribe-event:{event.id}:shift-reminder:user:{user.id}',
+                pool_id=pool_id,
+                scheduled_for=scheduled_for,
+                source_entity='tribe_event',
+                source_entity_id=event.id,
+            )
+
+
+def _schedule_penalty_checks():
+    now = _utcnow()
+    penalties = StudentPenalty.query.filter(
+        StudentPenalty.workoff_status == 'in_workoff',
+        StudentPenalty.date_worked_off.isnot(None),
+    ).all()
+    for penalty in penalties:
+        scheduled_for = penalty.date_worked_off + timedelta(hours=1, minutes=55)
+        if scheduled_for <= now + timedelta(minutes=5):
+            _queue_penalty_workoff_check(
+                penalty,
+                scheduled_for=scheduled_for,
+                suffix=f'auto-{scheduled_for.strftime("%Y%m%d%H%M")}',
+            )
+
+
+def enqueue_scheduled_notifications():
+    _schedule_daily_shift_notifications()
+    _schedule_tribe_notifications()
+    _schedule_penalty_checks()
+
+
 def process_pending_notifications(limit=20):
+    enqueue_scheduled_notifications()
+    now = _utcnow()
     events = (
         NotificationEvent.query
         .filter(NotificationEvent.status.in_(['queued', 'pending']))
+        .filter(db.or_(NotificationEvent.scheduled_for.is_(None), NotificationEvent.scheduled_for <= now))
         .order_by(NotificationEvent.created_at.asc(), NotificationEvent.id.asc())
         .limit(limit)
         .all()
@@ -769,7 +1293,8 @@ def process_pending_notifications(limit=20):
             result = telegram_send_message(
                 account.telegram_chat_id,
                 build_notification_text(event),
-                disable_notification=telegram_is_quiet_hours() and event.priority != 'urgent',
+                disable_notification=telegram_is_quiet_hours(_moscow_now()) and event.priority != 'urgent',
+                reply_markup=build_notification_reply_markup(event),
             )
             delivery.telegram_chat_id = account.telegram_chat_id
             delivery.delivery_status = 'sent'
@@ -1637,6 +2162,7 @@ def signup_block(block_id):
         'label': block.label or '',
         'at': datetime.utcnow().isoformat(),
     })
+    _queue_shift_change_notifications(block, target_user, 'create')
     db.session.commit()
     return jsonify({'message': 'Записан на смену'}), 201
 
@@ -1678,6 +2204,8 @@ def unsignup_block(block_id):
         'label': block.label or '',
         'at': datetime.utcnow().isoformat(),
     })
+    if target_user:
+        _queue_shift_change_notifications(block, target_user, 'delete')
     db.session.commit()
     return jsonify({'message': 'Запись отменена'})
 
@@ -2680,10 +3208,11 @@ def telegram_webhook():
             return jsonify({'error': 'Неверный webhook secret'}), 403
     payload = request.get_json(silent=True) or {}
     message = payload.get('message')
-    if not message:
+    callback = payload.get('callback_query')
+    if not message and not callback:
         return jsonify({'ok': True, 'ignored': True})
     try:
-        result = telegram_handle_message(message)
+        result = telegram_handle_message(message) if message else telegram_handle_callback(callback)
         db.session.commit()
         return jsonify({'ok': True, 'result': result})
     except Exception as exc:
@@ -3538,6 +4067,12 @@ def create_penalty():
         'description': penalty.description,
         'at': datetime.utcnow().isoformat(),
     })
+    _notify_admins_penalty_created(penalty)
+    _queue_penalty_method_question(
+        penalty,
+        scheduled_for=_utcnow() + timedelta(minutes=5),
+        suffix='initial',
+    )
     db.session.commit()
     return jsonify({'id': penalty.id, 'message': 'Штраф добавлен'}), 201
 
@@ -3559,6 +4094,14 @@ def update_penalty_status(penalty_id):
         penalty.date_worked_off = datetime.utcnow()
     if new_status == 'pending':
         penalty.date_worked_off = None
+    if new_status != old_status:
+        if new_status == 'in_workoff':
+            _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question'])
+        if new_status == 'awaiting_unlock':
+            _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
+            _notify_admins_penalty_awaiting_unlock(penalty)
+        if new_status in ('pending', 'overdue', 'unlocked', 'done'):
+            _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
     if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:
         add_penalty_history(penalty, old_status, new_status, old_hours, data.get('comment') or '')
         log_action(
