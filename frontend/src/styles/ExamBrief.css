@@ -1,0 +1,25 @@
+.exam-brief-page {
+  max-width: 1400px;
+}
+
+.exam-brief-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.exam-brief-frame-wrap {
+  margin-top: var(--spacing-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.exam-brief-frame {
+  width: 100%;
+  min-height: 78vh;
+  border: none;
+  background: #111;
+}

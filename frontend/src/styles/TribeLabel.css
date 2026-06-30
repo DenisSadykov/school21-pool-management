@@ -1,0 +1,20 @@
+.tribe-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+  vertical-align: middle;
+}
+
+.tribe-label__text {
+  min-width: 0;
+}
+
+.tribe-label__icon {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 999px;
+}
