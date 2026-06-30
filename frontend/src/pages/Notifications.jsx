@@ -14,6 +14,7 @@ const DEFAULT_BROADCAST = {
   text: '',
   priority: 'normal',
   role: '',
+  duty_window: '',
   usernames: '',
 };
 
@@ -75,6 +76,7 @@ function Notifications() {
         priority: broadcastForm.priority,
         filters: {
           role: broadcastForm.role || null,
+          duty_window: broadcastForm.duty_window || null,
           usernames,
         },
       });
@@ -211,6 +213,18 @@ function Notifications() {
                   <option value="tribe_master">Трайб-мастера</option>
                   <option value="team_lead">Team Lead</option>
                   <option value="admin">Администраторы</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="broadcast-duty-window">Смена</label>
+                <select
+                  id="broadcast-duty-window"
+                  value={broadcastForm.duty_window}
+                  onChange={(e) => setBroadcastForm((prev) => ({ ...prev, duty_window: e.target.value }))}
+                >
+                  <option value="">Без фильтра по смене</option>
+                  <option value="today">Дежурят сегодня</option>
+                  <option value="tomorrow">Дежурят завтра</option>
                 </select>
               </div>
               <div className="form-group">
@@ -481,6 +495,8 @@ function formatRole(role) {
 function formatFilters(filters) {
   const chunks = [];
   if (filters?.role) chunks.push(`роль: ${formatRole(filters.role)}`);
+  if (filters?.duty_window === 'today') chunks.push('смена: дежурят сегодня');
+  if (filters?.duty_window === 'tomorrow') chunks.push('смена: дежурят завтра');
   if (Array.isArray(filters?.usernames) && filters.usernames.length) {
     chunks.push(`ники: ${filters.usernames.join(', ')}`);
   }

@@ -3453,10 +3453,30 @@ def _broadcast_recipient_query(pool_id, filters):
         else:
             query = query.filter(db.text('0=1'))
     role = (filters or {}).get('role')
+    duty_window = ((filters or {}).get('duty_window') or '').strip()
     usernames = [normalize_tg_username(item) for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
     usernames = [item for item in usernames if item]
     if role:
         query = query.filter_by(role=role)
+    if duty_window in {'today', 'tomorrow'} and pool_id:
+        target_date = _moscow_now().date() + (timedelta(days=1) if duty_window == 'tomorrow' else timedelta())
+        signed_user_ids = {
+            row.user_id
+            for row in (
+                db.session.query(Signup.user_id)
+                .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+                .filter(
+                    ShiftBlock.pool_id == pool_id,
+                    ShiftBlock.date == target_date,
+                )
+                .distinct()
+                .all()
+            )
+        }
+        if signed_user_ids:
+            query = query.filter(User.id.in_(signed_user_ids))
+        else:
+            query = query.filter(db.text('0=1'))
     if usernames:
         telegram_variants = usernames + [f'@{item}' for item in usernames]
         query = query.filter(db.or_(
