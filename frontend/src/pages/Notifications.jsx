@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Bell, Megaphone, FileText, Send, Trash2, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin } from 'lucide-react';
 import { api } from '../api';
 import '../styles/Pages.css';
 import '../styles/Notifications.css';
@@ -7,7 +7,6 @@ import '../styles/Notifications.css';
 const TABS = [
   { id: 'broadcasts', label: 'Рассылки', icon: Megaphone },
   { id: 'notes', label: 'Доска объявлений', icon: FileText },
-  { id: 'history', label: 'История', icon: Bell },
   { id: 'telegram', label: 'Telegram', icon: Users },
 ];
 
@@ -27,7 +26,6 @@ const DEFAULT_NOTE = {
 function Notifications() {
   const [tab, setTab] = useState('broadcasts');
   const [overview, setOverview] = useState(null);
-  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [broadcastForm, setBroadcastForm] = useState(DEFAULT_BROADCAST);
@@ -36,12 +34,8 @@ function Notifications() {
   const load = async () => {
     setLoading(true);
     try {
-      const [overviewData, historyData] = await Promise.all([
-        api.get('/api/notifications/overview'),
-        api.get('/api/notifications/history?limit=80'),
-      ]);
+      const overviewData = await api.get('/api/notifications/overview');
       setOverview(overviewData);
-      setHistory(historyData || []);
     } catch (error) {
       setMessage(`Ошибка загрузки: ${error.message}`);
     } finally {
@@ -52,6 +46,22 @@ function Notifications() {
   useEffect(() => {
     load();
   }, []);
+
+  const linkedUsers = overview?.linked_users || [];
+  const selectedUsernames = useMemo(() => (
+    broadcastForm.usernames
+      .split(',')
+      .map((item) => item.trim().replace(/^@+/, ''))
+      .filter(Boolean)
+  ), [broadcastForm.usernames]);
+
+  const toggleLinkedUser = (username) => {
+    const normalized = (username || '').replace(/^@+/, '');
+    const next = selectedUsernames.includes(normalized)
+      ? selectedUsernames.filter((item) => item !== normalized)
+      : [...selectedUsernames, normalized];
+    setBroadcastForm((prev) => ({ ...prev, usernames: next.join(', ') }));
+  };
 
   const submitBroadcast = async (event) => {
     event.preventDefault();
@@ -211,6 +221,29 @@ function Notifications() {
                   onChange={(e) => setBroadcastForm((prev) => ({ ...prev, usernames: e.target.value }))}
                   placeholder="@nick1, @nick2"
                 />
+                <div className="notifications-recipient-picker">
+                  <div className="notifications-recipient-picker-head">
+                    <span>Выбрать из уже привязанных Telegram</span>
+                    <small>{linkedUsers.length ? `${linkedUsers.length} человек` : 'пока никто не привязан'}</small>
+                  </div>
+                  <div className="notifications-recipient-list">
+                    {linkedUsers.map((user) => {
+                      const normalized = (user.telegram || '').replace(/^@+/, '');
+                      const active = selectedUsernames.includes(normalized);
+                      return (
+                        <button
+                          key={user.id}
+                          type="button"
+                          className={`notifications-recipient-chip ${active ? 'active' : ''}`}
+                          onClick={() => toggleLinkedUser(user.telegram)}
+                        >
+                          <strong>{user.name}</strong>
+                          <span>{user.telegram || `@${user.nick}`}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </form>
@@ -234,8 +267,8 @@ function Notifications() {
                   (overview?.broadcasts || []).map((item) => (
                     <tr key={item.id}>
                       <td>{item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}</td>
-                      <td>{item.status}</td>
-                      <td>{item.priority}</td>
+                      <td>{formatBroadcastStatus(item.status)}</td>
+                      <td>{formatPriority(item.priority)}</td>
                       <td>{formatFilters(item.filters)}</td>
                       <td className="notifications-text-cell">{item.text}</td>
                       <td>
@@ -301,7 +334,18 @@ function Notifications() {
                   className={`notifications-note-card ${note.is_highlighted ? 'highlighted' : ''}`}
                 >
                   <div className="notifications-note-head">
-                    <strong>{note.is_pinned ? 'Закрепленная заметка' : 'Заметка'}</strong>
+                    <div className="notifications-note-badges">
+                      {note.is_pinned && (
+                        <span className="notifications-note-badge">
+                          <Pin size={14} /> Закреплено
+                        </span>
+                      )}
+                      {note.is_highlighted && (
+                        <span className="notifications-note-badge fire">
+                          <Flame size={14} /> Огонек
+                        </span>
+                      )}
+                    </div>
                     <button className="btn-icon danger" type="button" onClick={() => removeNote(note.id)}>
                       <Trash2 size={16} />
                     </button>
@@ -317,43 +361,38 @@ function Notifications() {
         </section>
       )}
 
-      {tab === 'history' && (
-        <section className="notifications-section">
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Когда</th>
-                  <th>Тип</th>
-                  <th>Получатель</th>
-                  <th>Статус</th>
-                  <th>Приоритет</th>
-                  <th>Доставка</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.length === 0 ? (
-                  <tr><td className="text-center" colSpan="6">История уведомлений пока пуста.</td></tr>
-                ) : (
-                  history.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}</td>
-                      <td>{item.type}</td>
-                      <td>{item.recipient ? `@${item.recipient.nick}` : '—'}</td>
-                      <td>{item.status}</td>
-                      <td>{item.priority}</td>
-                      <td>{(item.deliveries || []).map((delivery) => delivery.status).join(', ') || '—'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       {tab === 'telegram' && (
         <section className="notifications-section">
+          <div className="notifications-telegram-grid">
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Ник</th>
+                    <th>Имя</th>
+                    <th>Роль</th>
+                    <th>Telegram</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(overview?.linked_users || []).length === 0 ? (
+                    <tr><td className="text-center" colSpan="5">Пока никто не привязал Telegram.</td></tr>
+                  ) : (
+                    (overview?.linked_users || []).map((item) => (
+                      <tr key={item.id}>
+                        <td>@{item.nick}</td>
+                        <td>{item.name}</td>
+                        <td>{formatRole(item.role)}</td>
+                        <td>{item.telegram || 'не указан'}</td>
+                        <td>{item.delivery_enabled ? 'привязан' : 'привязан, доставка выключена'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
           <div className="table-container">
             <table className="data-table">
               <thead>
@@ -373,7 +412,7 @@ function Notifications() {
                     <tr key={item.id}>
                       <td>@{item.nick}</td>
                       <td>{item.name}</td>
-                      <td>{item.role}</td>
+                      <td>{formatRole(item.role)}</td>
                       <td>{item.telegram || 'не указан'}</td>
                       <td>{item.needs_username ? 'нужно указать username' : 'ожидает привязки'}</td>
                     </tr>
@@ -382,15 +421,48 @@ function Notifications() {
               </tbody>
             </table>
           </div>
+          </div>
         </section>
       )}
     </div>
   );
 }
 
+function formatBroadcastStatus(status) {
+  const labels = {
+    draft: 'черновик',
+    queued: 'в очереди',
+    pending: 'ожидает отправки',
+    sent: 'отправлено',
+    error: 'ошибка',
+    cancelled: 'отменено',
+    skipped: 'пропущено',
+  };
+  return labels[status] || status || '—';
+}
+
+function formatPriority(priority) {
+  const labels = {
+    normal: 'обычный',
+    important: 'важный',
+    urgent: 'срочный',
+  };
+  return labels[priority] || priority || '—';
+}
+
+function formatRole(role) {
+  const labels = {
+    volunteer: 'волонтер',
+    tribe_master: 'трайб-мастер',
+    team_lead: 'team lead',
+    admin: 'администратор',
+  };
+  return labels[role] || role || '—';
+}
+
 function formatFilters(filters) {
   const chunks = [];
-  if (filters?.role) chunks.push(`роль: ${filters.role}`);
+  if (filters?.role) chunks.push(`роль: ${formatRole(filters.role)}`);
   if (Array.isArray(filters?.usernames) && filters.usernames.length) {
     chunks.push(`ники: ${filters.usernames.join(', ')}`);
   }

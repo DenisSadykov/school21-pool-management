@@ -490,6 +490,24 @@ def _dashboard_note_to_dict(note):
     }
 
 
+def _broadcast_runtime_status(broadcast):
+    events = NotificationEvent.query.filter_by(source_entity='broadcast', source_entity_id=broadcast.id).all()
+    if not events:
+        return broadcast.status or 'draft'
+    statuses = [event.status for event in events]
+    if any(status == 'error' for status in statuses):
+        return 'error'
+    if any(status in ('queued', 'pending') for status in statuses):
+        return 'queued'
+    if all(status == 'cancelled' for status in statuses):
+        return 'cancelled'
+    if any(status == 'sent' for status in statuses):
+        return 'sent'
+    if all(status == 'skipped' for status in statuses):
+        return 'skipped'
+    return broadcast.status or 'draft'
+
+
 def _broadcast_to_dict(broadcast):
     author = User.query.get(broadcast.author_id) if broadcast.author_id else None
     filters = json.loads(broadcast.filters or '{}')
@@ -498,7 +516,7 @@ def _broadcast_to_dict(broadcast):
         'text': broadcast.text,
         'filters': filters,
         'priority': broadcast.priority,
-        'status': broadcast.status,
+        'status': _broadcast_runtime_status(broadcast),
         'author_nick': author.nick if author else '',
         'author_name': author.name if author else '',
         'created_at': broadcast.created_at.isoformat() if broadcast.created_at else None,
@@ -530,6 +548,33 @@ def _unlinked_users_for_pool(pool_id):
             'needs_username': not bool(username),
         })
     return result
+
+
+def _linked_users_for_pool(pool_id):
+    volunteer_ids = {
+        row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
+    } if pool_id else set()
+    if not volunteer_ids:
+        return []
+    rows = (
+        db.session.query(User, TelegramAccount)
+        .join(TelegramAccount, TelegramAccount.user_id == User.id)
+        .filter(
+            User.id.in_(volunteer_ids),
+            TelegramAccount.is_linked.is_(True),
+        )
+        .order_by(User.role, User.nick)
+        .all()
+    )
+    return [{
+        'id': user.id,
+        'nick': user.nick,
+        'name': user.name or user.nick,
+        'role': user.role,
+        'telegram': f'@{account.telegram_username}' if account.telegram_username else (user.telegram or ''),
+        'linked_at': account.linked_at.isoformat() if account.linked_at else None,
+        'delivery_enabled': bool(account.delivery_enabled),
+    } for user, account in rows]
 
 
 def telegram_api(method, payload=None):
@@ -3323,6 +3368,7 @@ def _broadcast_recipient_query(pool_id, filters):
 @require_role('team_lead', 'admin')
 def notifications_overview():
     pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    linked_users = _linked_users_for_pool(pool_id)
     recent_notes = (
         DashboardNote.query.order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
         .limit(20)
@@ -3344,8 +3390,9 @@ def notifications_overview():
             'message_id': delivery.message_id or '',
             'created_at': delivery.created_at.isoformat() if delivery.created_at else None,
         } for delivery in recent_deliveries],
+        'linked_users': linked_users,
         'unlinked_users': _unlinked_users_for_pool(pool_id),
-        'linked_users_count': TelegramAccount.query.filter_by(is_linked=True).count(),
+        'linked_users_count': len(linked_users),
     })
 
 
@@ -3442,6 +3489,11 @@ def create_broadcast():
         {'filters': filters, 'priority': priority, 'text': text},
     )
     db.session.commit()
+    try:
+        process_pending_notifications(limit=max(20, len(recipients) + 5))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     return jsonify(_broadcast_to_dict(broadcast)), 201
 
 

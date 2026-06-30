@@ -310,7 +310,11 @@ function DashboardNotes({ notes }) {
           className={`dashboard-note-card ${note.is_highlighted ? 'is-highlighted' : ''}`}
         >
           <div className="dashboard-note-meta">
-            <strong>{note.is_pinned ? 'Закреплено' : 'Объявление'}</strong>
+            <strong>
+              {note.is_pinned ? 'Закреплено' : 'Объявление'}
+              {note.is_pinned ? ' 📌' : ''}
+              {note.is_highlighted ? ' 🔥' : ''}
+            </strong>
             <span>{note.author_nick ? `@${note.author_nick}` : 'система'}</span>
           </div>
           <p>{note.text}</p>
