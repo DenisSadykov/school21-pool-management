@@ -711,6 +711,38 @@ def _users_on_shift(pool_id, moment_msk=None):
     return list(users.values())
 
 
+def _pool_start_date(pool_id):
+    pool = Pool.query.get(pool_id) if pool_id else None
+    return pool.start_date if pool and pool.start_date else None
+
+
+def _tribe_masters_for_pool(pool_id, tribe):
+    normalized_tribe = normalize_tribe(tribe)
+    if not pool_id or not normalized_tribe:
+        return []
+    rows = (
+        db.session.query(User)
+        .join(PoolVolunteer, PoolVolunteer.user_id == User.id)
+        .filter(
+            User.active.is_(True),
+            User.role == 'tribe_master',
+            PoolVolunteer.pool_id == pool_id,
+            PoolVolunteer.pool_role == 'tribe_master',
+            PoolVolunteer.tribe == normalized_tribe,
+        )
+        .order_by(User.nick)
+        .all()
+    )
+    if rows:
+        return rows
+    return (
+        User.query
+        .filter_by(active=True, role='tribe_master', tribe=normalized_tribe)
+        .order_by(User.nick)
+        .all()
+    )
+
+
 def _queue_notification(user, event_type, text, dedupe_key, pool_id=None, priority='normal',
                         scheduled_for=None, payload=None, source_entity=None, source_entity_id=None,
                         created_by=None, action_buttons=None):
@@ -1267,14 +1299,11 @@ def _schedule_daily_shift_notifications():
 def _schedule_tribe_notifications():
     now_msk = _moscow_now()
     pool_id = active_pool_id()
+    pool_start_date = _pool_start_date(pool_id)
     tomorrow = now_msk.date() + timedelta(days=1)
     tomorrow_events = TribeEvent.query.filter_by(pool_id=pool_id, event_date=tomorrow).all()
     for event in tomorrow_events:
-        masters = User.query.filter(
-            User.active.is_(True),
-            User.role == 'tribe_master',
-            User.tribe == event.tribe,
-        ).all()
+        masters = _tribe_masters_for_pool(pool_id, event.tribe)
         for user in masters:
             _queue_notification(
                 user,
@@ -1292,6 +1321,8 @@ def _schedule_tribe_notifications():
             )
 
     today = now_msk.date()
+    if pool_start_date != today:
+        return
     today_events = TribeEvent.query.filter_by(pool_id=pool_id, event_date=today).all()
     for event in today_events:
         if not event.time_start:
@@ -1299,6 +1330,8 @@ def _schedule_tribe_notifications():
         event_dt_msk = datetime.combine(event.event_date, datetime.strptime(event.time_start, '%H:%M').time())
         scheduled_for = _moscow_to_utc(event_dt_msk - timedelta(minutes=10))
         if scheduled_for > _utcnow() + timedelta(minutes=10):
+            continue
+        if scheduled_for < _utcnow() - timedelta(minutes=15):
             continue
         for user in _users_on_shift(pool_id, event_dt_msk - timedelta(minutes=10)):
             _queue_notification(
@@ -3972,6 +4005,7 @@ def delete_tribe_event(event_id):
     event = TribeEvent.query.get_or_404(event_id)
     if g.user.role == 'tribe_master' and normalize_tribe(event.tribe) != normalize_tribe(g.user.tribe):
         return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
+    _cancel_pending_notifications('tribe_event', event.id, ['tribe_event_tomorrow', 'tribe_event_first_day_shift'])
     db.session.delete(event)
     db.session.commit()
     return jsonify({'message': 'Встреча трайба удалена'})
