@@ -243,6 +243,36 @@
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.08);
 }
 
+.notifications-settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notifications-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+
+.notifications-toggle input {
+  margin-top: 2px;
+}
+
+.notifications-toggle strong,
+.notifications-toggle small {
+  display: block;
+}
+
+.notifications-toggle small {
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
 .notifications-telegram-grid {
   display: grid;
   gap: 14px;

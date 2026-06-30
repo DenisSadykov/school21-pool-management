@@ -24,6 +24,12 @@ const DEFAULT_NOTE = {
   is_highlighted: false,
 };
 
+const DEFAULT_TELEGRAM_SETTINGS = {
+  test_mode: true,
+  quiet_hours_start: 23,
+  quiet_hours_end: 7,
+};
+
 function Notifications() {
   const [tab, setTab] = useState('broadcasts');
   const [overview, setOverview] = useState(null);
@@ -31,12 +37,14 @@ function Notifications() {
   const [message, setMessage] = useState('');
   const [broadcastForm, setBroadcastForm] = useState(DEFAULT_BROADCAST);
   const [noteForm, setNoteForm] = useState(DEFAULT_NOTE);
+  const [telegramSettings, setTelegramSettings] = useState(DEFAULT_TELEGRAM_SETTINGS);
 
   const load = async () => {
     setLoading(true);
     try {
       const overviewData = await api.get('/api/notifications/overview');
       setOverview(overviewData);
+      setTelegramSettings(overviewData.telegram_settings || DEFAULT_TELEGRAM_SETTINGS);
     } catch (error) {
       setMessage(`Ошибка загрузки: ${error.message}`);
     } finally {
@@ -97,6 +105,20 @@ function Notifications() {
       load();
     } catch (error) {
       setMessage(`Ошибка заметки: ${error.message}`);
+    }
+  };
+
+  const saveTelegramSettings = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.patch('/api/notifications/settings', {
+        telegram: telegramSettings,
+      });
+      setTelegramSettings(response.telegram_settings || telegramSettings);
+      setMessage('Настройки Telegram сохранены.');
+      load();
+    } catch (error) {
+      setMessage(`Ошибка сохранения настроек: ${error.message}`);
     }
   };
 
@@ -377,6 +399,52 @@ function Notifications() {
 
       {tab === 'telegram' && (
         <section className="notifications-section">
+          <form className="form" onSubmit={saveTelegramSettings}>
+            <div className="notifications-form-head">
+              <h2>Настройки Telegram</h2>
+              <button className="btn-primary" type="submit">Сохранить настройки</button>
+            </div>
+            <div className="notifications-settings-grid">
+              <label className="notifications-toggle">
+                <input
+                  type="checkbox"
+                  checked={telegramSettings.test_mode}
+                  onChange={(e) => setTelegramSettings((prev) => ({ ...prev, test_mode: e.target.checked }))}
+                />
+                <div>
+                  <strong>Тестовый режим</strong>
+                  <small>Все сообщения будут помечаться как TEST MODE.</small>
+                </div>
+              </label>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="telegram-quiet-start">Тихие часы: с</label>
+                  <select
+                    id="telegram-quiet-start"
+                    value={telegramSettings.quiet_hours_start}
+                    onChange={(e) => setTelegramSettings((prev) => ({ ...prev, quiet_hours_start: Number(e.target.value) }))}
+                  >
+                    {HOUR_OPTIONS.map((hour) => (
+                      <option value={hour} key={`start-${hour}`}>{formatHourLabel(hour)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="telegram-quiet-end">Тихие часы: до</label>
+                  <select
+                    id="telegram-quiet-end"
+                    value={telegramSettings.quiet_hours_end}
+                    onChange={(e) => setTelegramSettings((prev) => ({ ...prev, quiet_hours_end: Number(e.target.value) }))}
+                  >
+                    {HOUR_OPTIONS.map((hour) => (
+                      <option value={hour} key={`end-${hour}`}>{formatHourLabel(hour)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </form>
+
           <div className="notifications-telegram-grid">
             <div className="table-container">
               <table className="data-table">
@@ -442,6 +510,8 @@ function Notifications() {
   );
 }
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index);
+
 function PersonTelegramCell({ person }) {
   return (
     <div className="notifications-person-cell">
@@ -501,6 +571,10 @@ function formatFilters(filters) {
     chunks.push(`ники: ${filters.usernames.join(', ')}`);
   }
   return chunks.join(' · ') || 'все доступные получатели';
+}
+
+function formatHourLabel(hour) {
+  return `${String(hour).padStart(2, '0')}:00`;
 }
 
 export default Notifications;

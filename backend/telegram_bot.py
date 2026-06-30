@@ -9,9 +9,9 @@ from app import (  # noqa: E402
     db,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_BOT_USERNAME,
-    TELEGRAM_TEST_MODE,
     TELEGRAM_POLL_INTERVAL,
     TELEGRAM_LONG_POLL_TIMEOUT,
+    get_telegram_settings,
     telegram_get,
     telegram_handle_message,
     telegram_send_message,
@@ -33,7 +33,10 @@ def main():
     if not TELEGRAM_BOT_TOKEN:
         raise RuntimeError('Укажи TELEGRAM_BOT_TOKEN в env')
 
-    print(f'[telegram] polling bot @{TELEGRAM_BOT_USERNAME or "unknown"} starting (test_mode={"on" if TELEGRAM_TEST_MODE else "off"})')
+    print(
+        f'[telegram] polling bot @{TELEGRAM_BOT_USERNAME or "unknown"} '
+        f'starting (test_mode={"on" if get_telegram_settings()["test_mode"] else "off"})'
+    )
     offset = None
 
     while True:

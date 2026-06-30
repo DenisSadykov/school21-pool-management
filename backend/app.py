@@ -391,6 +391,13 @@ class DashboardNote(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AppSetting(db.Model):
+    __tablename__ = 'app_settings'
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SyncOutbox(db.Model):
     """Очередь на гарантированную доставку в Google Sheets (сайт -> таблица)."""
     __tablename__ = 'sync_outbox'
@@ -431,6 +438,95 @@ def log_action(action, entity, entity_id=None, description='', payload=None, act
         description=description,
         payload=json.dumps(payload or {}, ensure_ascii=False),
     ))
+
+
+TELEGRAM_SETTINGS_DEFAULTS = {
+    'test_mode': TELEGRAM_TEST_MODE,
+    'quiet_hours_start': TELEGRAM_QUIET_HOURS_START,
+    'quiet_hours_end': TELEGRAM_QUIET_HOURS_END,
+}
+
+
+def _parse_bool_setting(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _parse_int_setting(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_setting_row(key):
+    return AppSetting.query.filter_by(key=key).first()
+
+
+def get_app_setting(key, default=None):
+    row = _get_setting_row(key)
+    if not row:
+        return default
+    return row.value
+
+
+def set_app_setting(key, value):
+    row = _get_setting_row(key)
+    if not row:
+        row = AppSetting(key=key)
+        db.session.add(row)
+    row.value = '' if value is None else str(value)
+    return row
+
+
+def get_telegram_settings():
+    return {
+        'test_mode': _parse_bool_setting(
+            get_app_setting('telegram.test_mode', TELEGRAM_SETTINGS_DEFAULTS['test_mode']),
+            TELEGRAM_SETTINGS_DEFAULTS['test_mode'],
+        ),
+        'quiet_hours_start': _parse_int_setting(
+            get_app_setting('telegram.quiet_hours_start', TELEGRAM_SETTINGS_DEFAULTS['quiet_hours_start']),
+            TELEGRAM_SETTINGS_DEFAULTS['quiet_hours_start'],
+        ),
+        'quiet_hours_end': _parse_int_setting(
+            get_app_setting('telegram.quiet_hours_end', TELEGRAM_SETTINGS_DEFAULTS['quiet_hours_end']),
+            TELEGRAM_SETTINGS_DEFAULTS['quiet_hours_end'],
+        ),
+    }
+
+
+def update_telegram_settings(payload):
+    current = get_telegram_settings()
+    next_settings = current.copy()
+    changes = {}
+
+    if 'test_mode' in payload:
+        new_value = bool(payload.get('test_mode'))
+        if current['test_mode'] != new_value:
+            changes['test_mode'] = {'from': current['test_mode'], 'to': new_value}
+            next_settings['test_mode'] = new_value
+
+    for field in ('quiet_hours_start', 'quiet_hours_end'):
+        if field not in payload:
+            continue
+        try:
+            new_value = int(payload.get(field))
+        except (TypeError, ValueError):
+            raise ValueError('Тихие часы должны быть целыми часами от 0 до 23')
+        if new_value < 0 or new_value > 23:
+            raise ValueError('Тихие часы должны быть в диапазоне от 0 до 23')
+        if current[field] != new_value:
+            changes[field] = {'from': current[field], 'to': new_value}
+            next_settings[field] = new_value
+
+    for key, value in next_settings.items():
+        set_app_setting(f'telegram.{key}', value)
+
+    return next_settings, changes
 
 
 def add_penalty_history(penalty, old_status, new_status, old_hours, comment=''):
@@ -653,10 +749,15 @@ def telegram_get(method, params=None):
 
 def telegram_is_quiet_hours(now=None):
     now = now or datetime.now()
+    settings = get_telegram_settings()
+    quiet_start = settings['quiet_hours_start']
+    quiet_end = settings['quiet_hours_end']
     hour = now.hour
-    if TELEGRAM_QUIET_HOURS_START < TELEGRAM_QUIET_HOURS_END:
-        return TELEGRAM_QUIET_HOURS_START <= hour < TELEGRAM_QUIET_HOURS_END
-    return hour >= TELEGRAM_QUIET_HOURS_START or hour < TELEGRAM_QUIET_HOURS_END
+    if quiet_start == quiet_end:
+        return False
+    if quiet_start < quiet_end:
+        return quiet_start <= hour < quiet_end
+    return hour >= quiet_start or hour < quiet_end
 
 
 def telegram_send_message(chat_id, text, disable_notification=False, reply_markup=None):
@@ -1025,7 +1126,7 @@ def build_notification_text(event):
     text = (payload.get('text') or '').strip()
     if not text:
         text = f'Новое уведомление типа {event.type}.'
-    if TELEGRAM_TEST_MODE:
+    if get_telegram_settings()['test_mode']:
         text = f'[TEST MODE]\n{text}'
     return text
 
@@ -3499,7 +3600,8 @@ def notifications_overview():
     recent_broadcasts = Broadcast.query.order_by(Broadcast.updated_at.desc(), Broadcast.id.desc()).limit(20).all()
     recent_deliveries = NotificationDelivery.query.order_by(NotificationDelivery.created_at.desc(), NotificationDelivery.id.desc()).limit(50).all()
     return jsonify({
-        'test_mode': os.getenv('TELEGRAM_TEST_MODE', 'true').lower() == 'true',
+        'telegram_settings': get_telegram_settings(),
+        'test_mode': get_telegram_settings()['test_mode'],
         'notes': [_dashboard_note_to_dict(note) for note in recent_notes],
         'broadcasts': [_broadcast_to_dict(item) for item in recent_broadcasts],
         'recent_deliveries': [{
@@ -3516,6 +3618,26 @@ def notifications_overview():
         'unlinked_users': _unlinked_users_for_pool(pool_id),
         'linked_users_count': len(linked_users),
     })
+
+
+@app.route('/api/notifications/settings', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_notifications_settings():
+    data = request.json or {}
+    telegram_payload = data.get('telegram') if isinstance(data.get('telegram'), dict) else data
+    try:
+        settings, changes = update_telegram_settings(telegram_payload)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    log_action(
+        'update',
+        'telegram_settings',
+        None,
+        'Обновлены настройки Telegram уведомлений',
+        {'changes': changes, 'settings': settings},
+    )
+    db.session.commit()
+    return jsonify({'telegram_settings': settings, 'changes': changes})
 
 
 @app.route('/api/notifications/history', methods=['GET'])
@@ -5185,6 +5307,15 @@ def ensure_user_profile_columns():
                     updated_at DATETIME,
                     PRIMARY KEY (id),
                     FOREIGN KEY(author_id) REFERENCES users (id)
+                )
+            """)
+        if 'app_settings' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE app_settings (
+                    key VARCHAR(100) NOT NULL,
+                    value TEXT,
+                    updated_at DATETIME,
+                    PRIMARY KEY (key)
                 )
             """)
         # Pool.archived column
