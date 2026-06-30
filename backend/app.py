@@ -600,8 +600,9 @@ def find_platform_user_by_username(username):
     normalized = normalize_tg_username(username)
     if not normalized:
         return None
+    variants = [normalized, f'@{normalized}']
     return User.query.filter(
-        db.func.lower(User.telegram) == f'@{normalized}'
+        db.func.lower(User.telegram).in_(variants)
     ).first()
 
 
@@ -2737,14 +2738,15 @@ def _broadcast_recipient_query(pool_id, filters):
         else:
             query = query.filter(db.text('0=1'))
     role = (filters or {}).get('role')
-    usernames = [item.strip().lstrip('@') for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
+    usernames = [normalize_tg_username(item) for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
+    usernames = [item for item in usernames if item]
     if role:
         query = query.filter_by(role=role)
     if usernames:
-        lowered = [item.lower() for item in usernames]
+        telegram_variants = usernames + [f'@{item}' for item in usernames]
         query = query.filter(db.or_(
-            db.func.lower(User.telegram).in_([f'@{item}' for item in lowered]),
-            db.func.lower(User.nick).in_(lowered),
+            db.func.lower(User.telegram).in_(telegram_variants),
+            db.func.lower(User.nick).in_(usernames),
         ))
     return query.order_by(User.nick)
 
