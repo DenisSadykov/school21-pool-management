@@ -77,6 +77,16 @@ BACKUP_INTERVAL = int(os.getenv('BACKUP_INTERVAL', str(60 * 60)))  # сек
 _sync_lock = threading.Lock()
 _backup_lock = threading.Lock()
 _runtime_started = False
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '').strip().lstrip('@')
+TELEGRAM_TEST_MODE = os.getenv('TELEGRAM_TEST_MODE', 'true').lower() == 'true'
+TELEGRAM_POLL_INTERVAL = float(os.getenv('TELEGRAM_POLL_INTERVAL', '2'))
+TELEGRAM_LONG_POLL_TIMEOUT = int(os.getenv('TELEGRAM_LONG_POLL_TIMEOUT', '20'))
+TELEGRAM_QUIET_HOURS_START = int(os.getenv('TELEGRAM_QUIET_HOURS_START', '23'))
+TELEGRAM_QUIET_HOURS_END = int(os.getenv('TELEGRAM_QUIET_HOURS_END', '7'))
+TELEGRAM_WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '').strip()
+INTERNAL_API_SECRET = os.getenv('INTERNAL_API_SECRET', '').strip()
+SCHOOL_RULES_URL = os.getenv('SCHOOL_RULES_URL', 'https://applicant.21-school.ru/rules')
 
 # ==================== Модели ====================
 
@@ -118,14 +128,23 @@ class Pool(db.Model):
     name = db.Column(db.String(200), nullable=False)
     start_date = db.Column(db.Date)
     active = db.Column(db.Boolean, default=True)
+    archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
+        if self.archived:
+            state = 'archived'
+        elif self.active:
+            state = 'active'
+        else:
+            state = 'ended'
         return {
             'id': self.id,
             'name': self.name,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'active': self.active,
+            'archived': bool(self.archived),
+            'state': state,
         }
 
 
@@ -162,10 +181,25 @@ class Signup(db.Model):
     __table_args__ = (db.UniqueConstraint('block_id', 'user_id', name='uq_block_user'),)
 
 
+class PoolVolunteer(db.Model):
+    """Привязка волонтёра к бассейну. Без записи волонтёр не видит бассейн."""
+    __tablename__ = 'pool_volunteers'
+    id = db.Column(db.Integer, primary_key=True)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    tribe = db.Column(db.String(50))
+    pool_role = db.Column(db.String(20), default='volunteer')
+    has_confession = db.Column(db.Boolean, default=False)
+    coins_adjustment = db.Column(db.Integer, default=0)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('pool_id', 'user_id', name='uq_pool_volunteer'),)
+
+
 class RewardEvent(db.Model):
     __tablename__ = 'reward_events'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=True)
     event_type = db.Column(db.String(50), nullable=False)
     event_date = db.Column(db.Date)
     quantity = db.Column(db.Integer, default=1)
@@ -173,6 +207,16 @@ class RewardEvent(db.Model):
     comment = db.Column(db.Text)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Tribe(db.Model):
+    __tablename__ = 'tribes'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+STANDARD_TRIBES_NNV = ['Ленты', 'Короны', 'Олени']
 
 
 class GroupReview(db.Model):
@@ -272,6 +316,78 @@ class ActionLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class TelegramAccount(db.Model):
+    __tablename__ = 'telegram_accounts'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    telegram_username = db.Column(db.String(100), nullable=False)
+    telegram_chat_id = db.Column(db.String(100))
+    is_linked = db.Column(db.Boolean, default=False)
+    linked_at = db.Column(db.DateTime)
+    last_photo_sync_at = db.Column(db.DateTime)
+    photo_file_id = db.Column(db.String(255))
+    photo_url = db.Column(db.String(500))
+    delivery_enabled = db.Column(db.Boolean, default=True)
+    last_delivery_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class NotificationEvent(db.Model):
+    __tablename__ = 'notification_events'
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(50), nullable=False)
+    priority = db.Column(db.String(20), default='normal')
+    status = db.Column(db.String(20), default='draft')
+    scheduled_for = db.Column(db.DateTime)
+    sent_at = db.Column(db.DateTime)
+    cancelled_at = db.Column(db.DateTime)
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'))
+    payload = db.Column(db.Text)
+    dedupe_key = db.Column(db.String(255))
+    source_entity = db.Column(db.String(50))
+    source_entity_id = db.Column(db.Integer)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class NotificationDelivery(db.Model):
+    __tablename__ = 'notification_deliveries'
+    id = db.Column(db.Integer, primary_key=True)
+    notification_id = db.Column(db.Integer, db.ForeignKey('notification_events.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    telegram_chat_id = db.Column(db.String(100))
+    delivery_status = db.Column(db.String(20), default='pending')
+    error = db.Column(db.Text)
+    message_id = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Broadcast(db.Model):
+    __tablename__ = 'broadcasts'
+    id = db.Column(db.Integer, primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    filters = db.Column(db.Text)
+    priority = db.Column(db.String(20), default='normal')
+    status = db.Column(db.String(20), default='draft')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DashboardNote(db.Model):
+    __tablename__ = 'dashboard_notes'
+    id = db.Column(db.Integer, primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    is_pinned = db.Column(db.Boolean, default=False)
+    is_highlighted = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SyncOutbox(db.Model):
     """Очередь на гарантированную доставку в Google Sheets (сайт -> таблица)."""
     __tablename__ = 'sync_outbox'
@@ -327,6 +443,384 @@ def add_penalty_history(penalty, old_status, new_status, old_hours, comment=''):
         actor_name=actor_name,
         comment=comment,
     ))
+
+
+def _clean_telegram_username(value):
+    username = (value or '').strip().replace('@', '')
+    return username
+
+
+def _telegram_link_status(user):
+    if not user:
+        return {
+            'username': '',
+            'linked': False,
+            'delivery_enabled': False,
+            'last_photo_sync_at': None,
+            'linked_at': None,
+        }
+    username = _clean_telegram_username(user.telegram)
+    account = TelegramAccount.query.filter_by(user_id=user.id).first()
+    linked = bool(account and account.is_linked)
+    return {
+        'username': f'@{account.telegram_username}' if account and account.telegram_username else (f'@{username}' if username else ''),
+        'linked': linked,
+        'delivery_enabled': bool(account.delivery_enabled) if account else False,
+        'last_photo_sync_at': account.last_photo_sync_at.isoformat() if account and account.last_photo_sync_at else None,
+        'linked_at': account.linked_at.isoformat() if account and account.linked_at else None,
+        'photo_url': account.photo_url if account else None,
+        'needs_username': not username,
+    }
+
+
+def _dashboard_note_to_dict(note):
+    author = User.query.get(note.author_id) if note.author_id else None
+    return {
+        'id': note.id,
+        'text': note.text,
+        'is_pinned': bool(note.is_pinned),
+        'is_highlighted': bool(note.is_highlighted),
+        'is_active': bool(note.is_active),
+        'author_nick': author.nick if author else '',
+        'author_name': author.name if author else '',
+        'created_at': note.created_at.isoformat() if note.created_at else None,
+        'updated_at': note.updated_at.isoformat() if note.updated_at else None,
+    }
+
+
+def _broadcast_to_dict(broadcast):
+    author = User.query.get(broadcast.author_id) if broadcast.author_id else None
+    filters = json.loads(broadcast.filters or '{}')
+    return {
+        'id': broadcast.id,
+        'text': broadcast.text,
+        'filters': filters,
+        'priority': broadcast.priority,
+        'status': broadcast.status,
+        'author_nick': author.nick if author else '',
+        'author_name': author.name if author else '',
+        'created_at': broadcast.created_at.isoformat() if broadcast.created_at else None,
+        'updated_at': broadcast.updated_at.isoformat() if broadcast.updated_at else None,
+    }
+
+
+def _unlinked_users_for_pool(pool_id):
+    linked_ids = {
+        row.user_id for row in TelegramAccount.query.filter_by(is_linked=True).with_entities(TelegramAccount.user_id).all()
+    }
+    volunteer_ids = {
+        row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
+    } if pool_id else set()
+    if not volunteer_ids:
+        return []
+    users = User.query.filter(User.id.in_(volunteer_ids)).order_by(User.role, User.nick).all()
+    result = []
+    for user in users:
+        username = _clean_telegram_username(user.telegram)
+        if user.id in linked_ids:
+            continue
+        result.append({
+            'id': user.id,
+            'nick': user.nick,
+            'name': user.name or user.nick,
+            'role': user.role,
+            'telegram': f'@{username}' if username else '',
+            'needs_username': not bool(username),
+        })
+    return result
+
+
+def telegram_api(method, payload=None):
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError('TELEGRAM_BOT_TOKEN не задан')
+    import requests
+    response = requests.post(
+        f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
+        json=payload or {},
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not data.get('ok'):
+        raise RuntimeError(f'Telegram API error in {method}: {data}')
+    return data.get('result')
+
+
+def telegram_get(method, params=None):
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError('TELEGRAM_BOT_TOKEN не задан')
+    import requests
+    response = requests.get(
+        f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
+        params=params or {},
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not data.get('ok'):
+        raise RuntimeError(f'Telegram API error in {method}: {data}')
+    return data.get('result')
+
+
+def telegram_is_quiet_hours(now=None):
+    now = now or datetime.now()
+    hour = now.hour
+    if TELEGRAM_QUIET_HOURS_START < TELEGRAM_QUIET_HOURS_END:
+        return TELEGRAM_QUIET_HOURS_START <= hour < TELEGRAM_QUIET_HOURS_END
+    return hour >= TELEGRAM_QUIET_HOURS_START or hour < TELEGRAM_QUIET_HOURS_END
+
+
+def telegram_send_message(chat_id, text, disable_notification=False):
+    return telegram_api('sendMessage', {
+        'chat_id': chat_id,
+        'text': text,
+        'disable_notification': disable_notification,
+    })
+
+
+def sync_telegram_photo(account, telegram_user_id):
+    try:
+        photos = telegram_get('getUserProfilePhotos', {'user_id': telegram_user_id, 'limit': 1})
+    except Exception:
+        account.last_photo_sync_at = datetime.utcnow()
+        return
+
+    total = photos.get('total_count', 0) if isinstance(photos, dict) else 0
+    if total and photos.get('photos'):
+        best = photos['photos'][0][-1]
+        account.photo_file_id = best.get('file_id')
+    account.last_photo_sync_at = datetime.utcnow()
+
+
+def normalize_tg_username(value):
+    return _clean_telegram_username(value).lower()
+
+
+def find_platform_user_by_username(username):
+    normalized = normalize_tg_username(username)
+    if not normalized:
+        return None
+    return User.query.filter(
+        db.func.lower(User.telegram) == f'@{normalized}'
+    ).first()
+
+
+def upsert_telegram_account(user, tg_user, chat_id):
+    account = TelegramAccount.query.filter_by(user_id=user.id).first()
+    if not account:
+        account = TelegramAccount(user_id=user.id)
+        db.session.add(account)
+    account.telegram_username = normalize_tg_username(tg_user.get('username'))
+    account.telegram_chat_id = str(chat_id)
+    account.is_linked = True
+    account.linked_at = account.linked_at or datetime.utcnow()
+    account.delivery_enabled = True
+    sync_telegram_photo(account, tg_user.get('id'))
+    user.telegram = f'@{account.telegram_username}'
+    return account
+
+
+def telegram_link_account(chat_id, tg_user):
+    username = normalize_tg_username(tg_user.get('username'))
+    if not username:
+        telegram_send_message(
+            chat_id,
+            'У тебя не указан Telegram username. Пожалуйста, добавь @username в настройках Telegram и повтори /start.',
+        )
+        return {'linked': False, 'reason': 'missing_username'}
+
+    user = find_platform_user_by_username(username)
+    if not user:
+        telegram_send_message(
+            chat_id,
+            'Я не нашел тебя в системе бассейна по этому username. Попроси администратора или Team Lead указать твой Telegram username на платформе.',
+        )
+        return {'linked': False, 'reason': 'user_not_found'}
+
+    account = upsert_telegram_account(user, tg_user, chat_id)
+    log_action(
+        'link',
+        'telegram_account',
+        user.id,
+        'Пользователь привязал Telegram-бота',
+        {'telegram_username': f'@{account.telegram_username}'},
+        actor=user,
+    )
+    greeting = [
+        'Привязка прошла успешно.',
+        f'Теперь я буду присылать уведомления для @{user.nick}.',
+        '',
+        'Команды:',
+        '/rules — правила школы',
+        '/help — помощь',
+        '/photo_sync — обновить фото профиля из Telegram',
+    ]
+    telegram_send_message(chat_id, '\n'.join(greeting))
+    return {'linked': True, 'user_id': user.id, 'telegram_username': f'@{account.telegram_username}'}
+
+
+def telegram_handle_photo_sync(chat_id, tg_user):
+    username = normalize_tg_username(tg_user.get('username'))
+    if not username:
+        telegram_send_message(chat_id, 'Сначала укажи Telegram username и повтори команду /photo_sync.')
+        return {'ok': False, 'reason': 'missing_username'}
+    user = find_platform_user_by_username(username)
+    if not user:
+        telegram_send_message(chat_id, 'Я не нашел тебя в системе бассейна. Сначала попроси добавить Telegram username на платформе.')
+        return {'ok': False, 'reason': 'user_not_found'}
+    account = upsert_telegram_account(user, tg_user, chat_id)
+    log_action(
+        'sync_photo',
+        'telegram_account',
+        user.id,
+        'Обновлено фото профиля из Telegram',
+        {'telegram_username': f'@{account.telegram_username}'},
+        actor=user,
+    )
+    telegram_send_message(chat_id, 'Фото профиля синхронизировано с платформой.')
+    return {'ok': True, 'user_id': user.id}
+
+
+def telegram_handle_help(chat_id):
+    telegram_send_message(
+        chat_id,
+        '\n'.join([
+            'Доступные команды:',
+            '/start — привязать бота к платформе',
+            '/rules — открыть правила школы',
+            '/photo_sync — обновить фото профиля из Telegram',
+            '/help — показать это сообщение',
+        ]),
+    )
+    return {'ok': True}
+
+
+def telegram_handle_message(message):
+    chat = message.get('chat') or {}
+    chat_id = chat.get('id')
+    tg_user = message.get('from') or {}
+    text = (message.get('text') or '').strip()
+    if not chat_id or not text:
+        return {'ok': False, 'reason': 'empty_message'}
+
+    if text.startswith('/start'):
+        return telegram_link_account(chat_id, tg_user)
+    if text.startswith('/rules'):
+        telegram_send_message(chat_id, f'Правила школы: {SCHOOL_RULES_URL}')
+        return {'ok': True, 'action': 'rules'}
+    if text.startswith('/photo_sync'):
+        return telegram_handle_photo_sync(chat_id, tg_user)
+    if text.startswith('/help'):
+        return telegram_handle_help(chat_id)
+
+    telegram_send_message(chat_id, 'Я пока понимаю команды /start, /rules, /photo_sync и /help.')
+    return {'ok': True, 'action': 'unknown_command'}
+
+
+def build_notification_text(event):
+    payload = json.loads(event.payload or '{}')
+    text = (payload.get('text') or '').strip()
+    if not text:
+        text = f'Новое уведомление типа {event.type}.'
+    if TELEGRAM_TEST_MODE:
+        text = f'[TEST MODE]\n{text}'
+    return text
+
+
+def mark_delivery_failed(event, delivery, error_text):
+    delivery.delivery_status = 'error'
+    delivery.error = (error_text or '')[:500]
+    event.status = 'error'
+
+
+def process_pending_notifications(limit=20):
+    events = (
+        NotificationEvent.query
+        .filter(NotificationEvent.status.in_(['queued', 'pending']))
+        .order_by(NotificationEvent.created_at.asc(), NotificationEvent.id.asc())
+        .limit(limit)
+        .all()
+    )
+    sent = 0
+    failed = 0
+    skipped = 0
+
+    for event in events:
+        user = User.query.get(event.recipient_user_id) if event.recipient_user_id else None
+        account = TelegramAccount.query.filter_by(user_id=user.id, is_linked=True).first() if user else None
+        delivery = NotificationDelivery.query.filter_by(notification_id=event.id).order_by(NotificationDelivery.id.desc()).first()
+
+        if not delivery:
+            delivery = NotificationDelivery(
+                notification_id=event.id,
+                user_id=user.id if user else None,
+                telegram_chat_id=account.telegram_chat_id if account else None,
+                delivery_status='pending',
+            )
+            db.session.add(delivery)
+
+        if not user or not account or not account.telegram_chat_id:
+            mark_delivery_failed(event, delivery, 'Нет привязанного Telegram аккаунта')
+            skipped += 1
+            continue
+
+        try:
+            result = telegram_send_message(
+                account.telegram_chat_id,
+                build_notification_text(event),
+                disable_notification=telegram_is_quiet_hours() and event.priority != 'urgent',
+            )
+            delivery.telegram_chat_id = account.telegram_chat_id
+            delivery.delivery_status = 'sent'
+            delivery.message_id = str(result.get('message_id'))
+            delivery.error = None
+            event.status = 'sent'
+            event.sent_at = datetime.utcnow()
+            account.last_delivery_at = datetime.utcnow()
+            log_action(
+                'send',
+                'notification_event',
+                event.id,
+                'Telegram уведомление отправлено',
+                {
+                    'recipient_nick': user.nick,
+                    'event_type': event.type,
+                    'priority': event.priority,
+                    'message_id': delivery.message_id,
+                },
+            )
+            sent += 1
+        except Exception as exc:
+            mark_delivery_failed(event, delivery, str(exc))
+            log_action(
+                'delivery_error',
+                'notification_event',
+                event.id,
+                'Ошибка отправки Telegram уведомления',
+                {
+                    'recipient_nick': user.nick,
+                    'event_type': event.type,
+                    'error': str(exc),
+                },
+            )
+            failed += 1
+
+    return {
+        'processed': len(events),
+        'sent': sent,
+        'failed': failed,
+        'skipped': skipped,
+    }
+
+
+def verify_internal_api_secret():
+    if not INTERNAL_API_SECRET:
+        return False
+    auth = request.headers.get('Authorization', '')
+    bearer = auth[7:] if auth.startswith('Bearer ') else ''
+    alt = request.headers.get('X-Internal-Secret', '')
+    query_secret = request.args.get('secret', '')
+    return INTERNAL_API_SECRET in {bearer, alt, query_secret}
 
 
 def process_outbox_once():
@@ -550,13 +1044,42 @@ def delete_user(user_id):
     return jsonify({'message': 'Удалён'})
 
 
+@app.route('/api/me/password', methods=['POST'])
+@require_role('team_lead', 'admin')
+def change_my_password():
+    data = request.json or {}
+    current_password = data.get('current_password') or ''
+    new_password = data.get('new_password') or ''
+
+    if not g.user.password_hash or not check_password_hash(g.user.password_hash, current_password):
+        return jsonify({'error': 'Текущий пароль неверный'}), 400
+    if len(new_password) < 4:
+        return jsonify({'error': 'Новый пароль должен быть не короче 4 символов'}), 400
+
+    g.user.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+    log_action('update', 'user', g.user.id, 'Сменён пароль администратора/тимлида', {'user_id': g.user.id})
+    return jsonify({'message': 'Пароль обновлён'})
+
+
 # ==================== Бассейны ====================
+
+
+def can_access_pool(user, pool):
+    """team_lead/admin видят всё. Волонтёр видит бассейн если назначен И не архивирован."""
+    if user.role in ('team_lead', 'admin'):
+        return True
+    if pool.archived:
+        return False
+    return PoolVolunteer.query.filter_by(pool_id=pool.id, user_id=user.id).first() is not None
 
 
 @app.route('/api/pools', methods=['GET'])
 @require_auth
 def list_pools():
     pools = Pool.query.order_by(Pool.created_at.desc()).all()
+    if g.user.role not in ('team_lead', 'admin'):
+        pools = [p for p in pools if can_access_pool(g.user, p)]
     return jsonify([p.to_dict() for p in pools])
 
 
@@ -577,10 +1100,7 @@ def create_pool():
     start_date = None
     if data.get('start_date'):
         start_date = datetime.fromisoformat(data['start_date']).date()
-    # делаем новый бассейн активным, остальные — нет
-    if data.get('active', True):
-        Pool.query.update({Pool.active: False})
-    pool = Pool(name=name, start_date=start_date, active=data.get('active', True))
+    pool = Pool(name=name, start_date=start_date, active=False)
     db.session.add(pool)
     db.session.commit()
     return jsonify(pool.to_dict()), 201
@@ -592,8 +1112,230 @@ def activate_pool(pool_id):
     pool = Pool.query.get_or_404(pool_id)
     Pool.query.update({Pool.active: False})
     pool.active = True
+    pool.archived = False
     db.session.commit()
     return jsonify(pool.to_dict())
+
+
+@app.route('/api/pools/<int:pool_id>/archive', methods=['POST'])
+@require_role('team_lead', 'admin')
+def archive_pool(pool_id):
+    pool = Pool.query.get_or_404(pool_id)
+    pool.archived = True
+    pool.active = False
+    db.session.commit()
+    return jsonify(pool.to_dict())
+
+
+@app.route('/api/pools/<int:pool_id>/unarchive', methods=['POST'])
+@require_role('team_lead', 'admin')
+def unarchive_pool(pool_id):
+    pool = Pool.query.get_or_404(pool_id)
+    pool.archived = False
+    db.session.commit()
+    return jsonify(pool.to_dict())
+
+
+@app.route('/api/pools/<int:pool_id>', methods=['DELETE'])
+@require_role('team_lead', 'admin')
+def delete_pool(pool_id):
+    pool = Pool.query.get_or_404(pool_id)
+    if pool.active:
+        return jsonify({'error': 'Сначала переведите активный бассейн в другой статус'}), 400
+
+    block_ids = [row.id for row in ShiftBlock.query.with_entities(ShiftBlock.id).filter_by(pool_id=pool_id).all()]
+    student_ids = [row.id for row in Student.query.with_entities(Student.id).filter_by(pool_id=pool_id).all()]
+    penalty_ids = [row.id for row in StudentPenalty.query.with_entities(StudentPenalty.id).filter_by(pool_id=pool_id).all()]
+
+    if block_ids:
+        Signup.query.filter(Signup.block_id.in_(block_ids)).delete(synchronize_session=False)
+    if student_ids:
+        StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
+    if penalty_ids:
+        PenaltyHistory.query.filter(PenaltyHistory.penalty_id.in_(penalty_ids)).delete(synchronize_session=False)
+
+    ScheduleGeneration.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    ShiftBlock.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    PoolVolunteer.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    RewardEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    GroupReview.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    TribeEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    StudentPenalty.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    Student.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+
+    db.session.delete(pool)
+    db.session.commit()
+    return jsonify({'message': 'Бассейн удалён'})
+
+
+@app.route('/api/pools/<int:pool_id>/volunteers', methods=['GET'])
+@require_role('team_lead', 'admin')
+def list_pool_volunteers(pool_id):
+    Pool.query.get_or_404(pool_id)
+    pvs = PoolVolunteer.query.filter_by(pool_id=pool_id).order_by(PoolVolunteer.assigned_at).all()
+    result = []
+    for pv in pvs:
+        user = User.query.get(pv.user_id)
+        if user:
+            d = user.to_dict()
+            d['pool_tribe'] = pv.tribe
+            d['assigned_at'] = pv.assigned_at.isoformat() if pv.assigned_at else None
+            result.append(d)
+    return jsonify(result)
+
+
+@app.route('/api/pools/<int:pool_id>/volunteers', methods=['POST'])
+@require_role('team_lead', 'admin')
+def add_pool_volunteers(pool_id):
+    Pool.query.get_or_404(pool_id)
+    data = request.json or {}
+    user_ids = data.get('user_ids') or ([data['user_id']] if data.get('user_id') else [])
+    if not user_ids:
+        return jsonify({'error': 'Укажите user_id или user_ids'}), 400
+    added = 0
+    for uid in user_ids:
+        if not PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=uid).first():
+            db.session.add(PoolVolunteer(pool_id=pool_id, user_id=int(uid)))
+            added += 1
+    db.session.commit()
+    return jsonify({'added': added, 'message': f'Добавлено {added} волонтёров'})
+
+
+@app.route('/api/pools/<int:pool_id>/volunteers/<int:user_id>', methods=['DELETE'])
+@require_role('team_lead', 'admin')
+def remove_pool_volunteer(pool_id, user_id):
+    pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).first_or_404()
+    block_ids = [b.id for b in ShiftBlock.query.filter_by(pool_id=pool_id).all()]
+    if block_ids:
+        Signup.query.filter(
+            Signup.block_id.in_(block_ids), Signup.user_id == user_id
+        ).delete(synchronize_session=False)
+    db.session.delete(pv)
+    db.session.commit()
+    return jsonify({'message': 'Волонтёр удалён из бассейна, его смены очищены'})
+
+
+@app.route('/api/pools/<int:pool_id>/volunteers/template', methods=['GET'])
+@require_role('team_lead', 'admin')
+def pool_volunteers_template(pool_id):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Волонтёры'
+    headers = ['Имя', 'Ник школьный', 'Ник Telegram', 'Роль']
+    ws.append(headers)
+    header_fill = PatternFill('solid', fgColor='000000')
+    header_font = Font(bold=True, color='00FF41')
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+    ws.append(['Иван Петров', 'ivanpetrov', '@ivanpetrov', 'volunteer'])
+    ws.append(['Анна Сидорова', 'sidoroanna', '@sidoanna', 'tribe_master'])
+    for col, width in [('A', 20), ('B', 16), ('C', 18), ('D', 14)]:
+        ws.column_dimensions[col].width = width
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name='volunteers_template.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@app.route('/api/volunteers/template', methods=['GET'])
+@require_role('team_lead', 'admin')
+def global_volunteers_template():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Волонтёры'
+    headers = ['Имя', 'Ник школьный', 'Ник Telegram']
+    ws.append(headers)
+    header_fill = PatternFill('solid', fgColor='000000')
+    header_font = Font(bold=True, color='00FF41')
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+    ws.append(['Иван Петров', 'ivanpetrov', '@ivanpetrov'])
+    ws.append(['Анна Сидорова', 'sidoroanna', '@sidoanna'])
+    for col, width in [('A', 20), ('B', 16), ('C', 18)]:
+        ws.column_dimensions[col].width = width
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name='volunteers_template.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+def save_pool_volunteer_rows(rows, pool_id):
+    """Создать/обновить волонтёров и назначить их на бассейн из Excel-файла."""
+    created = 0
+    updated = 0
+    assigned = 0
+    skipped = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            skipped.append({'row': index, 'reason': 'Некорректная строка'})
+            continue
+        nick = (row.get('nick') or '').strip()
+        name = (row.get('name') or '').strip() or nick
+        telegram = (row.get('telegram') or '').strip()
+        if not nick:
+            skipped.append({'row': index, 'reason': 'Нет ника'})
+            continue
+        try:
+            role = _volunteer_role_from_payload(row)
+        except ValueError as e:
+            skipped.append({'row': index, 'nick': nick, 'reason': str(e)})
+            continue
+        user = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
+        if user:
+            if user.role in ROLES_WITH_PASSWORD:
+                skipped.append({'row': index, 'nick': nick, 'reason': 'Ник занят тимлидом/админом'})
+                continue
+            if name:
+                user.name = name
+            if telegram:
+                user.telegram = telegram
+            updated += 1
+        else:
+            user = User(nick=nick, name=name, role=role, telegram=telegram or None)
+            db.session.add(user)
+            db.session.flush()
+            created += 1
+        if not PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user.id).first():
+            db.session.add(PoolVolunteer(pool_id=pool_id, user_id=user.id))
+            assigned += 1
+    db.session.commit()
+    return {
+        'created': created, 'updated': updated, 'assigned': assigned, 'skipped': skipped,
+        'message': f'Новых {created}, обновлено {updated}, добавлено на бассейн {assigned}',
+    }
+
+
+@app.route('/api/pools/<int:pool_id>/volunteers/import-file', methods=['POST'])
+@require_role('team_lead', 'admin')
+def import_pool_volunteers_file(pool_id):
+    Pool.query.get_or_404(pool_id)
+    uploaded = request.files.get('file')
+    if not uploaded:
+        return jsonify({'error': 'Загрузите файл'}), 400
+    try:
+        rows = parse_xlsx_rows(uploaded)
+        volunteers = rows_to_dicts(rows, ['name', 'nick', 'telegram', 'role'])
+    except Exception as e:
+        return jsonify({'error': f'Не удалось прочитать .xlsx: {e}'}), 400
+    return jsonify(save_pool_volunteer_rows(volunteers, pool_id))
 
 
 # ==================== Тайм-блоки и запись ====================
@@ -642,11 +1384,22 @@ def schedule():
     """Сетка графика: дни -> тайм-блоки -> волонтёры."""
     pool_id = request.args.get('pool_id', type=int)
     if not pool_id:
-        pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
+        if g.user.role in ('team_lead', 'admin'):
+            pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
+        else:
+            # Волонтёр видит активный бассейн на который назначен, затем последний завершённый
+            pv = (db.session.query(PoolVolunteer)
+                  .join(Pool, Pool.id == PoolVolunteer.pool_id)
+                  .filter(PoolVolunteer.user_id == g.user.id, Pool.archived.is_(False))
+                  .order_by(Pool.active.desc(), Pool.created_at.desc())
+                  .first())
+            pool = Pool.query.get(pv.pool_id) if pv else None
         if not pool:
-            return jsonify({'pool': None, 'days': []})
+            return jsonify({'pool': None, 'days': [], 'not_assigned': True})
         pool_id = pool.id
     pool = Pool.query.get_or_404(pool_id)
+    if not can_access_pool(g.user, pool):
+        return jsonify({'error': 'Ты не добавлен на этот бассейн. Обратись к тимлиду.'}), 403
 
     blocks = ShiftBlock.query.filter_by(pool_id=pool_id).order_by(
         ShiftBlock.date, ShiftBlock.time_start
@@ -719,18 +1472,35 @@ def patch_block_capacity(block_id):
     return jsonify({'id': block.id, 'capacity': block.capacity})
 
 
-# Стандартный шаблон расписания School21 pool
-# (время_от, время_до, метка, capacity)
+# Стандартный шаблон расписания School21 pool из Google-таблицы.
+# (время_от, время_до, метка, capacity). Capacity = сколько волонтёров может записаться.
 _SCHEDULE_TPL = {
-    'opening': [('09:00', '19:00', '', 7), ('19:00', '20:00', '', 2)],
-    0: [('10:00', '14:00', '', 4), ('15:00', '19:00', '', 4)],   # Пн
-    1: [('10:00', '14:00', '', 4), ('15:00', '19:00', '', 4)],   # Вт
-    2: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],   # Ср
-    3: [('11:00', '17:00', 'EXAM', 5)],                           # Чт — экзамен
-    4: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],   # Пт
-    5: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],   # Сб
-    6: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],   # Вс
+    0: [('09:00', '19:00', '', 7), ('19:00', '20:00', '', 2)],    # стартовый понедельник
+    1: [('10:00', '14:00', '', 4), ('15:00', '19:00', '', 4)],
+    2: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    3: [('11:00', '17:00', 'EXAM', 5)],
+    4: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    5: [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)],
+    6: [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)],
+    7: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    8: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    9: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    10: [('11:00', '17:00', 'EXAM', 4)],
+    11: [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)],
+    12: [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)],
+    13: [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)],
 }
+
+
+def _schedule_template_for_day(day_index):
+    if day_index in _SCHEDULE_TPL:
+        return _SCHEDULE_TPL[day_index]
+    weekday = day_index % 7
+    if weekday == 3:
+        return [('11:00', '17:00', 'EXAM', 4)]
+    if weekday in (5, 6):
+        return [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)]
+    return [('10:00', '14:00', '', 2), ('15:00', '19:00', '', 2)]
 
 
 @app.route('/api/pools/<int:pool_id>/generate-schedule', methods=['POST'])
@@ -741,32 +1511,60 @@ def generate_schedule(pool_id):
         return jsonify({'error': 'У бассейна не задана дата начала'}), 400
     data = request.json or {}
     try:
-        end_date = datetime.fromisoformat(data['end_date']).date()
+        raw_end_date = data.get('end_date')
+        end_date = (
+            datetime.fromisoformat(raw_end_date).date()
+            if raw_end_date
+            else pool.start_date + timedelta(days=13)
+        )
     except (KeyError, ValueError):
         return jsonify({'error': 'Укажите end_date (YYYY-MM-DD)'}), 400
     if end_date < pool.start_date:
         return jsonify({'error': 'Дата окончания раньше даты начала'}), 400
 
     created = 0
+    updated = 0
     generation = ScheduleGeneration(pool_id=pool.id, end_date=end_date, created_by=g.user.id)
     db.session.add(generation)
     db.session.flush()
     current = pool.start_date
-    is_opening = True
+    day_index = 0
     while current <= end_date:
-        tpl = _SCHEDULE_TPL['opening'] if is_opening else _SCHEDULE_TPL[current.weekday()]
+        tpl = _schedule_template_for_day(day_index)
         for t1, t2, label, cap in tpl:
-            db.session.add(ShiftBlock(
-                pool_id=pool_id, date=current,
-                time_start=t1, time_end=t2, label=label, capacity=cap,
-                generation_id=generation.id,
-            ))
+            existing = ShiftBlock.query.filter_by(
+                pool_id=pool_id,
+                date=current,
+                time_start=t1,
+                time_end=t2,
+                label=label,
+            ).first()
+            if existing:
+                if existing.capacity != cap:
+                    existing.capacity = cap
+                    updated += 1
+                continue
+            db.session.add(
+                ShiftBlock(
+                    pool_id=pool_id,
+                    date=current,
+                    time_start=t1,
+                    time_end=t2,
+                    label=label,
+                    capacity=cap,
+                    generation_id=generation.id,
+                )
+            )
             created += 1
         current += timedelta(days=1)
-        is_opening = False
+        day_index += 1
 
     db.session.commit()
-    return jsonify({'created': created, 'message': f'Создано {created} тайм-блоков'})
+    return jsonify({
+        'created': created,
+        'updated': updated,
+        'message': f'Создано {created} тайм-блоков, обновлено {updated}',
+    })
 
 
 @app.route('/api/pools/<int:pool_id>/generate-schedule/undo', methods=['POST'])
@@ -795,7 +1593,11 @@ def undo_generate_schedule(pool_id):
 def signup_block(block_id):
     block = ShiftBlock.query.get_or_404(block_id)
     user = g.user
-    data = request.json or {}
+    # Проверка доступа к бассейну
+    pool = Pool.query.get(block.pool_id)
+    if pool and not can_access_pool(user, pool):
+        return jsonify({'error': 'Ты не добавлен на этот бассейн'}), 403
+    data = request.get_json(silent=True) or {}
     target_id = data.get('user_id')
     if target_id and user.role in ('team_lead', 'admin'):
         target_user = User.query.get_or_404(int(target_id))
@@ -922,10 +1724,97 @@ def stats():
     })
 
 
+@app.route('/api/tribes', methods=['GET'])
+@require_auth
+def list_tribes():
+    tribes = Tribe.query.order_by(Tribe.name).all()
+    return jsonify([{'id': t.id, 'name': t.name} for t in tribes])
+
+
+@app.route('/api/tribes', methods=['POST'])
+@require_role('team_lead', 'admin')
+def create_tribe():
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Укажите название трайба'}), 400
+    if Tribe.query.filter(db.func.lower(Tribe.name) == name.lower()).first():
+        return jsonify({'error': f'Трайб «{name}» уже существует'}), 409
+    tribe = Tribe(name=name)
+    db.session.add(tribe)
+    db.session.commit()
+    return jsonify({'id': tribe.id, 'name': tribe.name}), 201
+
+
+@app.route('/api/tribes/<int:tribe_id>', methods=['DELETE'])
+@require_role('team_lead', 'admin')
+def delete_tribe(tribe_id):
+    tribe = Tribe.query.get_or_404(tribe_id)
+    db.session.delete(tribe)
+    db.session.commit()
+    return jsonify({'message': f'Трайб «{tribe.name}» удалён'})
+
+
+@app.route('/api/tribes/load-standard', methods=['POST'])
+@require_role('team_lead', 'admin')
+def load_standard_tribes():
+    added = 0
+    for name in STANDARD_TRIBES_NNV:
+        if not Tribe.query.filter(db.func.lower(Tribe.name) == name.lower()).first():
+            db.session.add(Tribe(name=name))
+            added += 1
+    db.session.commit()
+    return jsonify({'message': f'Добавлено {added} трайбов', 'added': added})
+
+
 @app.route('/api/volunteers', methods=['GET'])
 @require_auth
 def get_volunteers():
     """Список людей, участвующих в волонтёрской сетке, со статусами и коинами."""
+    pool_id = request.args.get('pool_id', type=int)
+
+    if pool_id:
+        pvs = PoolVolunteer.query.filter_by(pool_id=pool_id).all()
+        pv_map = {pv.user_id: pv for pv in pvs}
+        users = User.query.filter(User.id.in_(list(pv_map.keys()))).all()
+        result = []
+        for user in users:
+            pv = pv_map[user.id]
+            role = pv.pool_role or 'volunteer'
+            has_conf = bool(pv.has_confession)
+            adj = pv.coins_adjustment or 0
+            cnt = (
+                db.session.query(db.func.count(Signup.id))
+                .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+                .filter(Signup.user_id == user.id, ShiftBlock.pool_id == pool_id)
+                .scalar() or 0
+            )
+            group_cnt = (
+                db.session.query(db.func.coalesce(db.func.sum(GroupReview.quantity), 0))
+                .filter(GroupReview.reviewer_id == user.id, GroupReview.pool_id == pool_id)
+                .scalar() or 0
+            )
+            rewards = calculate_pool_rewards(user, pool_id, has_conf, adj, role, pv_tribe=pv.tribe)
+            result.append({
+                'id': user.id,
+                'nick': user.nick,
+                'name': user.name or user.nick,
+                'telegram': user.telegram,
+                'role': role,
+                'tribe': pv.tribe,
+                'is_group_reviewer': bool(group_cnt),
+                'group_reviews_count': int(group_cnt),
+                'has_confession': has_conf,
+                'shifts_count': cnt,
+                'coins': rewards['total'],
+                'coins_adjustment': adj,
+                'coin_breakdown': rewards['breakdown'],
+            })
+        order = {'team_lead': 0, 'tribe_master': 1, 'volunteer': 2}
+        result.sort(key=lambda x: (order.get(x['role'], 9), x['nick']))
+        return jsonify(result)
+
+    # Без pool_id — глобальный список (обратная совместимость)
     users = User.query.filter(User.role.in_(list(VOLUNTEER_PROFILE_ROLES))).order_by(User.nick).all()
     result = []
     for user in users:
@@ -937,6 +1826,7 @@ def get_volunteers():
             'id': user.id,
             'nick': user.nick,
             'name': user.name or user.nick,
+            'telegram': user.telegram,
             'role': user.role,
             'tribe': user.tribe,
             'is_group_reviewer': bool(group_reviews_count),
@@ -1026,6 +1916,59 @@ def calculate_user_rewards(user, manual_adjustment=0):
     return {'breakdown': breakdown, 'total': sum(item['coins'] for item in breakdown)}
 
 
+def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool_role, pv_tribe=None):
+    """Расчёт наград только в рамках одного бассейна."""
+    pool = Pool.query.get(pool_id)
+    buckets = {}
+    rows = (
+        db.session.query(Signup, ShiftBlock)
+        .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+        .filter(Signup.user_id == user.id, ShiftBlock.pool_id == pool_id)
+        .all()
+    )
+    for _, block in rows:
+        hours = _block_hours(block)
+        reward_type, label, rate = _shift_reward_type(block, pool)
+        _add_reward(buckets, reward_type, label, hours, int(hours * rate))
+
+    group_reviews = (
+        db.session.query(db.func.coalesce(db.func.sum(GroupReview.quantity), 0))
+        .filter(GroupReview.reviewer_id == user.id, GroupReview.pool_id == pool_id)
+        .scalar() or 0
+    )
+    if group_reviews:
+        group_reviews = int(group_reviews)
+        _add_reward(buckets, 'group_review', 'Проверка групповых', group_reviews, group_reviews * REWARD_RATES['group_review'])
+
+    if has_confession:
+        _add_reward(buckets, 'confession', 'Исповедь', 1, REWARD_RATES['confession'])
+    if pool_role == 'tribe_master' and pv_tribe:
+        tribe_events_count = TribeEvent.query.filter_by(pool_id=pool_id, tribe=pv_tribe).count()
+        if tribe_events_count:
+            _add_reward(
+                buckets,
+                'tribe_master_event',
+                'Трайб-мастерство',
+                tribe_events_count,
+                tribe_events_count * REWARD_RATES['tribe_master_event'],
+            )
+
+    events = RewardEvent.query.filter(
+        RewardEvent.user_id == user.id,
+        RewardEvent.pool_id == pool_id,
+        RewardEvent.event_type != 'confession',
+    ).all()
+    for event in events:
+        meta = REWARD_EVENT_TYPES.get(event.event_type, {'label': event.event_type})
+        _add_reward(buckets, event.event_type, meta['label'], event.quantity or 1, event.coins)
+
+    if coins_adjustment:
+        _add_reward(buckets, 'manual', 'Ручная корректировка', 1, coins_adjustment)
+
+    breakdown = list(buckets.values())
+    return {'breakdown': breakdown, 'total': sum(item['coins'] for item in breakdown)}
+
+
 def _volunteer_role_from_payload(data):
     role = data.get('role') or 'volunteer'
     if role not in ('volunteer', 'tribe_master'):
@@ -1081,10 +2024,11 @@ def rows_to_dicts(rows, columns):
     if not rows:
         return []
     header_map = {
-        'nick': 'nick', 'ник': 'nick', 'login': 'nick', 'логин': 'nick',
-        'name': 'name', 'имя': 'name', 'фио': 'name',
+        'nick': 'nick', 'ник': 'nick', 'login': 'nick', 'логин': 'nick', 'ник школьный': 'nick',
+        'name': 'name', 'имя': 'name', 'фио': 'name', 'имя фамилия': 'name',
         'role': 'role', 'статус': 'role', 'роль': 'role',
-        'tribe': 'tribe', 'группа': 'tribe', 'триб': 'tribe',
+        'tribe': 'tribe', 'группа': 'tribe', 'триб': 'tribe', 'трайб': 'tribe',
+        'telegram': 'telegram', 'ник telegram': 'telegram', 'tg': 'telegram',
     }
     first = [header_map.get(str(cell).strip().lower()) for cell in rows[0]]
     has_header = any(first)
@@ -1137,14 +2081,9 @@ def save_volunteer_rows(rows):
 
         nick = (row.get('nick') or '').strip()
         name = (row.get('name') or '').strip() or nick
-        tribe = normalize_tribe(row.get('tribe'))
+        telegram = (row.get('telegram') or '').strip() or None
         if not nick:
             skipped.append({'row': index, 'reason': 'Нужен nick'})
-            continue
-        try:
-            role = _volunteer_role_from_payload(row)
-        except ValueError as e:
-            skipped.append({'row': index, 'nick': nick, 'reason': str(e)})
             continue
 
         user = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
@@ -1152,24 +2091,16 @@ def save_volunteer_rows(rows):
             if user.role in ROLES_WITH_PASSWORD:
                 skipped.append({'row': index, 'nick': nick, 'reason': 'Ник уже занят тимлидом или админом'})
                 continue
-            conflict = validate_tribe_master_assignment(role, tribe, user.id)
-            if conflict:
-                skipped.append({'row': index, 'nick': nick, 'reason': conflict})
-                continue
             user.name = name
-            user.role = role
-            user.tribe = tribe
+            if telegram:
+                user.telegram = telegram
             updated += 1
         else:
-            conflict = validate_tribe_master_assignment(role, tribe)
-            if conflict:
-                skipped.append({'row': index, 'nick': nick, 'reason': conflict})
-                continue
             db.session.add(User(
                 nick=nick,
                 name=name,
-                role=role,
-                tribe=tribe,
+                role='volunteer',
+                telegram=telegram,
             ))
             created += 1
 
@@ -1250,7 +2181,7 @@ def import_volunteer_profiles_file():
         return jsonify({'error': 'Загрузите файл'}), 400
     try:
         rows = parse_xlsx_rows(uploaded)
-        volunteers = rows_to_dicts(rows, ['nick', 'name', 'role', 'tribe'])
+        volunteers = rows_to_dicts(rows, ['name', 'nick', 'telegram'])
     except Exception as e:
         return jsonify({'error': f'Не удалось прочитать .xlsx: {e}'}), 400
     return jsonify(save_volunteer_rows(volunteers))
@@ -1309,45 +2240,101 @@ def update_volunteer_profile(user_id):
     data = request.json or {}
     changes = {}
 
+    pool_id = data.get('pool_id')
+    pv = None
+    if pool_id:
+        pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).first()
+
     if 'role' in data:
         new_role = data.get('role')
         if new_role not in ('volunteer', 'tribe_master'):
             return jsonify({'error': 'На этой странице можно выбрать только волонтёра или трайб-мастера'}), 400
         if user.role in ROLES_WITH_PASSWORD:
             return jsonify({'error': 'Тимлида или админа нельзя сделать трайб-мастером здесь'}), 403
-        target_tribe = normalize_tribe(data.get('tribe')) if 'tribe' in data else user.tribe
-        conflict = validate_tribe_master_assignment(new_role, target_tribe, user.id)
-        if conflict:
-            return jsonify({'error': conflict}), 409
-        if user.role != new_role:
-            changes['role'] = {'from': user.role, 'to': new_role}
-        user.role = new_role
+        if pv:
+            old = pv.pool_role or 'volunteer'
+            if old != new_role:
+                changes['role'] = {'from': old, 'to': new_role}
+            pv.pool_role = new_role
+        else:
+            if user.role != new_role:
+                changes['role'] = {'from': user.role, 'to': new_role}
+            user.role = new_role
+
+    if 'name' in data:
+        new_name = (data.get('name') or '').strip() or user.nick
+        old = user.name or user.nick
+        if old != new_name:
+            changes['name'] = {'from': old, 'to': new_name}
+        user.name = new_name
+
+    if 'nick' in data:
+        new_nick = (data.get('nick') or '').strip()
+        if not new_nick:
+            return jsonify({'error': 'Укажите ник'}), 400
+        existing = User.query.filter(
+            db.func.lower(User.nick) == new_nick.lower(),
+            User.id != user.id,
+        ).first()
+        if existing:
+            return jsonify({'error': 'Такой ник уже есть'}), 409
+        if user.nick != new_nick:
+            changes['nick'] = {'from': user.nick, 'to': new_nick}
+        user.nick = new_nick
+
+    if 'telegram' in data:
+        raw_telegram = (data.get('telegram') or '').strip()
+        new_telegram = ''
+        if raw_telegram:
+            new_telegram = raw_telegram if raw_telegram.startswith('@') else f'@{raw_telegram}'
+        old = user.telegram or ''
+        if old != new_telegram:
+            changes['telegram'] = {'from': old or None, 'to': new_telegram or None}
+        user.telegram = new_telegram or None
 
     if 'has_confession' in data:
-        old_confession = bool(user.has_confession)
-        user.has_confession = bool(data.get('has_confession'))
-        if old_confession != user.has_confession:
-            changes['has_confession'] = {'from': old_confession, 'to': user.has_confession}
-        if not user.has_confession:
-            RewardEvent.query.filter_by(user_id=user.id, event_type='confession').delete()
+        new_val = bool(data.get('has_confession'))
+        if pv:
+            old = bool(pv.has_confession)
+            if old != new_val:
+                changes['has_confession'] = {'from': old, 'to': new_val}
+            pv.has_confession = new_val
+            if not new_val:
+                RewardEvent.query.filter_by(user_id=user.id, pool_id=pool_id, event_type='confession').delete()
+        else:
+            old = bool(user.has_confession)
+            if old != new_val:
+                changes['has_confession'] = {'from': old, 'to': new_val}
+            user.has_confession = new_val
+            if not new_val:
+                RewardEvent.query.filter_by(user_id=user.id, event_type='confession').delete()
 
     if 'tribe' in data:
         new_tribe = normalize_tribe(data.get('tribe'))
-        conflict = validate_tribe_master_assignment(user.role, new_tribe, user.id)
-        if conflict:
-            return jsonify({'error': conflict}), 409
-        if user.tribe != new_tribe:
-            changes['tribe'] = {'from': user.tribe, 'to': new_tribe}
-        user.tribe = new_tribe
+        if pv:
+            if pv.tribe != new_tribe:
+                changes['tribe'] = {'from': pv.tribe, 'to': new_tribe}
+            pv.tribe = new_tribe
+        else:
+            if user.tribe != new_tribe:
+                changes['tribe'] = {'from': user.tribe, 'to': new_tribe}
+            user.tribe = new_tribe
 
     if 'coins_adjustment' in data:
         try:
             new_adjustment = int(data.get('coins_adjustment') or 0)
         except (TypeError, ValueError):
             return jsonify({'error': 'coins_adjustment должен быть числом'}), 400
-        if (user.coins_adjustment or 0) != new_adjustment:
-            changes['coins_adjustment'] = {'from': user.coins_adjustment or 0, 'to': new_adjustment}
-        user.coins_adjustment = new_adjustment
+        if pv:
+            old = pv.coins_adjustment or 0
+            if old != new_adjustment:
+                changes['coins_adjustment'] = {'from': old, 'to': new_adjustment}
+            pv.coins_adjustment = new_adjustment
+        else:
+            old = user.coins_adjustment or 0
+            if old != new_adjustment:
+                changes['coins_adjustment'] = {'from': old, 'to': new_adjustment}
+            user.coins_adjustment = new_adjustment
 
     if changes:
         log_action(
@@ -1443,7 +2430,7 @@ def _status_counts(pool_id):
         'students_with_penalties': len(students_with_penalties),
         'pending': len([p for p in penalties if p.workoff_status == 'pending']),
         'overdue': len([p for p in penalties if p.workoff_status == 'overdue']),
-        'in_workoff': len([p for p in penalties if p.workoff_status in ('pending', 'overdue')]),
+        'in_workoff': len([p for p in penalties if p.workoff_status == 'in_workoff']),
         'awaiting_unlock': len([p for p in penalties if p.workoff_status == 'awaiting_unlock']),
     }
 
@@ -1499,6 +2486,11 @@ def _future_my_shifts(user_id, limit=5):
 
 
 def _tribes_for_pool(pool_id):
+    defined = [
+        normalize_tribe(tribe.name)
+        for tribe in Tribe.query.order_by(Tribe.name).all()
+        if normalize_tribe(tribe.name)
+    ]
     rows = (
         db.session.query(Student.tribe)
         .filter(Student.pool_id == pool_id, Student.tribe.isnot(None))
@@ -1507,7 +2499,7 @@ def _tribes_for_pool(pool_id):
         .all()
     )
     found = [normalize_tribe(row[0]) for row in rows if row[0]]
-    return list(dict.fromkeys([*TRIBES, *found]))
+    return list(dict.fromkeys([*defined, *found]))
 
 
 def _resolve_user_tribe(user, pool_id):
@@ -1520,15 +2512,16 @@ def _resolve_user_tribe(user, pool_id):
 def _tribe_metrics(pool_id, tribe):
     students = Student.query.filter_by(pool_id=pool_id, tribe=tribe).all() if pool_id and tribe else []
     student_ids = [s.id for s in students]
-    events = (
+    all_events = (
         StudentEvent.query
-        .filter(StudentEvent.student_id.in_(student_ids), StudentEvent.status == 'confirmed')
+        .filter(StudentEvent.student_id.in_(student_ids))
         .all()
         if student_ids else []
     )
-    entertainment = len([e for e in events if e.event_type == 'entertainment'])
-    education = len([e for e in events if e.event_type == 'education'])
-    points_total = sum(e.points or STUDENT_EVENT_POINTS.get(e.event_type, 0) for e in events)
+    confirmed_events = [event for event in all_events if event.status == 'confirmed']
+    entertainment = len([e for e in confirmed_events if e.event_type == 'entertainment'])
+    education = len([e for e in confirmed_events if e.event_type == 'education'])
+    points_total = sum(e.points or STUDENT_EVENT_POINTS.get(e.event_type, 0) for e in confirmed_events)
     by_student = {}
     for student in students:
         by_student[student.id] = {
@@ -1540,7 +2533,7 @@ def _tribe_metrics(pool_id, tribe):
             'entertainment_events': 0,
             'education_events': 0,
         }
-    for event in events:
+    for event in confirmed_events:
         item = by_student.get(event.student_id)
         if not item:
             continue
@@ -1553,7 +2546,8 @@ def _tribe_metrics(pool_id, tribe):
     return {
         'tribe': tribe,
         'students_count': len(students),
-        'events_total': len(events),
+        'events_total': len(confirmed_events),
+        'events_created_total': len(all_events),
         'entertainment_events': entertainment,
         'education_events': education,
         'points_total': points_total,
@@ -1568,14 +2562,25 @@ def _tribe_rankings(pool_id):
         rankings.append({
             'tribe': tribe,
             'events_total': metrics['events_total'],
+            'events_created_total': metrics['events_created_total'],
             'entertainment_events': metrics['entertainment_events'],
             'education_events': metrics['education_events'],
             'points_total': metrics['points_total'],
         })
-    rankings.sort(key=lambda row: (-row['points_total'], -row['events_total'], row['tribe']))
+    rankings.sort(key=lambda row: (-row['events_total'], -row['points_total'], row['tribe']))
     for index, row in enumerate(rankings, start=1):
         row['rank'] = index
     return rankings
+
+
+def _student_penalty_status(penalties):
+    if any(p.workoff_status == 'awaiting_unlock' for p in penalties):
+        return 'awaiting_unlock'
+    if any(p.workoff_status == 'in_workoff' for p in penalties):
+        return 'workoff'
+    if any(p.workoff_status in ('pending', 'overdue') for p in penalties):
+        return 'received'
+    return 'clean'
 
 
 def _tribe_event_to_dict(event):
@@ -1612,6 +2617,14 @@ def dashboard_summary():
         'penalties': counts,
         'tomorrow_tribe_events': [_tribe_event_to_dict(event) for event in tomorrow_tribe_events],
         'my_shifts': _future_my_shifts(g.user.id),
+        'telegram': _telegram_link_status(g.user),
+        'dashboard_notes': [
+            _dashboard_note_to_dict(note)
+            for note in DashboardNote.query.filter_by(is_active=True)
+            .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
+            .limit(10)
+            .all()
+        ],
     }
     if g.user.role == 'tribe_master' and pool_id:
         tribe = _resolve_user_tribe(g.user, pool_id)
@@ -1634,6 +2647,341 @@ def dashboard_summary():
     return jsonify(data)
 
 
+@app.route('/api/dashboard-notes', methods=['GET'])
+@require_auth
+def list_dashboard_notes():
+    notes = (
+        DashboardNote.query.filter_by(is_active=True)
+        .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
+        .all()
+    )
+    return jsonify([_dashboard_note_to_dict(note) for note in notes])
+
+
+@app.route('/api/telegram/status', methods=['GET'])
+@require_auth
+def telegram_status():
+    return jsonify(_telegram_link_status(g.user))
+
+
+@app.route('/api/telegram/unlinked-users', methods=['GET'])
+@require_role('team_lead', 'admin')
+def telegram_unlinked_users():
+    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    return jsonify(_unlinked_users_for_pool(pool_id))
+
+
+@app.route('/api/telegram/webhook', methods=['POST'])
+def telegram_webhook():
+    if TELEGRAM_WEBHOOK_SECRET:
+        incoming_secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
+        if incoming_secret != TELEGRAM_WEBHOOK_SECRET:
+            return jsonify({'error': 'Неверный webhook secret'}), 403
+    payload = request.get_json(silent=True) or {}
+    message = payload.get('message')
+    if not message:
+        return jsonify({'ok': True, 'ignored': True})
+    try:
+        result = telegram_handle_message(message)
+        db.session.commit()
+        return jsonify({'ok': True, 'result': result})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/telegram/webhook/register', methods=['POST'])
+@require_role('team_lead', 'admin')
+def register_telegram_webhook():
+    data = request.json or {}
+    webhook_url = (data.get('webhook_url') or '').strip()
+    if not webhook_url:
+        return jsonify({'error': 'Передайте webhook_url'}), 400
+    payload = {'url': webhook_url}
+    secret_token = (data.get('secret_token') or TELEGRAM_WEBHOOK_SECRET or '').strip()
+    if secret_token:
+        payload['secret_token'] = secret_token
+    result = telegram_api('setWebhook', payload)
+    return jsonify({'ok': True, 'result': result, 'webhook_url': webhook_url})
+
+
+@app.route('/api/telegram/webhook/info', methods=['GET'])
+@require_role('team_lead', 'admin')
+def telegram_webhook_info():
+    result = telegram_get('getWebhookInfo')
+    return jsonify({'ok': True, 'result': result})
+
+
+@app.route('/api/notifications/dispatch', methods=['GET', 'POST'])
+def dispatch_notifications():
+    if not verify_internal_api_secret():
+        return jsonify({'error': 'Недостаточно прав для dispatch'}), 403
+    limit = request.args.get('limit', default=20, type=int) or 20
+    try:
+        result = process_pending_notifications(limit=min(limit, 100))
+        db.session.commit()
+        return jsonify({'ok': True, **result})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+def _broadcast_recipient_query(pool_id, filters):
+    query = User.query.filter_by(active=True)
+    if pool_id:
+        allowed_ids = {
+            row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
+        }
+        if allowed_ids:
+            query = query.filter(User.id.in_(allowed_ids))
+        else:
+            query = query.filter(db.text('0=1'))
+    role = (filters or {}).get('role')
+    usernames = [item.strip().lstrip('@') for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
+    if role:
+        query = query.filter_by(role=role)
+    if usernames:
+        lowered = [item.lower() for item in usernames]
+        query = query.filter(db.or_(
+            db.func.lower(User.telegram).in_([f'@{item}' for item in lowered]),
+            db.func.lower(User.nick).in_(lowered),
+        ))
+    return query.order_by(User.nick)
+
+
+@app.route('/api/notifications/overview', methods=['GET'])
+@require_role('team_lead', 'admin')
+def notifications_overview():
+    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    recent_notes = (
+        DashboardNote.query.order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
+        .limit(20)
+        .all()
+    )
+    recent_broadcasts = Broadcast.query.order_by(Broadcast.updated_at.desc(), Broadcast.id.desc()).limit(20).all()
+    recent_deliveries = NotificationDelivery.query.order_by(NotificationDelivery.created_at.desc(), NotificationDelivery.id.desc()).limit(50).all()
+    return jsonify({
+        'test_mode': os.getenv('TELEGRAM_TEST_MODE', 'true').lower() == 'true',
+        'notes': [_dashboard_note_to_dict(note) for note in recent_notes],
+        'broadcasts': [_broadcast_to_dict(item) for item in recent_broadcasts],
+        'recent_deliveries': [{
+            'id': delivery.id,
+            'notification_id': delivery.notification_id,
+            'user_id': delivery.user_id,
+            'telegram_chat_id': delivery.telegram_chat_id,
+            'delivery_status': delivery.delivery_status,
+            'error': delivery.error or '',
+            'message_id': delivery.message_id or '',
+            'created_at': delivery.created_at.isoformat() if delivery.created_at else None,
+        } for delivery in recent_deliveries],
+        'unlinked_users': _unlinked_users_for_pool(pool_id),
+        'linked_users_count': TelegramAccount.query.filter_by(is_linked=True).count(),
+    })
+
+
+@app.route('/api/notifications/history', methods=['GET'])
+@require_role('team_lead', 'admin')
+def notifications_history():
+    limit = min(request.args.get('limit', default=80, type=int) or 80, 200)
+    events = NotificationEvent.query.order_by(NotificationEvent.created_at.desc(), NotificationEvent.id.desc()).limit(limit).all()
+    result = []
+    for event in events:
+        user = User.query.get(event.recipient_user_id) if event.recipient_user_id else None
+        deliveries = NotificationDelivery.query.filter_by(notification_id=event.id).order_by(NotificationDelivery.created_at.desc()).all()
+        result.append({
+            'id': event.id,
+            'type': event.type,
+            'priority': event.priority,
+            'status': event.status,
+            'scheduled_for': event.scheduled_for.isoformat() if event.scheduled_for else None,
+            'sent_at': event.sent_at.isoformat() if event.sent_at else None,
+            'cancelled_at': event.cancelled_at.isoformat() if event.cancelled_at else None,
+            'recipient': {
+                'id': user.id,
+                'nick': user.nick,
+                'name': user.name or user.nick,
+            } if user else None,
+            'payload': json.loads(event.payload or '{}'),
+            'source_entity': event.source_entity,
+            'source_entity_id': event.source_entity_id,
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'deliveries': [{
+                'id': delivery.id,
+                'status': delivery.delivery_status,
+                'error': delivery.error or '',
+                'message_id': delivery.message_id or '',
+                'created_at': delivery.created_at.isoformat() if delivery.created_at else None,
+            } for delivery in deliveries],
+        })
+    return jsonify(result)
+
+
+@app.route('/api/notifications/broadcasts', methods=['POST'])
+@require_role('team_lead', 'admin')
+def create_broadcast():
+    data = request.json or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'Введите текст рассылки'}), 400
+    priority = (data.get('priority') or 'normal').strip() or 'normal'
+    filters = data.get('filters') or {}
+    broadcast = Broadcast(
+        author_id=g.user.id,
+        text=text,
+        filters=json.dumps(filters, ensure_ascii=False),
+        priority=priority,
+        status='queued',
+    )
+    db.session.add(broadcast)
+    db.session.flush()
+    pool_id = active_pool_id()
+    recipients = _broadcast_recipient_query(pool_id, filters).all()
+    for user in recipients:
+        payload = {
+            'text': text,
+            'filters': filters,
+            'broadcast_id': broadcast.id,
+        }
+        event = NotificationEvent(
+            type='manual_broadcast',
+            priority=priority,
+            status='queued',
+            recipient_user_id=user.id,
+            pool_id=pool_id,
+            payload=json.dumps(payload, ensure_ascii=False),
+            source_entity='broadcast',
+            source_entity_id=broadcast.id,
+            created_by=g.user.id,
+            dedupe_key=f'broadcast:{broadcast.id}:user:{user.id}',
+        )
+        db.session.add(event)
+        db.session.flush()
+        account = TelegramAccount.query.filter_by(user_id=user.id, is_linked=True).first()
+        db.session.add(NotificationDelivery(
+            notification_id=event.id,
+            user_id=user.id,
+            telegram_chat_id=account.telegram_chat_id if account else None,
+            delivery_status='pending' if account else 'skipped',
+            error='' if account else 'Telegram не привязан',
+        ))
+    log_action(
+        'create',
+        'broadcast',
+        broadcast.id,
+        'Создана рассылка в разделе уведомлений',
+        {'filters': filters, 'priority': priority, 'text': text},
+    )
+    db.session.commit()
+    return jsonify(_broadcast_to_dict(broadcast)), 201
+
+
+@app.route('/api/notifications/broadcasts/<int:broadcast_id>', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_broadcast(broadcast_id):
+    broadcast = Broadcast.query.get_or_404(broadcast_id)
+    data = request.json or {}
+    changes = {}
+    if 'text' in data:
+        text = (data.get('text') or '').strip()
+        if not text:
+            return jsonify({'error': 'Введите текст рассылки'}), 400
+        changes['text'] = {'from': broadcast.text, 'to': text}
+        broadcast.text = text
+    if 'priority' in data:
+        priority = (data.get('priority') or 'normal').strip() or 'normal'
+        changes['priority'] = {'from': broadcast.priority, 'to': priority}
+        broadcast.priority = priority
+    if 'status' in data:
+        status = (data.get('status') or '').strip()
+        if status:
+            changes['status'] = {'from': broadcast.status, 'to': status}
+            broadcast.status = status
+    if 'filters' in data:
+        new_filters = data.get('filters') or {}
+        changes['filters'] = {'from': json.loads(broadcast.filters or '{}'), 'to': new_filters}
+        broadcast.filters = json.dumps(new_filters, ensure_ascii=False)
+    log_action('update', 'broadcast', broadcast.id, 'Обновлена рассылка', {'changes': changes})
+    db.session.commit()
+    return jsonify(_broadcast_to_dict(broadcast))
+
+
+@app.route('/api/notifications/broadcasts/<int:broadcast_id>', methods=['DELETE'])
+@require_role('team_lead', 'admin')
+def delete_broadcast(broadcast_id):
+    broadcast = Broadcast.query.get_or_404(broadcast_id)
+    event_ids = [
+        row.id for row in NotificationEvent.query.with_entities(NotificationEvent.id)
+        .filter_by(source_entity='broadcast', source_entity_id=broadcast.id)
+        .all()
+    ]
+    if event_ids:
+        NotificationDelivery.query.filter(NotificationDelivery.notification_id.in_(event_ids)).delete(synchronize_session=False)
+        NotificationEvent.query.filter(NotificationEvent.id.in_(event_ids)).delete(synchronize_session=False)
+    db.session.delete(broadcast)
+    log_action('delete', 'broadcast', broadcast_id, 'Удалена рассылка')
+    db.session.commit()
+    return jsonify({'message': 'Рассылка удалена'})
+
+
+@app.route('/api/notifications/notes', methods=['POST'])
+@require_role('team_lead', 'admin')
+def create_notification_note():
+    data = request.json or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'Введите текст заметки'}), 400
+    note = DashboardNote(
+        author_id=g.user.id,
+        text=text,
+        is_pinned=bool(data.get('is_pinned')),
+        is_highlighted=bool(data.get('is_highlighted')),
+        is_active=True if data.get('is_active') is None else bool(data.get('is_active')),
+    )
+    db.session.add(note)
+    log_action(
+        'create',
+        'dashboard_note',
+        None,
+        'Создана заметка для дашборда',
+        {'text': text, 'is_pinned': note.is_pinned, 'is_highlighted': note.is_highlighted},
+    )
+    db.session.commit()
+    return jsonify(_dashboard_note_to_dict(note)), 201
+
+
+@app.route('/api/notifications/notes/<int:note_id>', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_notification_note(note_id):
+    note = DashboardNote.query.get_or_404(note_id)
+    data = request.json or {}
+    changes = {}
+    for field in ('text', 'is_pinned', 'is_highlighted', 'is_active'):
+        if field not in data:
+            continue
+        new_value = data.get(field)
+        if field == 'text':
+            new_value = (new_value or '').strip()
+            if not new_value:
+                return jsonify({'error': 'Введите текст заметки'}), 400
+        old_value = getattr(note, field)
+        if old_value != new_value:
+            changes[field] = {'from': old_value, 'to': new_value}
+            setattr(note, field, new_value)
+    log_action('update', 'dashboard_note', note.id, 'Обновлена заметка для дашборда', {'changes': changes})
+    db.session.commit()
+    return jsonify(_dashboard_note_to_dict(note))
+
+
+@app.route('/api/notifications/notes/<int:note_id>', methods=['DELETE'])
+@require_role('team_lead', 'admin')
+def delete_notification_note(note_id):
+    note = DashboardNote.query.get_or_404(note_id)
+    db.session.delete(note)
+    log_action('delete', 'dashboard_note', note_id, 'Удалена заметка для дашборда')
+    db.session.commit()
+    return jsonify({'message': 'Заметка удалена'})
+
+
 @app.route('/api/students', methods=['GET'])
 @require_auth
 def get_students():
@@ -1641,7 +2989,7 @@ def get_students():
     students = Student.query.filter_by(pool_id=pool_id).all()
     result = []
     for student in students:
-        penalties = StudentPenalty.query.filter_by(student_name=student.nick).all()
+        penalties = StudentPenalty.query.filter_by(student_name=student.nick, pool_id=pool_id).all()
         all_events = StudentEvent.query.filter_by(student_id=student.id).all()
         events = [e for e in all_events if e.status == 'confirmed']
         total_hours = sum(
@@ -1651,6 +2999,7 @@ def get_students():
         )
         pending_count = len([p for p in penalties if p.workoff_status == 'pending'])
         overdue_count = len([p for p in penalties if p.workoff_status == 'overdue'])
+        in_workoff_count = len([p for p in penalties if p.workoff_status == 'in_workoff'])
         entertainment_events = len([e for e in events if e.event_type == 'entertainment'])
         education_events = len([e for e in events if e.event_type == 'education'])
         event_points = sum(e.points or STUDENT_EVENT_POINTS.get(e.event_type, 0) for e in events)
@@ -1663,7 +3012,9 @@ def get_students():
             'total_penalty_hours': total_hours,
             'pending_penalties': pending_count,
             'overdue_penalties': overdue_count,
+            'active_workoff_penalties': in_workoff_count,
             'awaiting_unlock_penalties': len([p for p in penalties if p.workoff_status == 'awaiting_unlock']),
+            'penalty_status': _student_penalty_status(penalties),
             'in_workoff': total_hours > 0,
             'events_total': len(events),
             'entertainment_events': entertainment_events,
@@ -1699,7 +3050,7 @@ def create_student():
     student = Student(
         nick=data['nick'],
         name=data['name'],
-        tribe=normalize_tribe(data.get('tribe')) or TRIBES[0],
+        tribe=normalize_tribe(data.get('tribe')),
         pool_id=data.get('pool_id') or active_pool_id(),
     )
     db.session.add(student)
@@ -1720,7 +3071,7 @@ def save_student_rows(rows, pool_id=None):
 
         nick = (row.get('nick') or '').strip()
         name = (row.get('name') or '').strip()
-        tribe = normalize_tribe(row.get('tribe')) or TRIBES[0]
+        tribe = normalize_tribe(row.get('tribe'))
         if not nick or not name:
             skipped.append({'row': index, 'reason': 'Нужны nick и name'})
             continue
@@ -1756,6 +3107,51 @@ def import_students():
     return jsonify(save_student_rows(rows, pool_id=pool_id))
 
 
+@app.route('/api/students/template', methods=['GET'])
+@require_role('admin', 'team_lead')
+def students_template():
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    tribes = [t.name for t in Tribe.query.order_by(Tribe.name).all()]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Ученики'
+    headers = ['Имя Фамилия', 'ник школьный', 'трайб']
+    ws.append(headers)
+    ws.append(['Иван Петров', 'ivanpetrov', tribes[0] if tribes else ''])
+
+    header_fill = PatternFill('solid', fgColor='F3F6FA')
+    header_font = Font(bold=True, color='1F2937')
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    ws.column_dimensions['A'].width = 24
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 18
+
+    if tribes:
+        options = ','.join(tribes)
+        validation = DataValidation(type='list', formula1=f'"{options}"', allow_blank=True)
+        validation.error = 'Выбери трайб из списка'
+        validation.errorTitle = 'Некорректный трайб'
+        ws.add_data_validation(validation)
+        validation.add('C2:C1000')
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name='students_template.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
 @app.route('/api/students/import-file', methods=['POST'])
 @require_role('admin', 'team_lead')
 def import_students_file():
@@ -1764,7 +3160,7 @@ def import_students_file():
         return jsonify({'error': 'Загрузите файл'}), 400
     try:
         rows = parse_xlsx_rows(uploaded)
-        students = rows_to_dicts(rows, ['nick', 'name', 'tribe'])
+        students = rows_to_dicts(rows, ['name', 'nick', 'tribe'])
     except Exception as e:
         return jsonify({'error': f'Не удалось прочитать .xlsx: {e}'}), 400
     pool_id = request.form.get('pool_id', type=int) or active_pool_id()
@@ -1776,6 +3172,11 @@ def import_students_file():
 def create_student_event(student_id):
     student = Student.query.get_or_404(student_id)
     data = request.json or {}
+    if (
+        g.user.role == 'tribe_master'
+        and normalize_tribe(student.tribe) != normalize_tribe(g.user.tribe)
+    ):
+        return jsonify({'error': 'Можно добавлять мероприятия только ученикам своего трайба'}), 403
     event_type = data.get('event_type')
     if event_type not in ('entertainment', 'education'):
         return jsonify({'error': 'Тип мероприятия должен быть entertainment или education'}), 400
@@ -1794,7 +3195,7 @@ def create_student_event(student_id):
         event_date=event_date,
         post_url=(data.get('post_url') or '').strip(),
         proof_url=(data.get('proof_url') or '').strip(),
-        points=STUDENT_EVENT_POINTS[event_type],
+        points=STUDENT_EVENT_POINTS[event_type] if status == 'confirmed' else 0,
         status=status,
         comment=(data.get('comment') or '').strip(),
         created_by=g.user.id,
@@ -1802,14 +3203,21 @@ def create_student_event(student_id):
     db.session.add(event)
     db.session.commit()
     label = 'развлекательное' if event_type == 'entertainment' else 'обучающее'
-    suffix = 'и подтверждено' if status == 'confirmed' else 'и отправлено на проверку'
+    suffix = 'и подтверждено' if status == 'confirmed' else 'со статусом "ждет подтверждения АДМ"'
     return jsonify({'id': event.id, 'message': f'Добавлено {label} мероприятие для @{student.nick} {suffix}'}), 201
 
 
 @app.route('/api/student-events/<int:event_id>', methods=['PATCH'])
-@require_role('admin')
+@require_role('tribe_master', 'admin')
 def update_student_event(event_id):
     event = StudentEvent.query.get_or_404(event_id)
+    student = Student.query.get(event.student_id)
+    if (
+        g.user.role == 'tribe_master'
+        and student
+        and normalize_tribe(student.tribe) != normalize_tribe(g.user.tribe)
+    ):
+        return jsonify({'error': 'Можно менять статус только мероприятий своего трайба'}), 403
     data = request.json or {}
     status = data.get('status')
     if status not in STUDENT_EVENT_STATUSES:
@@ -1833,10 +3241,13 @@ def delete_student_event(event_id):
 
 
 @app.route('/api/my-tribe', methods=['GET'])
-@require_role('tribe_master', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def my_tribe():
     pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    available_tribes = _tribes_for_pool(pool_id)
     tribe = normalize_tribe(request.args.get('tribe')) or _resolve_user_tribe(g.user, pool_id)
+    if g.user.role in ('team_lead', 'admin') and not tribe:
+        tribe = available_tribes[0] if available_tribes else ''
     students = Student.query.filter_by(pool_id=pool_id, tribe=tribe).order_by(Student.nick).all()
     rankings = _tribe_rankings(pool_id)
     own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
@@ -1855,11 +3266,18 @@ def my_tribe():
         .all()
         if student_ids else []
     )
+    all_tribe_events = (
+        TribeEvent.query
+        .filter(TribeEvent.pool_id == pool_id, TribeEvent.event_date >= date.today())
+        .order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe)
+        .all()
+        if g.user.role in ('team_lead', 'admin') else []
+    )
     return jsonify({
         **_tribe_metrics(pool_id, tribe),
         'rank': own_rank,
         'rankings': rankings,
-        'available_tribes': _tribes_for_pool(pool_id),
+        'available_tribes': available_tribes,
         'students': [{
             'id': student.id,
             'nick': student.nick,
@@ -1875,11 +3293,12 @@ def my_tribe():
             'date': event.event_date.isoformat() if event.event_date else None,
             'post_url': event.post_url or '',
             'proof_url': event.proof_url or '',
-            'points': event.points or STUDENT_EVENT_POINTS.get(event.event_type, 0),
+            'points': event.points or 0,
             'status': event.status or 'pending',
             'comment': event.comment or '',
         } for event, student in event_rows],
         'tribe_events': [_tribe_event_to_dict(event) for event in next_events],
+        'all_tribe_events': [_tribe_event_to_dict(event) for event in all_tribe_events],
     })
 
 
@@ -1896,11 +3315,13 @@ def list_tribe_events():
 
 
 @app.route('/api/tribe-events', methods=['POST'])
-@require_role('tribe_master', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def create_tribe_event():
     data = request.json or {}
     pool_id = data.get('pool_id') or active_pool_id()
     tribe = normalize_tribe(data.get('tribe') or g.user.tribe)
+    if g.user.role == 'tribe_master' and tribe != normalize_tribe(g.user.tribe):
+        return jsonify({'error': 'Можно создавать встречи только своего трайба'}), 403
     title = (data.get('title') or '').strip()
     if not tribe or not title or not data.get('event_date'):
         return jsonify({'error': 'Нужны tribe, title и event_date'}), 400
@@ -1923,6 +3344,101 @@ def create_tribe_event():
     return jsonify(_tribe_event_to_dict(event)), 201
 
 
+@app.route('/api/tribe-events/<int:event_id>', methods=['DELETE'])
+@require_role('tribe_master', 'team_lead', 'admin')
+def delete_tribe_event(event_id):
+    event = TribeEvent.query.get_or_404(event_id)
+    if g.user.role == 'tribe_master' and normalize_tribe(event.tribe) != normalize_tribe(g.user.tribe):
+        return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
+    db.session.delete(event)
+    db.session.commit()
+    return jsonify({'message': 'Встреча трайба удалена'})
+
+
+@app.route('/api/tribe-events/generate-standard', methods=['POST'])
+@require_role('tribe_master', 'team_lead', 'admin')
+def generate_standard_tribe_events():
+    data = request.json or {}
+    pool_id = active_pool_id()
+    pool = Pool.query.get(pool_id) if pool_id else None
+    if not pool or not pool.start_date:
+        return jsonify({'error': 'Нет активного бассейна с датой старта'}), 400
+
+    available_tribes = _tribes_for_pool(pool_id)
+    user_tribe = normalize_tribe(g.user.tribe)
+    requested_tribe = normalize_tribe(data.get('tribe'))
+    if g.user.role == 'tribe_master':
+        tribes = [user_tribe]
+    elif requested_tribe:
+        if requested_tribe not in available_tribes:
+            return jsonify({'error': 'Выбранный трайб не найден'}), 400
+        tribes = [requested_tribe]
+    else:
+        tribes = available_tribes
+    tribes = [tribe for tribe in tribes if tribe]
+    if not tribes:
+        return jsonify({'error': 'Нет заведенных трайбов'}), 400
+
+    first_day = pool.start_date
+    first_exam_day = first_day + timedelta(days=3)
+    final_day = first_day + timedelta(days=13)
+    first_day_times = ['17:30', '18:00', '18:30', '19:00', '19:30', '20:00']
+    created = 0
+    updated = 0
+
+    def upsert_event(tribe, event_date, time_start, title, comment=''):
+        nonlocal created, updated
+        existing = TribeEvent.query.filter_by(
+            pool_id=pool_id,
+            tribe=tribe,
+            event_date=event_date,
+            time_start=time_start,
+            title=title,
+        ).first()
+        if existing:
+            existing.comment = comment or existing.comment
+            updated += 1
+            return
+        db.session.add(TribeEvent(
+            pool_id=pool_id,
+            tribe=tribe,
+            title=title,
+            event_date=event_date,
+            time_start=time_start,
+            comment=comment,
+            created_by=g.user.id,
+        ))
+        created += 1
+
+    for index, tribe in enumerate(tribes):
+        upsert_event(
+            tribe,
+            first_day,
+            first_day_times[index % len(first_day_times)],
+            'Стартовая встреча трайба',
+        )
+        upsert_event(
+            tribe,
+            first_exam_day,
+            '17:30',
+            'Встреча после первого экзамена',
+        )
+        upsert_event(
+            tribe,
+            final_day,
+            '17:30',
+            'Общая рефлексия всех трайбов',
+        )
+
+    db.session.commit()
+    tribe_label = tribes[0] if len(tribes) == 1 else 'всех трайбов'
+    return jsonify({
+        'created': created,
+        'updated': updated,
+        'message': f'Для {tribe_label}: создано встреч {created}, обновлено {updated}',
+    })
+
+
 @app.route('/api/students/<int:student_id>', methods=['DELETE'])
 @require_role('admin', 'team_lead')
 def delete_student(student_id):
@@ -1931,6 +3447,19 @@ def delete_student(student_id):
     db.session.delete(student)
     db.session.commit()
     return jsonify({'message': 'Ученик удалён'})
+
+
+@app.route('/api/students/<int:student_id>', methods=['PATCH'])
+@require_role('admin', 'team_lead')
+def update_student(student_id):
+    student = Student.query.get_or_404(student_id)
+    data = request.json or {}
+
+    if 'tribe' in data:
+        student.tribe = normalize_tribe(data.get('tribe'))
+
+    db.session.commit()
+    return jsonify({'message': 'Ученик обновлён'})
 
 
 # ==================== Штрафы (видят все авторизованные) ====================
@@ -1967,6 +3496,7 @@ def get_penalties():
         'description': p.description,
         'date_issued': p.date_issued.isoformat(),
         'date_worked_off': p.date_worked_off.isoformat() if p.date_worked_off else None,
+        'workoff_started_at': p.date_worked_off.isoformat() if p.workoff_status == 'in_workoff' and p.date_worked_off else None,
         'history': histories.get(p.id, []),
     } for p in penalties])
 
@@ -2021,6 +3551,8 @@ def update_penalty_status(penalty_id):
     penalty.workoff_status = new_status
     if new_status == 'overdue' and old_status in ('pending', 'overdue'):
         penalty.multiplier *= 2
+    if new_status == 'in_workoff':
+        penalty.date_worked_off = datetime.utcnow()
     if new_status in ('done', 'awaiting_unlock'):
         penalty.date_worked_off = datetime.utcnow()
     if new_status == 'pending':
@@ -2806,6 +4338,141 @@ def ensure_user_profile_columns():
                     FOREIGN KEY(actor_id) REFERENCES users (id)
                 )
             """)
+        if 'telegram_accounts' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE telegram_accounts (
+                    id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    telegram_username VARCHAR(100) NOT NULL,
+                    telegram_chat_id VARCHAR(100),
+                    is_linked BOOLEAN DEFAULT 0,
+                    linked_at DATETIME,
+                    last_photo_sync_at DATETIME,
+                    photo_file_id VARCHAR(255),
+                    photo_url VARCHAR(500),
+                    delivery_enabled BOOLEAN DEFAULT 1,
+                    last_delivery_at DATETIME,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(user_id) REFERENCES users (id)
+                )
+            """)
+        if 'notification_events' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE notification_events (
+                    id INTEGER NOT NULL,
+                    type VARCHAR(50) NOT NULL,
+                    priority VARCHAR(20) DEFAULT 'normal',
+                    status VARCHAR(20) DEFAULT 'draft',
+                    scheduled_for DATETIME,
+                    sent_at DATETIME,
+                    cancelled_at DATETIME,
+                    recipient_user_id INTEGER,
+                    pool_id INTEGER,
+                    payload TEXT,
+                    dedupe_key VARCHAR(255),
+                    source_entity VARCHAR(50),
+                    source_entity_id INTEGER,
+                    created_by INTEGER,
+                    created_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(recipient_user_id) REFERENCES users (id),
+                    FOREIGN KEY(pool_id) REFERENCES pools (id),
+                    FOREIGN KEY(created_by) REFERENCES users (id)
+                )
+            """)
+        if 'notification_deliveries' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE notification_deliveries (
+                    id INTEGER NOT NULL,
+                    notification_id INTEGER NOT NULL,
+                    user_id INTEGER,
+                    telegram_chat_id VARCHAR(100),
+                    delivery_status VARCHAR(20) DEFAULT 'pending',
+                    error TEXT,
+                    message_id VARCHAR(100),
+                    created_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(notification_id) REFERENCES notification_events (id),
+                    FOREIGN KEY(user_id) REFERENCES users (id)
+                )
+            """)
+        if 'broadcasts' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE broadcasts (
+                    id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    filters TEXT,
+                    priority VARCHAR(20) DEFAULT 'normal',
+                    status VARCHAR(20) DEFAULT 'draft',
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(author_id) REFERENCES users (id)
+                )
+            """)
+        if 'dashboard_notes' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE dashboard_notes (
+                    id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    is_pinned BOOLEAN DEFAULT 0,
+                    is_highlighted BOOLEAN DEFAULT 0,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(author_id) REFERENCES users (id)
+                )
+            """)
+        # Pool.archived column
+        if 'pools' in tables:
+            pool_columns = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(pools)').fetchall()}
+            if 'archived' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN archived BOOLEAN DEFAULT 0')
+        # PoolVolunteer table
+        if 'pool_volunteers' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE pool_volunteers (
+                    id INTEGER NOT NULL,
+                    pool_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    tribe VARCHAR(50),
+                    pool_role VARCHAR(20) DEFAULT 'volunteer',
+                    has_confession BOOLEAN DEFAULT 0,
+                    coins_adjustment INTEGER DEFAULT 0,
+                    assigned_at DATETIME,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(pool_id) REFERENCES pools (id),
+                    FOREIGN KEY(user_id) REFERENCES users (id),
+                    UNIQUE (pool_id, user_id)
+                )
+            """)
+        else:
+            pv_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(pool_volunteers)').fetchall()}
+            if 'pool_role' not in pv_cols:
+                conn.exec_driver_sql("ALTER TABLE pool_volunteers ADD COLUMN pool_role VARCHAR(20) DEFAULT 'volunteer'")
+            if 'has_confession' not in pv_cols:
+                conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN has_confession BOOLEAN DEFAULT 0')
+            if 'coins_adjustment' not in pv_cols:
+                conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN coins_adjustment INTEGER DEFAULT 0')
+        # RewardEvent.pool_id
+        if 'reward_events' in tables:
+            re_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(reward_events)').fetchall()}
+            if 'pool_id' not in re_cols:
+                conn.exec_driver_sql('ALTER TABLE reward_events ADD COLUMN pool_id INTEGER')
+        if 'tribes' not in tables:
+            conn.exec_driver_sql("""
+                CREATE TABLE tribes (
+                    id INTEGER NOT NULL,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    created_at DATETIME,
+                    PRIMARY KEY (id)
+                )
+            """)
         for table in ('users', 'students', 'tribe_events'):
             if table in tables:
                 conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
@@ -2821,7 +4488,11 @@ with app.app_context():
     seed_pool_data()
 
 
-if __name__ != '__main__' and os.getenv('AUTO_START_WORKERS', 'false').lower() == 'true':
+if (
+    __name__ != '__main__'
+    and os.getenv('AUTO_START_WORKERS', 'false').lower() == 'true'
+    and os.getenv('SKIP_APP_WORKERS', 'false').lower() != 'true'
+):
     start_runtime_services()
 
 

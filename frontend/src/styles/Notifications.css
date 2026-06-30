@@ -1,0 +1,148 @@
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notifications-subtitle {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+}
+
+.notifications-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.notifications-summary-card {
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notifications-summary-card span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.notifications-summary-card strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.notifications-summary-card.danger strong {
+  color: var(--danger);
+}
+
+.notifications-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notifications-tab {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.notifications-tab.active {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border-color: rgba(9, 105, 218, 0.45);
+}
+
+.notifications-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notifications-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.notifications-form-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.notifications-text-cell {
+  max-width: 420px;
+  white-space: pre-wrap;
+}
+
+.notifications-checkboxes {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.notifications-checkboxes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.notifications-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.notifications-note-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notifications-note-card.highlighted {
+  background: #fff8e7;
+  border-color: #f3c46b;
+}
+
+.notifications-note-card p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+}
+
+.notifications-note-card small {
+  color: var(--text-secondary);
+}
+
+.notifications-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .notifications-form-head,
+  .notifications-summary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

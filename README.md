@@ -48,10 +48,29 @@ npm start
 
 ```bash
 cd backend
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python app.py
+python3 app.py
+```
+
+### Telegram Bot
+
+Для Vercel-режима бот работает через `webhook`, а отправка отложенных уведомлений идет через endpoint-dispatcher.
+
+Основные endpoints:
+
+- `POST /api/telegram/webhook`
+- `POST /api/telegram/webhook/register`
+- `GET /api/telegram/webhook/info`
+- `POST /api/notifications/dispatch`
+
+Если позже backend переедет на Render, можно использовать и polling-режим отдельным процессом. Он использует ту же БД, что и backend.
+
+```bash
+cd backend
+source venv/bin/activate
+python3 telegram_bot.py
 ```
 
 ## 📚 Документация

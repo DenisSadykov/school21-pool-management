@@ -11,10 +11,13 @@ import Students from './pages/Students';
 import Volunteers from './pages/Volunteers';
 import Penalties from './pages/Penalties';
 import Manage from './pages/Manage';
+import Settings from './pages/Settings';
 import Admin from './pages/Admin';
 import MyTribe from './pages/MyTribe';
 import GroupReviews from './pages/GroupReviews';
 import Login from './pages/Login';
+import ExamBrief from './pages/ExamBrief';
+import Notifications from './pages/Notifications';
 import { getUser } from './api';
 
 import './styles/App.css';
@@ -38,7 +41,7 @@ function App() {
   }
 
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
-  const canUseTribe = user.role === 'tribe_master' || user.role === 'admin';
+  const canUseTribe = user.role === 'tribe_master' || isStaff;
   const canUseGroupReviews = isStaff;
 
   return (
@@ -54,9 +57,12 @@ function App() {
               <Route path="/penalties" element={<Penalties user={user} />} />
               <Route path="/students" element={<Students user={user} />} />
               <Route path="/volunteers" element={<Volunteers user={user} />} />
+              <Route path="/exam-brief" element={<ExamBrief />} />
               {canUseTribe && <Route path="/my-tribe" element={<MyTribe user={user} />} />}
               {canUseGroupReviews && <Route path="/group-reviews" element={<GroupReviews user={user} />} />}
               {isStaff && <Route path="/manage" element={<Manage user={user} />} />}
+              {isStaff && <Route path="/notifications" element={<Notifications user={user} />} />}
+              {isStaff && <Route path="/settings" element={<Settings user={user} />} />}
               {isStaff && <Route path="/admin" element={<Admin user={user} />} />}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

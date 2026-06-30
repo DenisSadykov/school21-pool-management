@@ -13,3 +13,15 @@ services:
         value: "true"
       - key: BACKUP_DIR
         value: /tmp/school21-pool-backups
+  - type: worker
+    name: school21-pool-telegram-bot
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 telegram_bot.py
+    plan: free
+    envVars:
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: AUTO_START_WORKERS
+        value: "false"
