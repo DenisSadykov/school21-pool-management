@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SlidersHorizontal, Shield, LogOut, ChevronDown } from 'lucide-react';
-import { clearSession } from '../api';
+import { api, buildAuthenticatedAssetUrl, clearSession } from '../api';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = {
@@ -13,9 +13,14 @@ const ROLE_LABELS = {
 
 function Navbar({ user, setUser }) {
   const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState(user);
   const ref = useRef(null);
   const navigate = useNavigate();
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
+
+  useEffect(() => {
+    setProfile(user);
+  }, [user]);
 
   useEffect(() => {
     function handleClick(e) {
@@ -23,6 +28,19 @@ function Navbar({ user, setUser }) {
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/api/auth/me')
+      .then((freshUser) => {
+        if (cancelled || !freshUser) return;
+        setProfile(freshUser);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const go = (path) => { setOpen(false); navigate(path); };
@@ -45,9 +63,15 @@ function Navbar({ user, setUser }) {
               onClick={() => isStaff ? setOpen(!open) : null}
               style={{ cursor: isStaff ? 'pointer' : 'default' }}
             >
-              <span className="user-avatar">{(user?.nick || 'AD').slice(0, 2).toUpperCase()}</span>
-              <span className="user-name">@{user?.nick}</span>
-              <span className="user-role">{ROLE_LABELS[user?.role] || user?.role}</span>
+              <span className="user-avatar">
+                {profile?.avatar_url ? (
+                  <img src={buildAuthenticatedAssetUrl(profile.avatar_url)} alt={profile?.name || profile?.nick || 'avatar'} />
+                ) : (
+                  (profile?.nick || 'AD').slice(0, 2).toUpperCase()
+                )}
+              </span>
+              <span className="user-name">@{profile?.nick}</span>
+              <span className="user-role">{ROLE_LABELS[profile?.role] || profile?.role}</span>
               {isStaff && <ChevronDown size={13} className={`dropdown-chevron ${open ? 'rotated' : ''}`} />}
             </button>
 

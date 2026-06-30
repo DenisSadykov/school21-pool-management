@@ -285,6 +285,38 @@
   font-size: 1rem;
 }
 
+.person-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.person-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.person-identity-text {
+  min-width: 0;
+}
+
 .person-meta {
   display: inline-flex;
   align-items: center;

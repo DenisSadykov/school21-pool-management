@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin } from 'lucide-react';
-import { api } from '../api';
+import { api, buildAuthenticatedAssetUrl } from '../api';
 import '../styles/Pages.css';
 import '../styles/Notifications.css';
 
@@ -381,7 +381,7 @@ function Notifications() {
                   ) : (
                     (overview?.linked_users || []).map((item) => (
                       <tr key={item.id}>
-                        <td>@{item.nick}</td>
+                        <td><PersonTelegramCell person={item} /></td>
                         <td>{item.name}</td>
                         <td>{formatRole(item.role)}</td>
                         <td>{item.telegram || 'не указан'}</td>
@@ -410,7 +410,7 @@ function Notifications() {
                 ) : (
                   (overview?.unlinked_users || []).map((item) => (
                     <tr key={item.id}>
-                      <td>@{item.nick}</td>
+                      <td><PersonTelegramCell person={item} /></td>
                       <td>{item.name}</td>
                       <td>{formatRole(item.role)}</td>
                       <td>{item.telegram || 'не указан'}</td>
@@ -424,6 +424,24 @@ function Notifications() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function PersonTelegramCell({ person }) {
+  return (
+    <div className="notifications-person-cell">
+      <span className="notifications-person-avatar">
+        {person.avatar_url ? (
+          <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+        ) : (
+          (person.nick || '??').slice(0, 2).toUpperCase()
+        )}
+      </span>
+      <div>
+        <strong>@{person.nick}</strong>
+        <div className="notifications-person-name">{person.name}</div>
+      </div>
     </div>
   );
 }

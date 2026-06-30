@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Settings, Trash2 } from 'lucide-react';
-import { api } from '../api';
+import { api, buildAuthenticatedAssetUrl } from '../api';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Manage.css';
 
@@ -72,6 +72,18 @@ function Manage({ user }) {
         </>
       )}
     </div>
+  );
+}
+
+function SmallAvatar({ person }) {
+  return (
+    <span className="manage-avatar">
+      {person.avatar_url ? (
+        <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+      ) : (
+        (person.nick || '??').slice(0, 2).toUpperCase()
+      )}
+    </span>
   );
 }
 
@@ -191,7 +203,7 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
           </div>
           {pvs.map((v) => (
             <div key={v.id} className="pv-row">
-              <span className="pv-nick">@{v.nick}</span>
+              <span className="pv-nick"><SmallAvatar person={v} />@{v.nick}</span>
               <span className="pv-name">{v.name || '—'}</span>
               <span className="pv-tg">{v.telegram || '—'}</span>
               <button className="btn-icon danger pv-del" onClick={() => remove(v)} title="Удалить из бассейна">

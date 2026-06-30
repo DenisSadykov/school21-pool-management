@@ -20,6 +20,13 @@ export function clearSession() {
   localStorage.removeItem('user');
 }
 
+export function buildAuthenticatedAssetUrl(path) {
+  if (!path) return '';
+  const token = getToken();
+  const separator = path.includes('?') ? '&' : '?';
+  return `${API_URL}${path}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
+}
+
 async function request(path, { method = 'GET', body } = {}) {
   const headers = {};
   const token = getToken();

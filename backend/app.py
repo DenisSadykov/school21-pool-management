@@ -121,6 +121,7 @@ class User(db.Model):
             'tribe': self.tribe,
             'active': self.active,
             'has_password': bool(self.password_hash),
+            'avatar_url': _avatar_url_for_user(self),
         }
 
 
@@ -452,6 +453,45 @@ def _clean_telegram_username(value):
     return username
 
 
+def _telegram_account_for_user(user_id):
+    if not user_id:
+        return None
+    return TelegramAccount.query.filter_by(user_id=user_id, is_linked=True).first()
+
+
+def _avatar_url_for_user(user):
+    if not user:
+        return None
+    account = _telegram_account_for_user(user.id)
+    if not account or not (account.photo_file_id or account.photo_url):
+        return None
+    return f'/api/users/{user.id}/avatar'
+
+
+def _telegram_file_download_url(file_path):
+    if not TELEGRAM_BOT_TOKEN or not file_path:
+        return None
+    return f'https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}'
+
+
+def _download_telegram_photo_bytes(account):
+    if not account or not account.photo_file_id:
+        return None, None
+    import requests
+
+    file_info = telegram_get('getFile', {'file_id': account.photo_file_id})
+    file_path = (file_info or {}).get('file_path')
+    if not file_path:
+        return None, None
+    download_url = _telegram_file_download_url(file_path)
+    if not download_url:
+        return None, None
+    response = requests.get(download_url, timeout=30)
+    response.raise_for_status()
+    account.photo_url = file_path
+    return response.content, response.headers.get('Content-Type') or 'image/jpeg'
+
+
 def _telegram_link_status(user):
     if not user:
         return {
@@ -546,6 +586,7 @@ def _unlinked_users_for_pool(pool_id):
             'role': user.role,
             'telegram': f'@{username}' if username else '',
             'needs_username': not bool(username),
+            'avatar_url': _avatar_url_for_user(user),
         })
     return result
 
@@ -574,6 +615,7 @@ def _linked_users_for_pool(pool_id):
         'telegram': f'@{account.telegram_username}' if account.telegram_username else (user.telegram or ''),
         'linked_at': account.linked_at.isoformat() if account.linked_at else None,
         'delivery_enabled': bool(account.delivery_enabled),
+        'avatar_url': _avatar_url_for_user(user),
     } for user, account in rows]
 
 
@@ -796,6 +838,7 @@ def sync_telegram_photo(account, telegram_user_id):
     if total and photos.get('photos'):
         best = photos['photos'][0][-1]
         account.photo_file_id = best.get('file_id')
+        account.photo_url = f'/api/users/{account.user_id}/avatar'
     account.last_photo_sync_at = datetime.utcnow()
 
 
@@ -1628,6 +1671,29 @@ def me():
     return jsonify(g.user.to_dict())
 
 
+@app.route('/api/users/<int:user_id>/avatar', methods=['GET'])
+@require_auth
+def user_avatar(user_id):
+    user = User.query.get_or_404(user_id)
+    account = _telegram_account_for_user(user.id)
+    if not account or not account.photo_file_id:
+        return jsonify({'error': 'Фото не найдено'}), 404
+    try:
+        photo_bytes, content_type = _download_telegram_photo_bytes(account)
+        if not photo_bytes:
+            return jsonify({'error': 'Фото не найдено'}), 404
+        db.session.commit()
+        return send_file(
+            BytesIO(photo_bytes),
+            mimetype=content_type or 'image/jpeg',
+            max_age=60 * 60,
+            download_name=f'user-{user.id}-avatar.jpg',
+        )
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': f'Не удалось получить фото: {exc}'}), 502
+
+
 # ==================== Пользователи (волонтёры) ====================
 
 
@@ -2448,6 +2514,7 @@ def get_volunteers():
                 'telegram': user.telegram,
                 'role': role,
                 'tribe': pv.tribe,
+                'avatar_url': _avatar_url_for_user(user),
                 'is_group_reviewer': bool(group_cnt),
                 'group_reviews_count': int(group_cnt),
                 'has_confession': has_conf,
@@ -2473,6 +2540,7 @@ def get_volunteers():
             'nick': user.nick,
             'name': user.name or user.nick,
             'telegram': user.telegram,
+            'avatar_url': _avatar_url_for_user(user),
             'role': user.role,
             'tribe': user.tribe,
             'is_group_reviewer': bool(group_reviews_count),
@@ -3089,6 +3157,7 @@ def _user_public_dict(user):
         'telegram': user.telegram,
         'role': user.role,
         'tribe': user.tribe,
+        'avatar_url': _avatar_url_for_user(user),
     }
 
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { MoreHorizontal, Plus } from 'lucide-react';
-import { api } from '../api';
+import { api, buildAuthenticatedAssetUrl } from '../api';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/Volunteers.css';
@@ -26,6 +26,27 @@ function TelegramButton({ telegram, nick }) {
     >
       <img src="/icons/telegram.webp" alt="" />
     </a>
+  );
+}
+
+function PersonIdentity({ person }) {
+  return (
+    <div className="person-identity">
+      <span className="person-avatar">
+        {person.avatar_url ? (
+          <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+        ) : (
+          (person.nick || '??').slice(0, 2).toUpperCase()
+        )}
+      </span>
+      <div className="person-identity-text">
+        <strong className="volunteer-nick">@{person.nick}</strong>
+        <div className="person-meta">
+          <span>{person.role === 'tribe_master' ? 'Трайб-мастер' : 'Волонтёр'}</span>
+          <TelegramButton telegram={person.telegram} nick={person.nick} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -338,14 +359,9 @@ function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
   return (
     <tr>
       <td>
-        <strong className="volunteer-nick">@{v.nick}</strong>
+        <PersonIdentity person={v} />
       </td>
-      <td>
-        <div className="person-meta">
-          <span>{v.name}</span>
-          <TelegramButton telegram={v.telegram} nick={v.nick} />
-        </div>
-      </td>
+      <td>{v.name}</td>
       <td>
         {isStaff ? (
           <div className="tribe-select-wrap">
@@ -381,14 +397,9 @@ function VolunteerRow({ volunteer: v, isStaff, onUpdate }) {
   return (
     <tr>
       <td>
-        <strong className="volunteer-nick">@{v.nick}</strong>
+        <PersonIdentity person={v} />
       </td>
-      <td>
-        <div className="person-meta">
-          <span>{v.name}</span>
-          <TelegramButton telegram={v.telegram} nick={v.nick} />
-        </div>
-      </td>
+      <td>{v.name}</td>
       <td>{v.shifts_count ?? '—'}</td>
       <td>
         <div className="status-list">

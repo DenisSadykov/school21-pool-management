@@ -248,6 +248,39 @@
   gap: 14px;
 }
 
+.notifications-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notifications-person-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.notifications-person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.notifications-person-name {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 @media (max-width: 768px) {
   .notifications-form-head,
   .notifications-summary,
