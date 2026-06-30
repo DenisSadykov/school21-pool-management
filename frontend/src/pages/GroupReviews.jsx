@@ -51,7 +51,6 @@ function GroupReviews({ user }) {
       <div className="page-header">
         <div>
           <h1>Групповые проверки</h1>
-        <p className="subtitle">Фактическое количество проверок и начисление коинов</p>
         </div>
       </div>
 
@@ -92,10 +91,12 @@ function GroupReviews({ user }) {
                   <td>{review.quantity || 1}</td>
                   <td><strong className="coin-value">{(review.quantity || 1) * 25}</strong></td>
                   {isStaff && (
-                    <td>
-                      <button className="btn-icon danger" type="button" onClick={() => remove(review)} title="Удалить">
-                        <Trash2 size={18} />
-                      </button>
+                    <td className="group-review-actions-cell">
+                      <div className="group-review-actions">
+                        <button className="btn-icon danger" type="button" onClick={() => remove(review)} title="Удалить">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>

@@ -23,36 +23,18 @@
   gap: 8px;
 }
 
-.brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
-  background: var(--accent);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.57rem;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-}
-
-.navbar-brand h1 {
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.brand-separator {
-  color: var(--text-muted);
-  font-size: 0.85rem;
+.brand-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .brand-pool {
-  color: var(--text-secondary);
-  font-size: 0.78rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .navbar-actions {
@@ -80,28 +62,25 @@
 .sync-state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--success);
   font-size: 0.75rem;
-}
-
-.sync-state span {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--success);
+  font-weight: 500;
 }
 
 .btn-sync,
 .btn-download {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
   background: var(--bg-elevated);
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: all var(--transition);
   white-space: nowrap;
@@ -114,38 +93,91 @@
   border-color: var(--text-secondary);
 }
 
+.navbar-user-wrap {
+  position: relative;
+}
+
 .navbar-user {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 7px;
-  padding: 4px 10px;
+  min-height: var(--control-height);
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated);
+  transition: border-color 0.15s;
+}
+.navbar-user.active,
+.navbar-user:hover {
+  border-color: var(--accent);
+}
+
+.dropdown-chevron {
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+}
+.dropdown-chevron.rotated { transform: rotate(180deg); }
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: var(--control-height);
+  padding: 0 14px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.dropdown-item:hover { background: var(--bg-hover); }
+.dropdown-item.danger { color: var(--danger); }
+.dropdown-item.danger:hover { background: rgba(239,68,68,0.08); }
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
 }
 
 .user-avatar {
-  width: 21px;
-  height: 21px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
+  font-size: 0.625rem;
   font-weight: 900;
 }
 
 .user-name {
   font-weight: 500;
   color: var(--text-primary);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
 }
 
 .user-role {
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   color: var(--accent);
   background: var(--accent-muted);
   border-radius: 999px;
@@ -156,8 +188,8 @@
 .btn-icon {
   background: var(--bg-elevated);
   color: var(--text-primary);
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -176,8 +208,8 @@
 .btn-logout {
   background: transparent;
   color: var(--danger);
-  width: 30px;
-  height: 30px;
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

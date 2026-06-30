@@ -1,28 +1,115 @@
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, Plus, Check, X, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { AlertCircle, Plus, Check, X, Trash2, ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import '../styles/Penalties.css';
 
 const STATUS_LABELS = {
   pending: 'ожидает отработки',
+  in_workoff: 'отрабатывает',
   overdue: 'не пришёл',
   awaiting_unlock: 'ждёт разблокировки',
   unlocked: 'разблокирован',
   done: 'отработал',
 };
 
+const getWorkoffNote = (penalty) => [...(penalty.history || [])]
+  .reverse()
+  .find(item => item.new_status === 'in_workoff' && item.comment)?.comment || '';
+
+const formatStatusLabel = (status) => {
+  const label = STATUS_LABELS[status] || status || '';
+  return label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : '';
+};
+
+const normalizeStudentName = (value) => (value || '').trim().toLowerCase();
+
 function Penalties() {
+  const location = useLocation();
   const [penalties, setPenalties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [students, setStudents] = useState([]);
+  const [highlightedStatus, setHighlightedStatus] = useState('');
+  const [highlightedPenaltyId, setHighlightedPenaltyId] = useState(null);
+  const sectionRefs = useRef({});
+  const penaltyRefs = useRef({});
+  const penaltyTargetTimerRef = useRef(null);
+  const highlightTimerRef = useRef(null);
+
+  const scrollToStatus = (status) => {
+    const target = sectionRefs.current[status === 'all' ? 'pending' : status];
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setHighlightedStatus(status);
+
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedStatus('');
+      highlightTimerRef.current = null;
+    }, 1800);
+  };
 
   useEffect(() => {
     fetchPenalties();
     api.get('/api/students')
       .then((data) => setStudents(data.map((s) => s.nick)))
       .catch(() => setStudents([]));
+
+    return () => {
+      if (highlightTimerRef.current) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+      if (penaltyTargetTimerRef.current) {
+        window.clearTimeout(penaltyTargetTimerRef.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const params = new URLSearchParams(location.search);
+    const status = params.get('status');
+    const student = params.get('student');
+    if (!status && !student) return;
+
+    if (status) {
+      scrollToStatus(status);
+    }
+
+    if (!student) return;
+
+    const targetPenalty = penalties.find((penalty) => (
+      penalty.workoff_status === status
+      && normalizeStudentName(penalty.student_name) === normalizeStudentName(student)
+    )) || penalties.find((penalty) => (
+      normalizeStudentName(penalty.student_name) === normalizeStudentName(student)
+    ));
+
+    if (!targetPenalty) return;
+
+    window.requestAnimationFrame(() => {
+      const node = penaltyRefs.current[targetPenalty.id];
+      if (!node) return;
+
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedPenaltyId(targetPenalty.id);
+
+      if (penaltyTargetTimerRef.current) {
+        window.clearTimeout(penaltyTargetTimerRef.current);
+      }
+
+      penaltyTargetTimerRef.current = window.setTimeout(() => {
+        setHighlightedPenaltyId(null);
+        penaltyTargetTimerRef.current = null;
+      }, 2200);
+    });
+  }, [loading, location.search, penalties]);
 
   const fetchPenalties = async () => {
     try {
@@ -37,19 +124,41 @@ function Penalties() {
 
   if (loading) return <div className="loading">Загрузка штрафов...</div>;
   const activePenalties = penalties.filter((p) => p.workoff_status !== 'unlocked');
+  const workedOffPenalties = penalties
+    .filter((p) => ['awaiting_unlock', 'unlocked', 'done'].includes(p.workoff_status) && p.date_worked_off)
+    .sort((a, b) => new Date(b.date_worked_off) - new Date(a.date_worked_off));
 
   return (
     <div className="page penalties-page">
       <div className="page-header">
-        <div>
+        <div className="penalties-title-wrap">
           <h1>Штрафы учеников</h1>
+          <button
+            type="button"
+            className="penalties-info-trigger"
+            onClick={() => setShowInfo(true)}
+            aria-label="Показать правила штрафов"
+            title="Показать правила штрафов"
+          >
+            <AlertCircle size={18} />
+          </button>
         </div>
-        <button
-          className="btn-penalty-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
-          <Plus size={24} /> Добавить штраф
-        </button>
+        <div className="penalties-header-actions">
+          <a
+            className="btn-penalty-secondary"
+            href="https://applicant.21-school.ru/rules"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink size={18} /> Правила школы
+          </a>
+          <button
+            className="btn-penalty-primary"
+            onClick={() => setShowForm(!showForm)}
+          >
+            <Plus size={24} /> Добавить штраф
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -63,24 +172,70 @@ function Penalties() {
         />
       )}
 
-      <div className="penalties-info">
-        <div className="info-card">
-          <AlertCircle size={20} />
-          <div>
-            <strong>Система штрафов:</strong> Каждое нарушение = 2 часа отработки.
-            <br />
-            <strong>Логика ×2:</strong> Если студент НЕ пришёл на отработку, нажми "Не пришёл"
-            на ОДИН ШТРАФ и он умножится (2h → 4h → 8h → 16h...).
-            <br />
-            <strong>Удалить:</strong> Если выдал штраф случайно, нажми значок корзины.
+      {showInfo && (
+        <div className="penalties-modal-backdrop" onClick={() => setShowInfo(false)}>
+          <div
+            className="penalties-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="penalties-info-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="penalties-modal-head">
+              <div className="penalties-modal-title">
+                <AlertCircle size={18} />
+                <h2 id="penalties-info-title">Правила штрафов</h2>
+              </div>
+              <button
+                type="button"
+                className="penalties-modal-close"
+                onClick={() => setShowInfo(false)}
+                aria-label="Закрыть"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="penalties-modal-body">
+              <p><strong>Система штрафов:</strong> Каждое нарушение = 2 часа отработки.</p>
+              <p><strong>Логика ×2:</strong> Если студент НЕ пришёл на отработку, нажми "Не пришёл" на ОДИН ШТРАФ и он умножится (2h → 4h → 8h → 16h...).</p>
+              <p><strong>Удалить:</strong> Если выдал штраф случайно, нажми значок корзины.</p>
+            </div>
           </div>
         </div>
+      )}
+
+      <div className="penalties-stats">
+        <button type="button" className="stat" onClick={() => scrollToStatus('all')}>
+          <span>Всего штрафов:</span>
+          <strong>{activePenalties.length}</strong>
+        </button>
+        <button type="button" className="stat" onClick={() => scrollToStatus('pending')}>
+          <span>Ожидает отработки:</span>
+          <strong>{activePenalties.filter(p => p.workoff_status === 'pending').length}</strong>
+        </button>
+        <button type="button" className="stat" onClick={() => scrollToStatus('in_workoff')}>
+          <span>Отрабатывают:</span>
+          <strong>{activePenalties.filter(p => p.workoff_status === 'in_workoff').length}</strong>
+        </button>
+        <button type="button" className="stat" onClick={() => scrollToStatus('awaiting_unlock')}>
+          <span>Ждут разблокировки:</span>
+          <strong>{activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length}</strong>
+        </button>
+        <button type="button" className="stat" onClick={() => scrollToStatus('overdue')}>
+          <span>Переходящие (×2):</span>
+          <strong className="danger">
+            {activePenalties.filter(p => p.workoff_status === 'overdue').length}
+          </strong>
+        </button>
       </div>
 
       <div className="penalties-grid">
-        <div className="penalties-section">
+        <div
+          className={`penalties-section ${highlightedStatus === 'all' || highlightedStatus === 'pending' ? 'is-highlighted' : ''}`}
+          ref={(node) => { sectionRefs.current.pending = node; }}
+        >
           <h2>Ожидание отработки</h2>
-          <div className="penalties-list">
+          <div className={`penalties-list ${activePenalties.filter(p => p.workoff_status === 'pending').length === 0 ? 'is-empty' : ''}`}>
             {activePenalties.filter(p => p.workoff_status === 'pending').length === 0 ? (
               <p className="empty">Нет активных штрафов</p>
             ) : (
@@ -91,15 +246,45 @@ function Penalties() {
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
+                    isTarget={highlightedPenaltyId === penalty.id}
+                    registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
                   />
                 ))
             )}
           </div>
         </div>
 
-        <div className="penalties-section unlock-section">
+        <div
+          className={`penalties-section workoff-section ${highlightedStatus === 'in_workoff' ? 'is-highlighted' : ''}`}
+          ref={(node) => { sectionRefs.current.in_workoff = node; }}
+        >
+          <h2>Отрабатывают</h2>
+          <div className={`penalties-list ${activePenalties.filter(p => p.workoff_status === 'in_workoff').length === 0 ? 'is-empty' : ''}`}>
+            {activePenalties.filter(p => p.workoff_status === 'in_workoff').length === 0 ? (
+              <p className="empty">Пока никто не отрабатывает</p>
+            ) : (
+              activePenalties
+                .filter(p => p.workoff_status === 'in_workoff')
+                .map(penalty => (
+                  <PenaltyCard
+                    key={penalty.id}
+                    penalty={penalty}
+                    onStatusChange={() => fetchPenalties()}
+                    isInWorkoff={true}
+                    isTarget={highlightedPenaltyId === penalty.id}
+                    registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
+                  />
+                ))
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`penalties-section unlock-section ${highlightedStatus === 'awaiting_unlock' ? 'is-highlighted' : ''}`}
+          ref={(node) => { sectionRefs.current.awaiting_unlock = node; }}
+        >
           <h2>Ждут разблокировки</h2>
-          <div className="penalties-list">
+          <div className={`penalties-list ${activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length === 0 ? 'is-empty' : ''}`}>
             {activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length === 0 ? (
               <p className="empty">Никто не ждёт разблокировки</p>
             ) : (
@@ -111,15 +296,20 @@ function Penalties() {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     isAwaitingUnlock={true}
+                    isTarget={highlightedPenaltyId === penalty.id}
+                    registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
                   />
                 ))
             )}
           </div>
         </div>
 
-        <div className="penalties-section">
+        <div
+          className={`penalties-section ${highlightedStatus === 'overdue' ? 'is-highlighted' : ''}`}
+          ref={(node) => { sectionRefs.current.overdue = node; }}
+        >
           <h2>Переходящие (не пришёл)</h2>
-          <div className="penalties-list">
+          <div className={`penalties-list ${activePenalties.filter(p => p.workoff_status === 'overdue').length === 0 ? 'is-empty' : ''}`}>
             {activePenalties.filter(p => p.workoff_status === 'overdue').length === 0 ? (
               <p className="empty">Нет переходящих штрафов</p>
             ) : (
@@ -131,6 +321,8 @@ function Penalties() {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     isOverdue={true}
+                    isTarget={highlightedPenaltyId === penalty.id}
+                    registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
                   />
                 ))
             )}
@@ -138,31 +330,61 @@ function Penalties() {
         </div>
       </div>
 
-      <div className="penalties-stats">
-        <div className="stat">
-          <span>Всего штрафов:</span>
-          <strong>{activePenalties.length}</strong>
+      <div className="worked-off-section">
+        <div className="section-title-row">
+          <h2>Отработанные пенальти</h2>
+          <span>{workedOffPenalties.length}</span>
         </div>
-        <div className="stat">
-          <span>Ожидает отработки:</span>
-          <strong>{activePenalties.filter(p => p.workoff_status === 'pending').length}</strong>
-        </div>
-        <div className="stat">
-          <span>Переходящие (×2):</span>
-          <strong className="danger">
-            {activePenalties.filter(p => p.workoff_status === 'overdue').length}
-          </strong>
-        </div>
-        <div className="stat">
-          <span>Ждут разблокировки:</span>
-          <strong>{activePenalties.filter(p => p.workoff_status === 'awaiting_unlock').length}</strong>
-        </div>
+        {workedOffPenalties.length === 0 ? (
+          <p className="empty worked-off-empty">Пока нет отработанных пенальти</p>
+        ) : (
+          <div className="worked-off-list">
+            {workedOffPenalties.map((penalty) => {
+              const workoffNote = getWorkoffNote(penalty);
+              return (
+                <div className="worked-off-row" key={penalty.id}>
+                  <div>
+                    <strong>{penalty.student_name}</strong>
+                    <span>{STATUS_LABELS[penalty.workoff_status] || penalty.workoff_status}</span>
+                  </div>
+                  <div>
+                    <small>Когда</small>
+                    <span>{new Date(penalty.date_worked_off).toLocaleString('ru-RU')}</span>
+                  </div>
+                  <div>
+                    <small>Как отработал</small>
+                    <span>{workoffNote || 'Комментарий не указан'}</span>
+                  </div>
+                  <div>
+                    <small>Часы</small>
+                    <span>{penalty.total_hours}h</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
+function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
+  const workoffNote = getWorkoffNote(penalty);
+
+  const handleStartWorkoff = async () => {
+    const comment = window.prompt('Как отрабатывает? Комментарий можно оставить пустым.', '');
+    if (comment === null) return;
+
+    try {
+      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'in_workoff', comment });
+      onStatusChange();
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
+    }
+  };
+
   const handleMarkDone = async () => {
     if (!window.confirm(`Отметить что ${penalty.student_name} отработал ${penalty.total_hours} часов?`)) return;
 
@@ -225,7 +447,10 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
   };
 
   return (
-    <div className={`penalty-card ${isOverdue ? 'overdue' : ''} ${isAwaitingUnlock ? 'awaiting-unlock' : ''}`}>
+    <div
+      ref={registerRef}
+      className={`penalty-card ${isOverdue ? 'overdue' : ''} ${isAwaitingUnlock ? 'awaiting-unlock' : ''} ${isInWorkoff ? 'in-workoff' : ''} ${isTarget ? 'is-target' : ''}`}
+    >
       <div className="penalty-header">
         <h3>{penalty.student_name}</h3>
         <span className="penalty-hours">
@@ -237,8 +462,14 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
         <p className="volunteer">Выдал: {penalty.volunteer_name}</p>
         {penalty.description && <p className="description">💭 {penalty.description}</p>}
         <p className="date">{new Date(penalty.date_issued).toLocaleDateString('ru-RU')}</p>
-        {penalty.date_worked_off && (
+        {penalty.date_worked_off && penalty.workoff_status !== 'in_workoff' && (
           <p className="date">Отработал: {new Date(penalty.date_worked_off).toLocaleString('ru-RU')}</p>
+        )}
+        {penalty.workoff_started_at && (
+          <p className="date">Начал: {new Date(penalty.workoff_started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</p>
+        )}
+        {isInWorkoff && workoffNote && (
+          <p className="workoff-note">Как отрабатывает: {workoffNote}</p>
         )}
       </div>
 
@@ -248,25 +479,26 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
           <div className="history-list">
             {penalty.history.map((item) => (
               <div className="history-item" key={item.id}>
-                <strong>{STATUS_LABELS[item.new_status] || item.new_status}</strong>
+                <strong>{formatStatusLabel(item.new_status)}</strong>
                 <span>
-                  {item.old_status ? `${STATUS_LABELS[item.old_status] || item.old_status} → ` : ''}
-                  {STATUS_LABELS[item.new_status] || item.new_status}
+                  {item.old_status ? `${formatStatusLabel(item.old_status)} → ` : ''}
+                  {formatStatusLabel(item.new_status)}
                   {item.new_hours ? ` · ${item.new_hours}h` : ''}
                 </span>
                 <small>
                   {item.actor_nick ? `@${item.actor_nick}` : 'система'} · {new Date(item.created_at).toLocaleString('ru-RU')}
                 </small>
+                {item.comment && <em>{item.comment}</em>}
               </div>
             ))}
           </div>
         </details>
       )}
 
-      {!isAwaitingUnlock && (
+      {penalty.workoff_status === 'pending' && (
         <div className="penalty-actions">
-          <button className="btn-done" onClick={handleMarkDone} title="Отработал">
-            <Check size={18} /> Отработал
+          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
+            <Check size={18} /> Начал отработку
           </button>
           <button className="btn-overdue" onClick={handleMarkOverdue} title="Не пришёл (×2)">
             <X size={18} /> Не пришёл
@@ -277,9 +509,36 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue }) {
         </div>
       )}
 
+      {isInWorkoff && (
+        <div className="penalty-actions">
+          <button className="btn-done" onClick={handleMarkDone} title="Отработал">
+            <Check size={18} /> Отработал
+          </button>
+          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
+            ↶ Вернуть в ожидание
+          </button>
+          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <Trash2 size={18} />
+          </button>
+        </div>
+      )}
+
+      {isOverdue && (
+        <div className="penalty-actions">
+          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
+            <Check size={18} /> Начал отработку
+          </button>
+          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
+            ↶ В ожидание
+          </button>
+          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <Trash2 size={18} />
+          </button>
+        </div>
+      )}
+
       {isAwaitingUnlock && (
         <div className="penalty-actions">
-          <p className="status-badge done">Ждёт разблокировки</p>
           <button className="btn-done" onClick={handleUnlock} title="Разблокирован">
             <Check size={18} /> Разблокирован
           </button>

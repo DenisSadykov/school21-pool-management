@@ -5,6 +5,10 @@
   margin-bottom: var(--spacing-2xl);
 }
 
+.admin-section-full {
+  grid-column: 1 / -1;
+}
+
 .admin-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -63,6 +67,26 @@
   width: auto;
 }
 
+.admin-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.admin-password-form input {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  font-size: 0.875rem;
+}
+
+.admin-password-form .btn-primary {
+  align-self: flex-start;
+}
+
 .download-ready-link {
   color: var(--accent);
   font-weight: 600;
@@ -76,13 +100,14 @@
 .btn-danger {
   background: rgba(244, 63, 94, 0.12);
   color: var(--danger);
-  min-height: 40px;
-  padding: 0 16px;
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
   border-radius: var(--radius-md);
   border: 1px solid rgba(244, 63, 94, 0.28);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
+  font-size: 0.875rem;
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -120,12 +145,14 @@
   gap: var(--spacing-md);
   padding: var(--spacing-md);
   background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
 .action-log-list {
   max-height: 260px;
   overflow-y: auto;
+  border: 1px solid var(--border);
 }
 
 .action-log-list.expanded {
@@ -152,6 +179,24 @@
 .info-item strong {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.action-log-meta {
+  min-width: 280px;
+}
+
+.action-log-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.action-log-content small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 @keyframes slideDown {

@@ -21,9 +21,10 @@ export function clearSession() {
 }
 
 async function request(path, { method = 'GET', body } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   const res = await fetch(`${API_URL}${path}`, {
     method,

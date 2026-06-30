@@ -61,3 +61,4 @@ backend/backups/
 # OS
 .DS_Store
 Thumbs.db
+.vercel

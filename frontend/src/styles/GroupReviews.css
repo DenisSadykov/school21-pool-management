@@ -17,18 +17,26 @@
 .group-review-form label {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 6px;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .group-review-form input,
 .group-review-form select {
-  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--text-primary);
   border-radius: var(--radius-md);
-  padding: var(--spacing-md);
+  height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  font-size: 0.875rem;
+}
+
+.group-review-form .btn-primary {
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  font-size: 0.875rem;
 }
 
 .group-review-summary {
@@ -42,19 +50,28 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  min-height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .summary-card span {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  font-size: 0.82rem;
+  line-height: 1;
 }
 
 .summary-card strong,
 .coin-value {
   color: var(--text-primary);
-  font-size: 1.4rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .group-review-table-wrap {
@@ -77,23 +94,35 @@
   text-align: left;
 }
 
+.group-review-table th:not(:first-child),
+.group-review-table td:not(:first-child) {
+  text-align: center;
+}
+
 .group-review-table th {
   color: var(--text-secondary);
   font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   background: var(--bg-elevated);
 }
 
 .reviewer-cell {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .reviewer-cell span {
   color: var(--text-secondary);
   font-size: 0.86rem;
+}
+
+.group-review-actions {
+  display: flex;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {

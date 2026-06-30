@@ -1,515 +1,405 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { Download, FileUp, Plus } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { api } from '../api';
+import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/Volunteers.css';
 
-const ROLE_LABELS = {
-  volunteer: 'Волонтёр',
-  tribe_master: 'Трайб-мастер',
-  team_lead: 'Тимлид',
-};
-
-const FILTERS = [
-  { value: 'all', label: 'Все' },
-  { value: 'team_lead', label: 'Тимлиды' },
-  { value: 'tribe_master', label: 'Трайб-мастера' },
-  { value: 'volunteer', label: 'Волонтёры' },
-  { value: 'group_review', label: 'Групповые' },
-];
-
-const GROUPS = [
-  { key: 'team_lead', title: 'Тимлиды', match: (v) => v.role === 'team_lead' },
-  { key: 'tribe_master', title: 'Трайб-мастера', match: (v) => v.role === 'tribe_master' },
-  { key: 'volunteer', title: 'Волонтёры', match: (v) => v.role === 'volunteer' },
-];
-
-const TRIBES = ['Ленты', 'Короны', 'Олени'];
-
-const HEADER_MAP = {
-  nick: 'nick',
-  ник: 'nick',
-  login: 'nick',
-  логин: 'nick',
-  name: 'name',
-  имя: 'name',
-  фио: 'name',
-  role: 'role',
-  статус: 'role',
-  роль: 'role',
-  tribe: 'tribe',
-  триб: 'tribe',
-  группа: 'tribe',
-};
-
-function normalizeRole(value) {
-  const role = String(value || '').trim().toLowerCase();
-  if (['tribe_master', 'tribe', 'tm', 'трайб-мастер', 'трайбмастер', 'трайб', 'тм'].includes(role)) {
-    return 'tribe_master';
-  }
-  return 'volunteer';
+function getTelegramLink(telegram) {
+  const username = (telegram || '').trim().replace(/^@+/, '');
+  return username ? `https://t.me/${username}` : '';
 }
 
-function splitCsvLine(line, delimiter) {
-  const cells = [];
-  let current = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    const next = line[i + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      i += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      cells.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current.trim());
-  return cells;
-}
+function TelegramButton({ telegram, nick }) {
+  const href = getTelegramLink(telegram);
+  if (!href) return null;
 
-function parseVolunteersFile(text) {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const delimiter = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
-  const first = splitCsvLine(lines[0], delimiter).map((cell) => HEADER_MAP[cell.toLowerCase()] || null);
-  const hasHeader = first.includes('nick') || first.includes('name') || first.includes('role');
-  const columns = hasHeader ? first : ['nick', 'name', 'role', 'tribe'];
-  const dataLines = hasHeader ? lines.slice(1) : lines;
-
-  return dataLines
-    .map((line) => {
-      const cells = splitCsvLine(line, delimiter);
-      const volunteer = cells.reduce((acc, cell, index) => {
-        const key = columns[index];
-        if (key) acc[key] = cell;
-        return acc;
-      }, {});
-      return {
-        nick: volunteer.nick || '',
-        name: volunteer.name || volunteer.nick || '',
-        role: normalizeRole(volunteer.role),
-        tribe: volunteer.tribe || '',
-      };
-    })
-    .filter((volunteer) => volunteer.nick);
+  return (
+    <a
+      className="telegram-button"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`Написать @${nick} в Telegram`}
+      title={`Написать ${telegram.startsWith('@') ? telegram : `@${telegram}`}`}
+    >
+      <img src="/icons/telegram.webp" alt="" />
+    </a>
+  );
 }
 
 function Volunteers({ user }) {
-  const [volunteers, setVolunteers] = useState([]);
+  const [activePool, setActivePool] = useState(null);
+  const [allVols, setAllVols] = useState([]);
+  const [tribes, setTribes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [query, setQuery] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
-  const load = () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    api.get('/api/volunteers')
-      .then(setVolunteers)
-      .catch((e) => console.error(e))
-      .finally(() => setLoading(false));
-  };
+    try {
+      const pools = await api.get('/api/pools');
+      const pool = (pools || []).find((p) => p.active) || null;
+      setActivePool(pool);
+      if (!pool) { setAllVols([]); return; }
 
-  useEffect(() => {
-    load();
+      const [volList, tribeList] = await Promise.all([
+        api.get(`/api/volunteers?pool_id=${pool.id}`),
+        api.get('/api/tribes'),
+      ]);
+      setTribes(tribeList || []);
+      const filtered = (volList || []).filter((v) =>
+        ['volunteer', 'tribe_master'].includes(v.role)
+      );
+      setAllVols(filtered);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
   const updateVolunteer = async (id, patch) => {
-    try {
-      await api.patch(`/api/volunteers/${id}`, patch);
-      load();
-    } catch (e) {
-      alert(e.message);
-    }
+    try { await api.patch(`/api/volunteers/${id}`, { ...patch, pool_id: activePool?.id }); load(); }
+    catch (e) { alert(e.message); }
   };
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return volunteers.filter((volunteer) => {
-      const matchesQuery = !normalized
-        || volunteer.nick.toLowerCase().includes(normalized)
-        || volunteer.name.toLowerCase().includes(normalized);
-      const matchesFilter = filter === 'all'
-        || volunteer.role === filter
-        || (filter === 'group_review' && volunteer.is_group_reviewer);
-      return matchesQuery && matchesFilter;
-    });
-  }, [volunteers, filter, query]);
-
-  const occupiedTribes = useMemo(
-    () => volunteers
-      .filter((volunteer) => volunteer.role === 'tribe_master' && volunteer.tribe)
-      .map((volunteer) => volunteer.tribe),
-    [volunteers],
-  );
 
   if (loading) return <div className="loading">Загрузка волонтёров...</div>;
 
-  return (
-    <div className="page volunteers-page">
-      <div className="page-header volunteers-header">
+  if (!activePool) {
+    return (
+      <div className="page">
         <h1>Волонтёры</h1>
-        <div className="volunteer-filters">
-          {isStaff && (
-            <>
-              <button className="btn-secondary" type="button" onClick={() => setShowImport(!showImport)}>
-                <FileUp size={18} /> Загрузить список
-              </button>
-              <button className="btn-primary" type="button" onClick={() => setShowAdd(!showAdd)}>
-                <Plus size={18} /> Добавить
-              </button>
-            </>
-          )}
-          <input
-            type="search"
-            placeholder="Ник или имя"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-            {FILTERS.map((item) => (
-              <option key={item.value} value={item.value}>{item.label}</option>
-            ))}
-          </select>
+        <div className="empty-state">
+          <p>Нет активного бассейна.</p>
+          {isStaff && <Link to="/settings" className="btn-primary" style={{ display: 'inline-block', marginTop: 8 }}>Перейти в Настройки</Link>}
         </div>
       </div>
+    );
+  }
 
-      {showAdd && (
-        <VolunteerForm
-          occupiedTribes={occupiedTribes}
-          onClose={() => setShowAdd(false)}
-          onSuccess={() => {
-            setShowAdd(false);
-            load();
-          }}
-        />
+  const tribeMasters = allVols.filter((v) => v.role === 'tribe_master');
+  const volunteers   = allVols.filter((v) => v.role === 'volunteer');
+  const tribeNames = tribes.map((t) => t.name);
+
+  return (
+    <div className="page volunteers-page">
+
+      {allVols.length === 0 && (
+        <div className="empty-state">
+          <p>На бассейн ещё не назначено волонтёров.</p>
+          {isStaff && <Link to="/manage">Настройки бассейна →</Link>}
+        </div>
       )}
 
-      {showImport && (
-        <VolunteersImport
-          onClose={() => setShowImport(false)}
-          onSuccess={load}
-        />
-      )}
-
-      <div className="volunteer-summary">
-        <Summary label="Всего" value={filtered.length} />
-        <Summary label="Трайб-мастеров" value={filtered.filter((v) => v.role === 'tribe_master').length} />
-        <Summary label="Групповых проверяющих" value={filtered.filter((v) => v.is_group_reviewer).length} />
-        <Summary label="Всего коинов" value={filtered.reduce((sum, v) => sum + (v.coins || 0), 0)} />
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="empty-state">Никого не нашли по этим фильтрам.</div>
-      )}
-
-      {GROUPS.map((group) => {
-        const rows = filtered.filter(group.match);
-        if (rows.length === 0) return null;
-        return (
-          <section key={group.key} className="volunteer-group">
-            <button className="group-title" type="button">
-              <span>{group.title}</span>
-              <strong>{rows.length}</strong>
-            </button>
+      {/* Трайб-мастера */}
+      {(tribeMasters.length > 0 || (isStaff && volunteers.length > 0)) && (
+        <section className="volunteer-group volunteer-group-masters">
+          <div className="group-title-row">
+            <span className="group-title-label">Трайб-мастера</span>
+            <strong>{tribeMasters.length}</strong>
+            {isStaff && volunteers.length > 0 && (
+              <AddTribeMasterInline volunteers={volunteers} onAdd={(id) => updateVolunteer(id, { role: 'tribe_master' })} />
+            )}
+          </div>
+          {tribeMasters.length > 0 && (
             <div className="volunteer-table-wrap">
               <table className="volunteer-table">
                 <thead>
                   <tr>
-                    <th>Человек</th>
-                    <th>Статусы</th>
+                    <th>Волонтёр</th>
+                    <th>Имя</th>
+                    <th>Трайб</th>
                     <th>Смены</th>
+                    <th>Дополнения</th>
                     <th>Коины</th>
-                    <th>За что</th>
                     {isStaff && <th>Управление</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((volunteer) => (
-                    <VolunteerRow
-                      key={volunteer.id}
-                      volunteer={volunteer}
-                      occupiedTribes={occupiedTribes}
-                      isStaff={isStaff}
-                      onUpdate={updateVolunteer}
-                    />
+                  {tribeMasters.map((v) => (
+                    <TribeMasterRow key={v.id} volunteer={v} tribes={tribeNames}
+                      isStaff={isStaff} onUpdate={updateVolunteer} />
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
-        );
-      })}
+          )}
+        </section>
+      )}
+
+      {/* Волонтёры */}
+      {volunteers.length > 0 && (
+        <section className="volunteer-group">
+          <div className="group-title-row">
+            <span className="group-title-label">Волонтёры</span>
+            <strong>{volunteers.length}</strong>
+          </div>
+          <div className="volunteer-table-wrap">
+            <table className="volunteer-table">
+              <thead>
+                <tr>
+                  <th>Волонтёр</th>
+                  <th>Имя</th>
+                  <th>Смены</th>
+                  <th>Дополнения</th>
+                  <th>Коины</th>
+                  {isStaff && <th>Управление</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {volunteers.map((v) => (
+                  <VolunteerRow key={v.id} volunteer={v} isStaff={isStaff} onUpdate={updateVolunteer} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-function VolunteerForm({ occupiedTribes, onClose, onSuccess }) {
-  const [form, setForm] = useState({
-    nick: '',
-    name: '',
-    role: 'volunteer',
-    tribe: '',
-  });
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.nick.trim()) {
-      alert('Укажите ник');
-      return;
-    }
-    try {
-      await api.post('/api/volunteers', form);
-      onSuccess();
-    } catch (error) {
-      alert('❌ Ошибка: ' + error.message);
-    }
-  };
-
+function AddTribeMasterInline({ volunteers, onAdd }) {
+  const [userId, setUserId] = useState('');
   return (
-    <form className="volunteer-panel" onSubmit={submit}>
-      <h2>Добавить волонтёра</h2>
-      <div className="volunteer-form-grid">
-        <label>
-          Ник
-          <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value })} autoCapitalize="none" />
-        </label>
-        <label>
-          Имя
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        </label>
-        <label>
-          Статус
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            <option value="volunteer">Волонтёр</option>
-            <option value="tribe_master">Трайб-мастер</option>
-          </select>
-        </label>
-        <label>
-          Трайб
-          <select value={form.tribe} onChange={(e) => setForm({ ...form, tribe: e.target.value })}>
-            <option value="">Не задан</option>
-            {TRIBES.filter((tribe) => form.role !== 'tribe_master' || !occupiedTribes.includes(tribe)).map((tribe) => (
-              <option value={tribe} key={tribe}>{tribe}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="panel-actions">
-        <button type="submit" className="btn-primary">Добавить</button>
-        <button type="button" className="btn-secondary" onClick={onClose}>Отмена</button>
-      </div>
-    </form>
-  );
-}
-
-function VolunteersImport({ onClose, onSuccess }) {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [fileName, setFileName] = useState('');
-  const [volunteers, setVolunteers] = useState([]);
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    setResult(null);
-    setVolunteers([]);
-    setSelectedFile(file || null);
-    if (!file) return;
-    setFileName(file.name);
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      setVolunteers(parseVolunteersFile(await file.text()));
-    }
-  };
-
-  const submit = async () => {
-    if (!selectedFile) {
-      alert('Выберите файл');
-      return;
-    }
-    const isXlsx = selectedFile.name.toLowerCase().endsWith('.xlsx');
-    if (!isXlsx && volunteers.length === 0) {
-      alert('В файле не нашлось волонтёров');
-      return;
-    }
-    setLoading(true);
-    try {
-      let res;
-      if (isXlsx) {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        res = await api.upload('/api/volunteers/import-file', formData);
-      } else {
-        res = await api.post('/api/volunteers/import', { volunteers });
-      }
-      setResult(res);
-      onSuccess();
-    } catch (error) {
-      alert('❌ Ошибка: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <section className="volunteer-panel">
-      <h2>Загрузить волонтёров списком</h2>
-      <div className="import-grid">
-        <label>
-          XLSX, CSV или TXT
-          <input type="file" accept=".xlsx,.csv,.txt,text/csv,text/plain" onChange={handleFile} />
-        </label>
-        <div className="import-help">
-          Лучше скачать XLSX-шаблон: там уже есть столбцы и выпадающие списки. CSV/TXT тоже поддерживаются.
-        </div>
-      </div>
-      <a
-        className="btn-secondary template-button"
-        href="/templates/volunteers-template.xlsx"
-        download="volunteers-template.xlsx"
-      >
-        <Download size={16} /> Скачать шаблон
-      </a>
-      {fileName && selectedFile?.name.toLowerCase().endsWith('.xlsx') && (
-        <div className="import-preview">
-          <div className="import-summary">
-            <span>Файл: {fileName}</span>
-            <strong>XLSX загрузится при импорте</strong>
-          </div>
-        </div>
-      )}
-      {fileName && !selectedFile?.name.toLowerCase().endsWith('.xlsx') && (
-        <div className="import-preview">
-          <div className="import-summary">
-            <span>Файл: {fileName}</span>
-            <strong>Найдено: {volunteers.length}</strong>
-          </div>
-          {volunteers.slice(0, 6).map((volunteer, index) => (
-            <div className="import-row" key={`${volunteer.nick}-${index}`}>
-              <span>@{volunteer.nick}</span>
-              <span>{volunteer.name}</span>
-              <span>{ROLE_LABELS[volunteer.role]}</span>
-              <span>{volunteer.tribe || '—'}</span>
-            </div>
-          ))}
-          {volunteers.length > 6 && <p className="text-muted">И ещё {volunteers.length - 6} строк...</p>}
-        </div>
-      )}
-      {result && <div className="alert success">{result.message}</div>}
-      <div className="panel-actions">
-        <button type="button" className="btn-primary" onClick={submit} disabled={loading || !selectedFile}>
-          {loading ? 'Загружаю...' : 'Импортировать'}
-        </button>
-        <button type="button" className="btn-secondary" onClick={onClose}>Закрыть</button>
-      </div>
-    </section>
-  );
-}
-
-function Summary({ label, value }) {
-  return (
-    <div className="summary-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="add-tm-inline">
+      <select value={userId} onChange={(e) => setUserId(e.target.value)}>
+        <option value="">Добавить трайб-мастера</option>
+        {volunteers.map((v) => (
+          <option key={v.id} value={v.id}>@{v.nick} {v.name ? `· ${v.name}` : ''}</option>
+        ))}
+      </select>
+      <button className="btn-mini primary" disabled={!userId}
+        onClick={() => { onAdd(Number(userId)); setUserId(''); }}>+</button>
     </div>
   );
 }
 
-function VolunteerRow({ volunteer, occupiedTribes, isStaff, onUpdate }) {
-  const [coinsAdjustment, setCoinsAdjustment] = useState(volunteer.coins_adjustment || 0);
-  const canChangeRole = isStaff && volunteer.role !== 'team_lead';
+function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoPinned, setInfoPinned] = useState(false);
+  const [coins, setCoins] = useState(v.coins_adjustment || 0);
+  const wrapRef = useRef(null);
+
+  useEffect(() => { setCoins(v.coins_adjustment || 0); }, [v.coins_adjustment]);
 
   useEffect(() => {
-    setCoinsAdjustment(volunteer.coins_adjustment || 0);
-  }, [volunteer.coins_adjustment]);
+    if (!open) return undefined;
+    const handleClickOutside = (event) => {
+      if (!wrapRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  useEffect(() => {
+    if (!infoPinned) return undefined;
+    const handleClickOutside = (event) => {
+      if (!wrapRef.current?.contains(event.target)) {
+        setInfoPinned(false);
+        setInfoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [infoPinned]);
+
+  const breakdown = (v.coin_breakdown || []).filter((item) => item.coins !== 0 || item.count > 0);
 
   return (
-    <tr>
-      <td>
-        <div className="person-cell">
-          <strong>@{volunteer.nick}</strong>
-          <span>{volunteer.name}</span>
-        </div>
-      </td>
-      <td>
-        <div className="status-list">
-          <span className={`status-pill role-${volunteer.role}`}>{ROLE_LABELS[volunteer.role] || volunteer.role}</span>
-          {volunteer.is_group_reviewer && (
-            <span className="status-pill group">
-              Групповой проверяющий{volunteer.group_reviews_count ? ` · ${volunteer.group_reviews_count}` : ''}
-            </span>
+    <div className="coins-control" ref={wrapRef}>
+      <strong className="coins-value">{v.coins ?? '—'}</strong>
+      <button
+        type="button"
+        className="coins-info"
+        aria-label={`За что начислены коины для @${v.nick}`}
+        title="За что начислены коины"
+        onMouseEnter={() => {
+          if (!infoPinned) setInfoOpen(true);
+        }}
+        onMouseLeave={() => {
+          if (!infoPinned) setInfoOpen(false);
+        }}
+        onClick={() => {
+          const nextPinned = !infoPinned;
+          setInfoPinned(nextPinned);
+          setInfoOpen(nextPinned);
+        }}
+      >
+        i
+      </button>
+      {infoOpen && (
+        <div className="coins-breakdown-popover">
+          <span className="coins-popover-label">Начисление коинов</span>
+          {breakdown.length > 0 ? (
+            <div className="coins-breakdown-list">
+              {breakdown.map((item) => (
+                <span key={item.type}>{item.label}: {item.coins}</span>
+              ))}
+            </div>
+          ) : (
+            <span className="coins-breakdown-empty">Пока начислений нет</span>
           )}
-          {volunteer.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
-      </td>
-      <td>{volunteer.shifts_count}</td>
-      <td>
-        <strong className="coins-value">{volunteer.coins}</strong>
-      </td>
-      <td>
-        <div className="coin-breakdown">
-          {(volunteer.coin_breakdown || []).filter((item) => item.coins !== 0 || item.count > 0).map((item) => (
-            <span key={item.type}>{item.label}: {item.coins}</span>
-          ))}
-        </div>
-      </td>
-      {isStaff && (
-        <td>
-          <div className="volunteer-actions">
-            {canChangeRole && (
-              <select
-                value={volunteer.role}
-                onChange={(e) => onUpdate(volunteer.id, { role: e.target.value })}
-              >
-                <option value="volunteer">Волонтёр</option>
-                <option value="tribe_master">Трайб-мастер</option>
-              </select>
-            )}
-            {volunteer.role === 'tribe_master' && (
-              <select
-                value={volunteer.tribe || ''}
-                onChange={(e) => onUpdate(volunteer.id, { tribe: e.target.value })}
-              >
-                <option value="">Трайб не задан</option>
-                {TRIBES.filter((tribe) => tribe === volunteer.tribe || !occupiedTribes.includes(tribe)).map((tribe) => (
-                  <option value={tribe} key={tribe}>{tribe}</option>
-                ))}
-              </select>
-            )}
-            <label className="check-control">
-              <input
-                type="checkbox"
-                checked={volunteer.has_confession}
-                onChange={(e) => onUpdate(volunteer.id, { has_confession: e.target.checked })}
-              />
-              Исповедь
-            </label>
-            {isStaff && (
+      )}
+      {canEdit && (
+        <>
+          <button
+            type="button"
+            className="coins-plus"
+            onClick={() => setOpen((prev) => !prev)}
+            aria-label={`Изменить коины для @${v.nick}`}
+            title="Ручная корректировка коинов"
+          >
+            <Plus size={14} />
+          </button>
+          {open && (
+            <div className="coins-popover">
+              <span className="coins-popover-label">Ручная корректировка</span>
               <div className="coin-editor">
-                <input
-                  type="number"
-                  value={coinsAdjustment}
-                  onChange={(e) => setCoinsAdjustment(e.target.value)}
-                  aria-label="Корректировка коинов"
-                />
+                <input type="number" value={coins} onChange={(e) => setCoins(e.target.value)} aria-label="Коины" />
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => onUpdate(volunteer.id, { coins_adjustment: coinsAdjustment })}
+                  onClick={() => {
+                    onUpdate(v.id, { coins_adjustment: coins });
+                    setOpen(false);
+                  }}
                 >
                   OK
                 </button>
               </div>
-            )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleClickOutside = (event) => {
+      if (!menuRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div className="volunteer-menu" ref={menuRef}>
+      <button
+        type="button"
+        className="volunteer-menu-trigger"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label={`Управление @${v.nick}`}
+      >
+        <MoreHorizontal size={18} />
+      </button>
+      {open && (
+        <div className="volunteer-menu-dropdown">
+          <label className="check-control">
+            <input
+              type="checkbox"
+              checked={v.has_confession}
+              onChange={(e) => onUpdate(v.id, { has_confession: e.target.checked })}
+            />
+            Исповедь
+          </label>
+          <select
+            className="volunteer-role-select"
+            value={v.role}
+            onChange={(e) => {
+              onUpdate(v.id, { role: e.target.value });
+              setOpen(false);
+            }}
+          >
+            <option value="volunteer">Волонтёр</option>
+            <option value="tribe_master">Трайб-мастер</option>
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
+  return (
+    <tr>
+      <td>
+        <strong className="volunteer-nick">@{v.nick}</strong>
+      </td>
+      <td>
+        <div className="person-meta">
+          <span>{v.name}</span>
+          <TelegramButton telegram={v.telegram} nick={v.nick} />
+        </div>
+      </td>
+      <td>
+        {isStaff ? (
+          <div className="tribe-select-wrap">
+            <select value={v.tribe || ''} onChange={(e) => onUpdate(v.id, { tribe: e.target.value })}>
+              <option value="">Не задан</option>
+              {tribes.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {v.tribe && <TribeLabel tribe={v.tribe} size={18} showText={false} className="tribe-select-logo" />}
           </div>
+        ) : (
+          v.tribe ? <TribeLabel tribe={v.tribe} size={16} className="volunteer-tribe-pill" /> : '—'
+        )}
+      </td>
+      <td>{v.shifts_count ?? '—'}</td>
+      <td>
+        <div className="status-list">
+          {v.has_confession && <span className="status-pill confession">Исповедь</span>}
+        </div>
+      </td>
+      <td><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
+      {isStaff && (
+        <td>
+          <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} />
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function VolunteerRow({ volunteer: v, isStaff, onUpdate }) {
+  return (
+    <tr>
+      <td>
+        <strong className="volunteer-nick">@{v.nick}</strong>
+      </td>
+      <td>
+        <div className="person-meta">
+          <span>{v.name}</span>
+          <TelegramButton telegram={v.telegram} nick={v.nick} />
+        </div>
+      </td>
+      <td>{v.shifts_count ?? '—'}</td>
+      <td>
+        <div className="status-list">
+          {v.is_group_reviewer && <span className="status-pill group">Групповой</span>}
+          {v.has_confession && <span className="status-pill confession">Исповедь</span>}
+        </div>
+      </td>
+      <td><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
+      {isStaff && (
+        <td>
+          <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} />
         </td>
       )}
     </tr>

@@ -1,193 +1,90 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Settings, Trash2 } from 'lucide-react';
 import { api } from '../api';
+import TribeLabel from '../components/TribeLabel';
 import '../styles/Manage.css';
 
-const ROLE_LABELS = {
-  team_lead: 'Тимлид',
-  admin: 'Админ',
-};
-
 function Manage({ user }) {
-  const isAdmin = user.role === 'admin';
   const [pools, setPools] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [allVolunteers, setAllVolunteers] = useState([]);
+  const [tribes, setTribes] = useState([]);
   const [msg, setMsg] = useState('');
 
   const loadPools = useCallback(async () => setPools(await api.get('/api/pools')), []);
-  const loadSystemUsers = useCallback(async () => {
-    if (!isAdmin) return;
-    const allUsers = await api.get('/api/users');
-    setUsers(allUsers.filter((u) => u.role === 'team_lead' || u.role === 'admin'));
-  }, [isAdmin]);
+  const loadVolunteers = useCallback(async () => {
+    const all = await api.get('/api/users');
+    setAllVolunteers(all.filter((u) => ['volunteer', 'tribe_master'].includes(u.role)));
+  }, []);
+  const loadTribes = useCallback(async () => setTribes(await api.get('/api/tribes')), []);
 
   useEffect(() => {
     loadPools();
-    loadSystemUsers();
-  }, [loadPools, loadSystemUsers]);
+    loadVolunteers();
+    loadTribes();
+  }, [loadPools, loadVolunteers, loadTribes]);
 
   const activePool = pools.find((p) => p.active);
 
   return (
     <div className="page manage-page">
-      <h1>Настройка бассейна</h1>
+      <h1>Настройки бассейна</h1>
       {msg && <div className="alert success">{msg}</div>}
 
-      <section className="manage-section">
-        <h2>Бассейны</h2>
-        {activePool ? (
-          <p className="muted">Активный: <strong>{activePool.name}</strong></p>
-        ) : (
-          <p className="muted">Активного бассейна нет — создай новый.</p>
-        )}
-        <PoolForm onDone={(t) => { setMsg(t); loadPools(); }} />
-        <div className="pool-list">
-          {pools.map((p) => (
-            <div key={p.id} className={`pool-row ${p.active ? 'active' : ''}`}>
-              <span>{p.name} {p.start_date ? `· старт ${p.start_date}` : ''}</span>
-              {p.active ? (
-                <span className="badge-confirmed">активен</span>
-              ) : (
-                <button className="btn-mini primary" onClick={async () => { await api.post(`/api/pools/${p.id}/activate`); loadPools(); }}>
-                  сделать активным
-                </button>
-              )}
-            </div>
-          ))}
+      {!activePool ? (
+        <div className="empty-state">
+          <p>Нет активного бассейна.</p>
+          <Link to="/settings" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Settings size={16} /> Перейти в Настройки
+          </Link>
         </div>
-      </section>
+      ) : (
+        <>
+          <section className="manage-section">
+            <h2>Стандартное расписание</h2>
+            {activePool.start_date ? (
+              <>
+                <p className="muted">
+                  Генерирует 14-дневный шаблон School21 pool: стартовый понедельник 09:00–19:00 и 19:00–20:00,
+                  по четвергам — EXAM 11:00–17:00, остальные дни — слоты 10:00–14:00 и 15:00–19:00.
+                </p>
+                <GenerateScheduleForm poolId={activePool.id} onDone={(t) => setMsg(t)} />
+              </>
+            ) : (
+              <p className="muted">У активного бассейна не задана дата начала. Укажи её в <Link to="/settings">Настройках</Link>.</p>
+            )}
+          </section>
 
-      <section className="manage-section">
-        <h2>Стандартное расписание</h2>
-        {activePool?.start_date ? (
-          <>
-            <p className="muted">
-              Генерирует тайм-блоки по шаблону School21 pool: день открытия 09:00–19:00 (7 мест),
-              Чт — экзамен 11:00–17:00 (5 мест), остальные дни — два слота 10:00–14:00 и 15:00–19:00.
-            </p>
-            <GenerateScheduleForm poolId={activePool.id} onDone={(t) => setMsg(t)} />
-          </>
-        ) : (
-          <p className="muted">Создай бассейн с датой начала, чтобы сгенерировать расписание по шаблону.</p>
-        )}
-      </section>
+          <section className="manage-section">
+            <h2>Волонтёры бассейна</h2>
+            <p className="muted">Назначь волонтёров из системы или загрузи Excel.</p>
+            <PoolVolunteersSection
+              poolId={activePool.id}
+              allVolunteers={allVolunteers}
+              onChanged={loadVolunteers}
+            />
+          </section>
 
-      <section className="manage-section">
-        <h2>Добавить тайм-блок вручную</h2>
-        <p className="muted">Для разовых корректировок. Массово добавляй через шаблон выше.</p>
-        <BlockForm poolId={activePool?.id} onDone={(t) => setMsg(t)} disabled={!activePool} />
-      </section>
-
-      {isAdmin && (
-        <section className="manage-section">
-          <h2>Админы и тимлиды</h2>
-          <p className="muted">
-            Здесь только системный доступ к приложению. Волонтёры, трайб-мастера, групповые и коины управляются во вкладке «Волонтёры».
-          </p>
-          <UserForm onDone={(t) => { setMsg(t); loadSystemUsers(); }} />
-          <div className="user-list">
-            {users.map((u) => (
-              <div key={u.id} className="user-row">
-                <span className="u-nick">@{u.nick}</span>
-                <span className="u-name">{u.name}</span>
-                <span className={`u-role role-${u.role}`}>{ROLE_LABELS[u.role]}</span>
-                <button
-                  className="btn-icon danger"
-                  title="Удалить"
-                  onClick={async () => {
-                    if (!window.confirm(`Удалить @${u.nick}?`)) return;
-                    try { await api.del(`/api/users/${u.id}`); loadSystemUsers(); }
-                    catch (e) { alert(e.message); }
-                  }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+          <section className="manage-section">
+            <h2>Трайбы</h2>
+            <TribesSection tribes={tribes} onChanged={loadTribes} />
+          </section>
+        </>
       )}
     </div>
   );
 }
 
-function PoolForm({ onDone }) {
-  const [form, setForm] = useState({ name: '', start_date: '' });
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) return;
-    try {
-      await api.post('/api/pools', form);
-      setForm({ name: '', start_date: '' });
-      onDone('Бассейн создан и сделан активным');
-    } catch (err) { alert(err.message); }
-  };
-  return (
-    <form className="inline-form" onSubmit={submit}>
-      <input placeholder="Название (Бассейн 08.06)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
-      <button className="btn-primary" type="submit"><Plus size={16} /> Создать</button>
-    </form>
-  );
-}
-
-function BlockForm({ poolId, onDone, disabled }) {
-  const [form, setForm] = useState({ date: '', time_start: '10:00', time_end: '14:00', label: '' });
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.date) return;
-    try {
-      await api.post('/api/blocks', { ...form, pool_id: poolId });
-      onDone('Тайм-блок добавлен');
-    } catch (err) { alert(err.message); }
-  };
-  return (
-    <form className="inline-form" onSubmit={submit}>
-      <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} disabled={disabled} />
-      <input type="time" value={form.time_start} onChange={(e) => setForm({ ...form, time_start: e.target.value })} disabled={disabled} />
-      <input type="time" value={form.time_end} onChange={(e) => setForm({ ...form, time_end: e.target.value })} disabled={disabled} />
-      <input placeholder="метка (EXAM)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} disabled={disabled} />
-      <button className="btn-primary" type="submit" disabled={disabled}><Plus size={16} /> Блок</button>
-    </form>
-  );
-}
-
-function UserForm({ onDone }) {
-  const roles = ['team_lead', 'admin'];
-  const [form, setForm] = useState({ nick: '', name: '', role: 'team_lead', password: '' });
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.nick.trim()) return;
-    try {
-      await api.post('/api/users', form);
-      setForm({ nick: '', name: '', role: form.role, password: '' });
-      onDone(`@${form.nick} добавлен`);
-    } catch (err) { alert(err.message); }
-  };
-  return (
-    <form className="inline-form" onSubmit={submit}>
-      <input placeholder="ник" value={form.nick} autoCapitalize="none" onChange={(e) => setForm({ ...form, nick: e.target.value })} />
-      <input placeholder="имя" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-        {roles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-      </select>
-      <input type="password" placeholder="пароль" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-      <button className="btn-primary" type="submit"><Plus size={16} /> Добавить</button>
-    </form>
-  );
-}
-
 function GenerateScheduleForm({ poolId, onDone }) {
-  const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [undoing, setUndoing] = useState(false);
+
   const submit = async (e) => {
     e.preventDefault();
-    if (!endDate) return;
-    if (!window.confirm('Добавить стандартное расписание? Существующие блоки не удаляются.')) return;
+    if (!window.confirm('Сгенерировать стандартный бассейн на 14 дней? Существующие блоки не удаляются.')) return;
     setLoading(true);
     try {
-      const res = await api.post(`/api/pools/${poolId}/generate-schedule`, { end_date: endDate });
+      const res = await api.post(`/api/pools/${poolId}/generate-schedule`, {});
       onDone(res.message || 'Расписание создано');
     } catch (err) {
       alert(err.message);
@@ -195,8 +92,9 @@ function GenerateScheduleForm({ poolId, onDone }) {
       setLoading(false);
     }
   };
+
   const undo = async () => {
-    if (!window.confirm('Отменить последнюю генерацию стандартного расписания? Записи волонтёров на эти блоки тоже удалятся.')) return;
+    if (!window.confirm('Отменить последнюю генерацию? Записи волонтёров на эти блоки тоже удалятся.')) return;
     setUndoing(true);
     try {
       const res = await api.post(`/api/pools/${poolId}/generate-schedule/undo`, {});
@@ -207,18 +105,165 @@ function GenerateScheduleForm({ poolId, onDone }) {
       setUndoing(false);
     }
   };
+
   return (
     <div className="schedule-generator">
       <form className="inline-form" onSubmit={submit}>
-        <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Дата окончания бассейна:</label>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         <button className="btn-primary" type="submit" disabled={loading}>
-          <Plus size={16} /> {loading ? 'Создаю...' : 'Сгенерировать'}
+          <Plus size={16} /> {loading ? 'Создаю...' : 'Сгенерировать бассейн на 14 дней'}
         </button>
       </form>
       <button className="btn-secondary" type="button" onClick={undo} disabled={undoing}>
         {undoing ? 'Отменяю...' : 'Отменить последнюю генерацию'}
       </button>
+    </div>
+  );
+}
+
+function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
+  const [pvs, setPvs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [addUserId, setAddUserId] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setPvs(await api.get(`/api/pools/${poolId}/volunteers`)); }
+    finally { setLoading(false); }
+  }, [poolId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const assignedIds = new Set(pvs.map((v) => v.id));
+  const available = allVolunteers.filter((v) => !assignedIds.has(v.id));
+
+  const add = async () => {
+    if (!addUserId) return;
+    try {
+      await api.post(`/api/pools/${poolId}/volunteers`, { user_ids: [Number(addUserId)] });
+      setAddUserId('');
+      setMsg('Добавлено');
+      load();
+      onChanged();
+    } catch (e) { alert(e.message); }
+  };
+
+  const remove = async (v) => {
+    if (!window.confirm(`Удалить @${v.nick} из бассейна? Их смены будут очищены.`)) return;
+    try {
+      await api.del(`/api/pools/${poolId}/volunteers/${v.id}`);
+      setMsg('Удалено');
+      load();
+      onChanged();
+    } catch (e) { alert(e.message); }
+  };
+
+  return (
+    <div className="pool-volunteers-section" style={{ border: 'none', padding: 0, borderRadius: 0 }}>
+      {msg && <div className="pv-msg">{msg}</div>}
+      <div className="pv-toolbar">
+        <Link to="/settings?focus=volunteer-upload" className="btn-mini" style={{ textDecoration: 'none' }}>
+          ⬆ Загрузить волонтёров в систему
+        </Link>
+        <div className="pv-add-row">
+          <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
+            <option value="">Добавить из системы</option>
+            {available.map((v) => (
+              <option key={v.id} value={v.id}>
+                @{v.nick} {v.name ? `· ${v.name}` : ''}
+              </option>
+            ))}
+          </select>
+          <button className="btn-mini primary" onClick={add} disabled={!addUserId}>+</button>
+        </div>
+      </div>
+      {loading ? (
+        <p className="pv-empty">Загрузка…</p>
+      ) : pvs.length === 0 ? (
+        <p className="pv-empty">Волонтёры не назначены.</p>
+      ) : (
+        <div className="pv-list" style={{ marginTop: 8 }}>
+          <div className="pv-head">
+            <span>Ник</span>
+            <span>Имя</span>
+            <span>Телеграм</span>
+            <span>Удалить</span>
+          </div>
+          {pvs.map((v) => (
+            <div key={v.id} className="pv-row">
+              <span className="pv-nick">@{v.nick}</span>
+              <span className="pv-name">{v.name || '—'}</span>
+              <span className="pv-tg">{v.telegram || '—'}</span>
+              <button className="btn-icon danger pv-del" onClick={() => remove(v)} title="Удалить из бассейна">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TribesSection({ tribes, onChanged }) {
+  const [name, setName] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    try {
+      await api.post('/api/tribes', { name: name.trim() });
+      setName('');
+      setMsg('');
+      onChanged();
+    } catch (err) { setMsg(err.message); }
+  };
+
+  const loadStandard = async () => {
+    try {
+      const res = await api.post('/api/tribes/load-standard', {});
+      setMsg(res.message);
+      onChanged();
+    } catch (err) { setMsg(err.message); }
+  };
+
+  const remove = async (tribe) => {
+    if (!window.confirm(`Удалить трайб «${tribe.name}»?`)) return;
+    try { await api.del(`/api/tribes/${tribe.id}`); onChanged(); }
+    catch (err) { alert(err.message); }
+  };
+
+  return (
+    <div>
+      {msg && <p className="pv-msg">{msg}</p>}
+      <div className="pv-toolbar" style={{ marginBottom: 10 }}>
+        <form className="inline-form" onSubmit={add} style={{ margin: 0 }}>
+          <input
+            placeholder="Название трайба"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button className="btn-primary" type="submit"><Plus size={15} /> Добавить</button>
+        </form>
+        <button className="btn-mini" onClick={loadStandard}>
+          Загрузить стандартные (НН)
+        </button>
+      </div>
+      {tribes.length === 0 ? (
+        <p className="pv-empty">Трайбы не добавлены.</p>
+      ) : (
+        <div className="pv-list">
+          {tribes.map((t) => (
+            <div key={t.id} className="tribe-manage-row">
+              <span className="tribe-manage-name"><TribeLabel tribe={t.name} size={16} /></span>
+              <button className="btn-icon danger pv-del" onClick={() => remove(t)} title="Удалить">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

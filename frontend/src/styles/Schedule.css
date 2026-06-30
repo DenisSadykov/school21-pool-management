@@ -9,7 +9,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .week-header-row,
@@ -17,9 +17,8 @@
 .week-add-row,
 .week-events-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(180px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 7px;
-  min-width: 1320px;
 }
 
 .week-block-row,
@@ -40,11 +39,30 @@
   border-radius: var(--radius-md);
   font-weight: 700;
   color: var(--text-primary);
-  padding: 6px 8px;
+  padding: 6px 7px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-xs);
+}
+
+.day-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.day-header-badge {
+  color: var(--warning);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.day-header.exam-day {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.38);
+  color: var(--text-primary);
 }
 
 .empty-block {
@@ -101,12 +119,13 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 8px;
+  padding: 6px;
   height: 100%;
 }
 
 .block-card.exam {
   border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .block-time {
@@ -114,7 +133,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   margin-bottom: 5px;
   min-width: 0;
 }
@@ -134,7 +153,7 @@
 }
 
 .block-capacity {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--text-secondary);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -179,7 +198,7 @@
 
 .assign-volunteer {
   display: grid;
-  grid-template-columns: 1fr 30px;
+  grid-template-columns: 1fr 40px;
   gap: 4px;
   margin-bottom: var(--spacing-sm);
 }
@@ -187,12 +206,13 @@
 .assign-volunteer select,
 .assign-volunteer button {
   min-width: 0;
+  min-height: var(--control-height);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
   color: var(--text-primary);
-  font-size: 0.78rem;
-  padding: 5px;
+  font-size: 0.875rem;
+  padding: 0 8px;
 }
 
 .assign-volunteer button {
@@ -222,7 +242,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 2px 6px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
 }
 
@@ -248,15 +268,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   background: var(--button-bg);
   color: var(--button-fg);
   border: none;
   border-radius: 5px;
-  padding: 4px 6px;
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
   font-weight: 700;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 .block-signup:hover { background: var(--button-hover); }
 .block-signup.leave {
@@ -279,9 +300,10 @@
   border: 1px dashed var(--border);
   color: var(--text-secondary);
   border-radius: var(--radius-md);
-  padding: 6px;
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   width: 100%;
 }
 .add-block-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
@@ -296,23 +318,26 @@
   padding: var(--spacing-sm);
 }
 .add-block-form input {
-  background: var(--bg-card);
+  background-color: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-primary);
   border-radius: var(--radius-sm);
-  padding: 4px;
-  font-size: 0.8rem;
+  min-height: var(--control-height);
+  padding: 0 8px;
+  font-size: 0.875rem;
   width: 100%;
 }
 .add-block-actions { display: flex; gap: 4px; width: 100%; }
 .btn-mini {
   flex: 1;
+  min-height: var(--control-height);
   background: var(--bg-hover);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  border-radius: var(--radius-sm);
-  padding: 4px;
+  border-radius: var(--radius-md);
+  padding: 0 var(--control-padding-x);
   cursor: pointer;
+  font-size: 0.875rem;
 }
 .btn-mini.primary { background: var(--button-bg); color: var(--button-fg); border: none; font-weight: 700; }
 
@@ -323,5 +348,9 @@
   .week-events-row {
     grid-template-columns: repeat(7, minmax(160px, 1fr));
     min-width: 1180px;
+  }
+
+  .week-table {
+    overflow-x: auto;
   }
 }

@@ -38,7 +38,7 @@
   }
 
   .main-content {
-    padding: var(--spacing-md);
+    padding: 14px;
   }
 }
 

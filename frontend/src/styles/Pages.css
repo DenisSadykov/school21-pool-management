@@ -11,7 +11,7 @@
 }
 
 .page-header h1 {
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   line-height: 1.15;
   color: var(--text-primary);
   font-weight: 700;
@@ -20,32 +20,33 @@
 
 .btn-primary,
 .btn-secondary {
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 4px;
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  border-radius: 6px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   transition: all var(--transition);
   cursor: pointer;
-  border: none;
+  font-size: 14px;
+  line-height: 1.4285;
 }
 
 .btn-primary {
   background: var(--button-bg);
   color: var(--button-fg);
-  border: 1px solid rgba(63, 185, 80, 0.45);
+  border: 1px solid rgba(9, 105, 218, 0.45);
 }
 
 .btn-primary:hover {
   background: var(--button-hover);
-  border-color: rgba(63, 185, 80, 0.6);
+  border-color: rgba(9, 105, 218, 0.6);
 }
 
 .btn-secondary {
   background: var(--bg-elevated);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 
@@ -77,15 +78,16 @@
   text-align: left;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
+  text-transform: none;
   font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
 }
 
 .data-table td {
   padding: 9px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
+  font-size: 0.875rem;
 }
 
 .data-table tbody tr:hover {
@@ -100,8 +102,8 @@
 .btn-icon {
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  width: 28px;
-  height: 28px;
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -130,7 +132,7 @@
   border-radius: 3px;
   font-size: 0.68rem;
   font-weight: 650;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   border: 1px solid transparent;
 }
 
@@ -168,20 +170,17 @@
 }
 
 .form-group label {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
-  padding: 7px 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  background-color: var(--bg-elevated);
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .form-group input:focus,

@@ -1,25 +1,39 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api, setSession } from '../api';
 import '../styles/Login.css';
 
+const ROLE_OPTIONS = [
+  { value: 'volunteer', label: 'Волонтер' },
+  { value: 'tribe_master', label: 'Трайб-мастер' },
+  { value: 'team_lead', label: 'Тимлид' },
+  { value: 'admin', label: 'Админ' },
+];
+
+const PASSWORD_ROLES = new Set(['team_lead', 'admin']);
+
 function Login({ setUser }) {
+  const [role, setRole] = useState(() => localStorage.getItem('loginRole') || 'volunteer');
   const [nick, setNick] = useState('');
   const [password, setPassword] = useState('');
-  const [needPassword, setNeedPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef(null);
-  const normalizedNick = nick.trim().toLowerCase();
-  const shouldShowPassword = useMemo(
-    () => needPassword || ['admin', 'teamlead', 'team_lead', 'тимлид', 'админ'].includes(normalizedNick),
-    [needPassword, normalizedNick],
-  );
+  const shouldShowPassword = PASSWORD_ROLES.has(role);
 
   useEffect(() => {
     if (shouldShowPassword) {
       passwordRef.current?.focus();
     }
   }, [shouldShowPassword]);
+
+  const handleRoleChange = (e) => {
+    const nextRole = e.target.value;
+    setRole(nextRole);
+    localStorage.setItem('loginRole', nextRole);
+    if (!PASSWORD_ROLES.has(nextRole)) {
+      setPassword('');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,10 +55,6 @@ function Login({ setUser }) {
       setSession(data.token, data.user);
       setUser(data.user);
     } catch (err) {
-      // если роль требует пароль — покажем поле пароля
-      if (/пароль/i.test(err.message) && !needPassword) {
-        setNeedPassword(true);
-      }
       setError(err.message);
     } finally {
       setLoading(false);
@@ -54,10 +64,20 @@ function Login({ setUser }) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>School 21 Pool</h1>
-        <p className="subtitle">Система управления бассейном</p>
+        <div className="login-intro">
+          <h1>School 21 Pool</h1>
+        </div>
 
         <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="role">Роль</label>
+            <select id="role" value={role} onChange={handleRoleChange}>
+              {ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="form-group">
             <label htmlFor="nick">Твой ник</label>
             <input
@@ -73,7 +93,7 @@ function Login({ setUser }) {
 
           {shouldShowPassword && (
             <div className="form-group">
-              <label htmlFor="password">Пароль (для тимлида / админа)</label>
+              <label htmlFor="password">Пароль</label>
               <input
                 ref={passwordRef}
                 id="password"
@@ -94,8 +114,7 @@ function Login({ setUser }) {
 
         <div className="login-footer">
           <p className="text-muted">
-            Волонтёры и трайб-мастера — вход по нику без пароля.<br />
-            Ник должен быть заранее внесён тимлидом.
+            Ник должен быть заранее добавлен в систему.
           </p>
         </div>
       </div>

@@ -30,12 +30,8 @@ function getMonday(iso) {
   return d;
 }
 
-function groupWeeks(days, tribeEvents = []) {
+function groupWeeks(days) {
   const byDate = new Map(days.map((day) => [day.date, day.blocks]));
-  const eventsByDate = new Map();
-  tribeEvents.forEach((event) => {
-    eventsByDate.set(event.date, [...(eventsByDate.get(event.date) || []), event]);
-  });
   const weekStarts = [...new Set(days.map((day) => toIso(getMonday(day.date))))].sort();
 
   return weekStarts.map((weekStart) => {
@@ -43,8 +39,7 @@ function groupWeeks(days, tribeEvents = []) {
     const weekDays = WEEKDAYS.map((label, index) => {
       const date = toIso(addDays(start, index));
       const blocks = [...(byDate.get(date) || [])].sort((a, b) => a.time_start.localeCompare(b.time_start));
-      const events = [...(eventsByDate.get(date) || [])].sort((a, b) => (a.time_start || '').localeCompare(b.time_start || ''));
-      return { date, label, blocks, events };
+      return { date, label, blocks };
     });
     const maxRows = Math.max(2, ...weekDays.map((day) => day.blocks.length));
     return { start: weekStart, days: weekDays, maxRows };
@@ -53,7 +48,6 @@ function groupWeeks(days, tribeEvents = []) {
 
 function Schedule({ user }) {
   const [data, setData] = useState({ pool: null, days: [] });
-  const [tribeEvents, setTribeEvents] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,13 +55,11 @@ function Schedule({ user }) {
 
   const load = useCallback(async () => {
     try {
-      const [res, events, people] = await Promise.all([
+      const [res, people] = await Promise.all([
         api.get('/api/schedule'),
-        api.get(`/api/tribe-events?start=${toIso(new Date())}`),
         isStaff ? api.get('/api/volunteers') : Promise.resolve([]),
       ]);
       setData(res);
-      setTribeEvents(events);
       setVolunteers(people);
     } catch (e) {
       setError(e.message);
@@ -142,8 +134,10 @@ function Schedule({ user }) {
       <div className="page">
         <h1>График смен</h1>
         <div className="empty-state">
-          <p>Активного бассейна пока нет.</p>
-          {isStaff && <p>Создай его в разделе «Настройка».</p>}
+          {isStaff
+            ? <p>Активного бассейна пока нет. Создай его в разделе «Настройка».</p>
+            : <p>Тебя пока не добавили на бассейн. Обратись к тимлиду.</p>
+          }
         </div>
       </div>
     );
@@ -158,32 +152,21 @@ function Schedule({ user }) {
         </div>
       ) : (
         <div className="schedule-weeks">
-          {groupWeeks(data.days, tribeEvents).map((week) => (
+          {groupWeeks(data.days).map((week) => (
             <div key={week.start} className="week-table">
               <div className="week-header-row">
                 {week.days.map((day) => (
-                  <div key={day.date} className="day-header">
-                    <span>{day.label}</span>
+                  <div
+                    key={day.date}
+                    className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''}`}
+                  >
+                    <span className="day-header-left">
+                      <span>{day.label}</span>
+                      {day.blocks.some((block) => block.label === 'EXAM') ? (
+                        <span className="day-header-badge">EXAM</span>
+                      ) : null}
+                    </span>
                     <span>{formatDay(day.date)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="week-events-row">
-                {week.days.map((day) => (
-                  <div key={`${day.date}-events`} className="week-cell">
-                    {day.events.length > 0 ? (
-                      <div className="tribe-events-in-day">
-                        {day.events.map((event) => (
-                          <div className="tribe-event-chip" key={event.id}>
-                            <span>Трайб {event.tribe}</span>
-                            <strong>{event.time_start ? `${event.time_start} · ` : ''}{event.title}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-event-row">—</div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -255,7 +238,7 @@ function BlockCard({
     <div className={`block-card ${block.label === 'EXAM' ? 'exam' : ''}`}>
       <div className="block-time">
         <span>{block.time_start}–{block.time_end}</span>
-        {block.label ? <span className="block-label">{block.label}</span> : null}
+        {block.label && block.label !== 'EXAM' ? <span className="block-label">{block.label}</span> : null}
         <div className="block-time-right">
           <span className="block-capacity">
             {block.capacity != null ? `${block.count} из ${block.capacity}` : block.count}
@@ -294,7 +277,7 @@ function BlockCard({
       {isStaff && (
         <div className="assign-volunteer">
           <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
-            <option value="">Добавить волонтёра</option>
+            <option value="">Волонтер</option>
             {availableVolunteers.map((v) => (
               <option key={v.id} value={v.id}>
                 @{v.nick}{v.telegram ? ` · ${v.telegram}` : ''}
