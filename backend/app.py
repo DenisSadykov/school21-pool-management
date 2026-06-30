@@ -819,11 +819,48 @@ def telegram_handle_help(chat_id):
             'Доступные команды:',
             '/start — привязать бота к платформе',
             '/rules — открыть правила школы',
+            '/penalties — ученики с нарушениями по статусам',
             '/photo_sync — обновить фото профиля из Telegram',
             '/help — показать это сообщение',
         ]),
     )
     return {'ok': True}
+
+
+def _telegram_user_from_tg(tg_user):
+    username = normalize_tg_username(tg_user.get('username'))
+    if not username:
+        return None
+    account = TelegramAccount.query.filter_by(telegram_username=username, is_linked=True).first()
+    if account:
+        return User.query.get(account.user_id)
+    return find_platform_user_by_username(username)
+
+
+def telegram_handle_penalties(chat_id, tg_user):
+    user = _telegram_user_from_tg(tg_user)
+    if not user:
+        telegram_send_message(chat_id, 'Сначала привяжи бота командой /start.')
+        return {'ok': False, 'reason': 'not_linked'}
+    pool_id = active_pool_id()
+    penalties = StudentPenalty.query.filter_by(pool_id=pool_id).order_by(StudentPenalty.student_name).all()
+    groups = {
+        'pending': ('Нарушили, но ещё не отрабатывают', []),
+        'in_workoff': ('На отработке', []),
+        'awaiting_unlock': ('Ждут разблокировки', []),
+    }
+    for penalty in penalties:
+        if penalty.workoff_status in groups:
+            groups[penalty.workoff_status][1].append(f'• {penalty.student_name} ({penalty.hours * penalty.multiplier}h)')
+    lines = ['Ученики с нарушениями:']
+    for _, (title, items) in groups.items():
+        lines.append('')
+        lines.append(title + ':')
+        lines.extend(items[:20] or ['нет'])
+        if len(items) > 20:
+            lines.append(f'...и ещё {len(items) - 20}')
+    telegram_send_message(chat_id, '\n'.join(lines))
+    return {'ok': True, 'action': 'penalties'}
 
 
 def telegram_handle_message(message):
@@ -839,6 +876,8 @@ def telegram_handle_message(message):
     if text.startswith('/rules'):
         telegram_send_message(chat_id, f'Правила школы: {SCHOOL_RULES_URL}')
         return {'ok': True, 'action': 'rules'}
+    if text.startswith('/penalties') or text.startswith('/violations'):
+        return telegram_handle_penalties(chat_id, tg_user)
     if text.startswith('/photo_sync'):
         return telegram_handle_photo_sync(chat_id, tg_user)
     if text.startswith('/help'):
