@@ -2078,8 +2078,8 @@ def update_user(user_id):
 @require_role('team_lead', 'admin')
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.role == 'admin':
-        return jsonify({'error': 'Администратора удалить нельзя'}), 400
+    if (user.nick or '').strip().lower() == 'admin':
+        return jsonify({'error': 'Пользователя @admin удалить нельзя'}), 400
     if user.role in ROLES_WITH_PASSWORD and g.user.role != 'admin':
         return jsonify({'error': 'Только админ может удалять тимлидов и админов'}), 403
     if user.id == g.user.id:

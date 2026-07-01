@@ -174,7 +174,7 @@ function Settings({ user }) {
               <StaffUserRow
                 key={u.id}
                 user={u}
-                canDelete={u.role !== 'admin' && u.id !== user.id}
+                canDelete={u.nick?.toLowerCase() !== 'admin' && u.id !== user.id}
                 onSaved={loadStaff}
                 onDeleted={() => setStaffUsers((prev) => prev.filter((item) => item.id !== u.id))}
               />
