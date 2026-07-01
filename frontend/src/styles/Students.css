@@ -911,4 +911,8 @@
     grid-template-columns: 1fr;
     gap: 4px;
   }
+
+  .students-table {
+    min-width: 820px;
+  }
 }

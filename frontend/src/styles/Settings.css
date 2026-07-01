@@ -143,3 +143,9 @@
 .sys-vol-menu-item:hover {
   background: var(--bg-hover);
 }
+
+@media (max-width: 768px) {
+  .sys-vol-table {
+    min-width: 560px;
+  }
+}

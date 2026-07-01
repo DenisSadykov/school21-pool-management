@@ -346,11 +346,20 @@
   .week-block-row,
   .week-add-row,
   .week-events-row {
-    grid-template-columns: repeat(7, minmax(160px, 1fr));
-    min-width: 1180px;
+    grid-template-columns: repeat(7, minmax(132px, 1fr));
+    min-width: 980px;
   }
 
   .week-table {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .block-card {
+    min-height: 100%;
+  }
+
+  .assign-volunteer {
+    grid-template-columns: 1fr;
   }
 }

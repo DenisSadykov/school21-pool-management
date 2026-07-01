@@ -214,7 +214,8 @@
 }
 
 .volunteer-table-wrap {
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-card);
@@ -682,10 +683,30 @@
     flex-direction: column;
   }
 
+  .group-title-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .panel-actions,
   .import-summary,
   .import-row {
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .volunteer-action-bar,
+  .add-tm-inline,
+  .panel-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .group-title-row strong {
+    align-self: flex-start;
+  }
+
+  .volunteer-table {
+    min-width: 820px;
   }
 }

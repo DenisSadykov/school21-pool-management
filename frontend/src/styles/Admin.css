@@ -214,4 +214,33 @@
   .admin-grid {
     grid-template-columns: 1fr;
   }
+
+  .admin-section {
+    padding: var(--spacing-md);
+  }
+
+  .admin-section-head,
+  .info-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-actions,
+  .admin-actions .btn-secondary,
+  .admin-password-form .btn-primary,
+  .btn-danger {
+    width: 100%;
+  }
+
+  .action-log-meta,
+  .action-log-content {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .action-log-content {
+    align-items: flex-start;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
 }

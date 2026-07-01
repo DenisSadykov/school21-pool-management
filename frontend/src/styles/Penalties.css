@@ -740,6 +740,16 @@
     flex-direction: column;
   }
 
+  .penalties-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .penalties-section,
+  .worked-off-section {
+    padding: var(--spacing-md);
+  }
+
   .btn-penalty-primary {
     width: 100%;
     justify-content: center;
@@ -771,7 +781,7 @@
 }
 
 @media (max-width: 520px) {
-  .penalties-grid {
-    grid-template-columns: 1fr;
+  .penalty-header {
+    align-items: flex-start;
   }
 }

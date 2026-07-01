@@ -21,6 +21,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .brand-logo {
@@ -35,6 +36,7 @@
   font-size: 1rem;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .navbar-actions {
@@ -237,16 +239,28 @@
 /* Responsive */
 @media (max-width: 768px) {
   .navbar-container {
-    padding: 0 var(--spacing-md);
+    padding: 0 12px;
+    gap: 8px;
   }
 
-  .navbar-brand h1 {
-    font-size: 1rem;
+  .brand-pool {
+    font-size: 0.9rem;
   }
 
+  .sync-state,
+  .user-role,
+  .dropdown-chevron,
   .btn-sync,
   .btn-download {
     display: none;
+  }
+
+  .navbar-actions {
+    gap: 8px;
+  }
+
+  .navbar-user {
+    padding: 0 8px;
   }
 
   .user-name {

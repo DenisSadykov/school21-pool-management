@@ -7,7 +7,9 @@ import TribeLabel from './TribeLabel';
 
 function Sidebar({ user }) {
   const location = useLocation();
-  const [isOpen, setIsOpen] = React.useState(true);
+  const [isOpen, setIsOpen] = React.useState(() => (
+    typeof window === 'undefined' ? true : window.innerWidth > 768
+  ));
   const [activePool, setActivePool] = useState(null);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
   const canUseTribe = user?.role === 'tribe_master' || isStaff;
@@ -18,6 +20,15 @@ function Sidebar({ user }) {
       setActivePool((pools || []).find((p) => p.active) || null);
     }).catch(() => {});
   }, [location.pathname]);
+
+  useEffect(() => {
+    function syncSidebarState() {
+      setIsOpen(window.innerWidth > 768);
+    }
+
+    window.addEventListener('resize', syncSidebarState);
+    return () => window.removeEventListener('resize', syncSidebarState);
+  }, []);
 
   const menuItems = [
     { path: '/', label: 'Дашборд', icon: Home },
@@ -30,6 +41,12 @@ function Sidebar({ user }) {
     ...(isStaff ? [{ path: '/notifications', label: 'Уведомления', icon: Bell }] : []),
     ...(isStaff ? [{ path: '/manage', label: 'Настройки бассейна', icon: SlidersHorizontal }] : []),
   ];
+
+  const handleNavClick = () => {
+    if (window.innerWidth <= 768) {
+      setIsOpen(false);
+    }
+  };
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
@@ -55,6 +72,7 @@ function Sidebar({ user }) {
             to={item.path}
             className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
             title={item.label}
+            onClick={handleNavClick}
           >
             <span className="nav-icon-slot">
               {item.path === '/my-tribe' && user?.role === 'tribe_master' && user?.tribe ? (

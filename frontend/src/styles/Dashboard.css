@@ -543,7 +543,11 @@
 
 @media (max-width: 768px) {
   .dashboard h1 {
-    font-size: 1.05rem;
+    font-size: 1.15rem;
+  }
+
+  .dashboard-head {
+    margin-bottom: 12px;
   }
 
   .stats-grid {
@@ -560,4 +564,26 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-sections {
+    gap: 12px;
+  }
+
+  .info-section {
+    padding: 12px;
+  }
+
+  .section-title {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-bottom: 12px;
+  }
+
+  .section-title-meta,
+  .attention-card-content span {
+    white-space: normal;
+  }
+
+  .attention-card {
+    padding: 10px;
+  }
 }

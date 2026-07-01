@@ -129,4 +129,8 @@
   .group-review-form {
     grid-template-columns: 1fr;
   }
+
+  .group-review-table {
+    min-width: 720px;
+  }
 }

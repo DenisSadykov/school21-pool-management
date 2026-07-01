@@ -329,4 +329,15 @@
   .notifications-notes-grid {
     grid-template-columns: 1fr;
   }
+
+  .notifications-tab,
+  .notifications-actions,
+  .notifications-actions > *,
+  .notifications-recipient-chip {
+    width: 100%;
+  }
+
+  .notifications-tab {
+    justify-content: center;
+  }
 }

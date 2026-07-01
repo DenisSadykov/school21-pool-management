@@ -58,9 +58,9 @@
 .inline-form input:not([type]) { min-width: 160px; }
 
 .inline-form .pool-form-name {
-  width: 640px;
-  flex: 0 0 640px;
-  min-width: 640px;
+  width: auto;
+  flex: 1 1 320px;
+  min-width: min(320px, 100%);
 }
 
 .inline-form .user-form-role {
@@ -293,4 +293,62 @@
   padding: 0;
   cursor: pointer;
   font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .inline-form,
+  .pool-row,
+  .user-row,
+  .pv-toolbar,
+  .pv-add-row,
+  .pv-head,
+  .pv-row,
+  .tribe-manage-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form,
+  .pool-row,
+  .user-row,
+  .tribe-manage-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inline-form > *,
+  .pool-actions,
+  .pool-actions > *,
+  .user-row > *,
+  .pv-toolbar > *,
+  .pv-add-row > * {
+    width: 100%;
+  }
+
+  .inline-form .pool-form-name {
+    flex: none;
+    min-width: 0;
+  }
+
+  .pool-row .pool-actions {
+    flex-direction: column;
+  }
+
+  .user-row .u-nick,
+  .user-row .u-name {
+    min-width: 0;
+  }
+
+  .pv-head {
+    display: none;
+  }
+
+  .pv-row {
+    gap: 6px;
+  }
+
+  .pv-del,
+  .tribe-manage-row .pv-del {
+    margin-left: 0;
+    justify-self: stretch;
+  }
 }
