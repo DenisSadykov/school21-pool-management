@@ -1115,7 +1115,7 @@ def telegram_handle_message(message):
     if text.startswith('/help'):
         return telegram_handle_help(chat_id)
 
-    telegram_send_message(chat_id, 'Я пока понимаю команды /start, /rules, /photo_sync и /help.')
+    telegram_send_message(chat_id, 'Я понимаю команды /start, /rules, /penalties, /photo_sync и /help.')
     return {'ok': True, 'action': 'unknown_command'}
 
 
@@ -3562,6 +3562,26 @@ def dispatch_notifications():
     limit = request.args.get('limit', default=20, type=int) or 20
     try:
         result = process_pending_notifications(limit=min(limit, 100))
+        db.session.commit()
+        return jsonify({'ok': True, **result})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/notifications/dispatch/manual', methods=['POST'])
+@require_role('team_lead', 'admin')
+def dispatch_notifications_manual():
+    limit = request.args.get('limit', default=50, type=int) or 50
+    try:
+        result = process_pending_notifications(limit=min(limit, 100))
+        log_action(
+            'dispatch',
+            'notification_queue',
+            None,
+            'Ручной запуск очереди Telegram уведомлений',
+            result,
+        )
         db.session.commit()
         return jsonify({'ok': True, **result})
     except Exception as exc:

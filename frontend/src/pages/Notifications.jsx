@@ -131,6 +131,19 @@ function Notifications() {
     }
   };
 
+  const runDispatchNow = async () => {
+    try {
+      const result = await api.post('/api/notifications/dispatch/manual?limit=50', {});
+      setMessage(
+        `Очередь уведомлений обработана: ${result.processed || 0} событий, `
+        + `отправлено ${result.sent || 0}, ошибок ${result.failed || 0}, пропущено ${result.skipped || 0}.`
+      );
+      load();
+    } catch (error) {
+      setMessage(`Ошибка запуска очереди: ${error.message}`);
+    }
+  };
+
   const removeBroadcast = async (id) => {
     if (!window.confirm('Удалить эту рассылку?')) return;
     try {
@@ -412,6 +425,9 @@ function Notifications() {
             <div className="notifications-form-head">
               <h2>Настройки Telegram</h2>
               <div className="notifications-actions">
+                <button className="btn-secondary" type="button" onClick={runDispatchNow}>
+                  Прогнать очередь сейчас
+                </button>
                 <button className="btn-secondary" type="button" onClick={syncTelegramCommands}>
                   Обновить меню команд
                 </button>
