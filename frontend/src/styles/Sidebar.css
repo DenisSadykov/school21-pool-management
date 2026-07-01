@@ -156,7 +156,6 @@
 
 .sidebar-duck-link:hover {
   color: var(--text-primary);
-  background: var(--bg-elevated);
 }
 
 .sidebar-duck-link:hover .sidebar-duck-image {
@@ -165,8 +164,8 @@
 }
 
 .sidebar-duck-image {
-  width: 60px;
-  height: 60px;
+  width: 69px;
+  height: 69px;
   object-fit: contain;
   flex-shrink: 0;
   transition: transform var(--transition), box-shadow var(--transition);
