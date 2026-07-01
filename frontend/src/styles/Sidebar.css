@@ -133,10 +133,6 @@
   display: none;
 }
 
-.sidebar.closed .sidebar-duck-text {
-  display: none;
-}
-
 .sidebar.closed .nav-item {
   justify-content: center;
   padding: 6px;
@@ -152,10 +148,9 @@
   align-items: center;
   justify-content: center;
   margin-top: auto;
-  padding: 12px 10px 8px;
+  padding: 16px 10px 14px;
   text-decoration: none;
   color: var(--text-secondary);
-  border-top: 1px solid var(--border);
   transition: transform var(--transition), color var(--transition), background var(--transition);
 }
 
@@ -170,8 +165,8 @@
 }
 
 .sidebar-duck-image {
-  width: 40px;
-  height: 40px;
+  width: 120px;
+  height: 120px;
   object-fit: contain;
   flex-shrink: 0;
   transition: transform var(--transition), box-shadow var(--transition);

@@ -498,13 +498,15 @@
 
 .dashboard-notes-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 220px));
+  gap: 12px;
+  justify-content: flex-start;
 }
 
 .dashboard-note-card {
-  min-height: 170px;
-  padding: 14px 12px 12px;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  padding: 12px 11px 11px;
   border-radius: 4px;
   border: 1px solid rgba(153, 112, 28, 0.18);
   background: linear-gradient(180deg, #fff8a6 0%, #ffe98b 100%);
@@ -535,19 +537,21 @@
 }
 
 .dashboard-note-card p {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   white-space: pre-wrap;
   color: var(--text-primary);
-  line-height: 1.55;
+  line-height: 1.42;
+  font-size: 0.94rem;
+  overflow: hidden;
 }
 
 .dashboard-note-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   color: var(--text-secondary);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 .text-muted {
