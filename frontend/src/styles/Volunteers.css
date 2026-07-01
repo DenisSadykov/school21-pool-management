@@ -318,6 +318,13 @@
   min-width: 0;
 }
 
+.person-fullname {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
 .person-meta {
   display: inline-flex;
   align-items: center;
@@ -732,6 +739,8 @@
   }
 
   .volunteer-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -744,12 +753,37 @@
     text-align: left !important;
   }
 
+  .volunteer-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .volunteer-table td:first-child,
+  .volunteer-table td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .volunteer-table td:first-child::before,
+  .volunteer-table td:last-child::before {
+    margin-bottom: 8px;
+  }
+
+  .volunteer-table td:nth-child(2) {
+    display: none;
+  }
+
   .volunteer-table td:last-child {
     border-bottom: none;
   }
 
   .person-identity {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .person-meta {
@@ -760,6 +794,10 @@
   .coin-breakdown,
   .volunteer-actions {
     align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .coins-control {
     justify-content: flex-start;
   }
 

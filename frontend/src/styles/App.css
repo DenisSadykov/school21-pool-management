@@ -34,7 +34,7 @@
 /* Responsive */
 @media (max-width: 768px) {
   .main-content {
-    padding: 88px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 76px 14px calc(40px + env(safe-area-inset-bottom, 0px));
   }
 }
 

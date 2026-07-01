@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SlidersHorizontal, Shield, LogOut, ChevronDown } from 'lucide-react';
+import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu } from 'lucide-react';
 import { api, buildAuthenticatedAssetUrl, clearSession } from '../api';
 import '../styles/Navbar.css';
 
@@ -11,7 +11,7 @@ const ROLE_LABELS = {
   admin: 'Админ',
 };
 
-function Navbar({ user, setUser }) {
+function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(user);
   const ref = useRef(null);
@@ -55,6 +55,15 @@ function Navbar({ user, setUser }) {
         </div>
 
         <div className="navbar-actions">
+          <button
+            className={`navbar-mobile-menu ${mobileSidebarOpen ? 'active' : ''}`}
+            onClick={onMobileMenuToggle}
+            aria-label="Открыть меню"
+            type="button"
+          >
+            <Menu size={20} />
+          </button>
+
           {isStaff && <div className="sync-state">synced</div>}
 
           <div className="navbar-user-wrap" ref={ref}>

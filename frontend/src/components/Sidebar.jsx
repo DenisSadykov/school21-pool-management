@@ -5,10 +5,11 @@ import { api } from '../api';
 import '../styles/Sidebar.css';
 import TribeLabel from './TribeLabel';
 
-function Sidebar({ user }) {
+function Sidebar({ user, mobileOpen, onMobileClose }) {
   const location = useLocation();
-  const [isOpen, setIsOpen] = React.useState(() => (
-    typeof window === 'undefined' ? true : window.innerWidth > 768
+  const [isDesktopOpen, setIsDesktopOpen] = React.useState(true);
+  const [isMobile, setIsMobile] = React.useState(() => (
+    typeof window !== 'undefined' && window.innerWidth <= 768
   ));
   const [activePool, setActivePool] = useState(null);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
@@ -23,9 +24,14 @@ function Sidebar({ user }) {
 
   useEffect(() => {
     function syncSidebarState() {
-      setIsOpen(window.innerWidth > 768);
+      const nextIsMobile = window.innerWidth <= 768;
+      setIsMobile(nextIsMobile);
+      if (!nextIsMobile) {
+        setIsDesktopOpen(true);
+      }
     }
 
+    syncSidebarState();
     window.addEventListener('resize', syncSidebarState);
     return () => window.removeEventListener('resize', syncSidebarState);
   }, []);
@@ -43,16 +49,18 @@ function Sidebar({ user }) {
   ];
 
   const handleNavClick = () => {
-    if (window.innerWidth <= 768) {
-      setIsOpen(false);
+    if (isMobile) {
+      onMobileClose();
     }
   };
+
+  const isOpen = isMobile ? mobileOpen : isDesktopOpen;
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       <button
         className="sidebar-toggle"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsDesktopOpen((prev) => !prev)}
         aria-label="Toggle sidebar"
       >
         ☰

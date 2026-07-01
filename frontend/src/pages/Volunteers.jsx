@@ -41,6 +41,7 @@ function PersonIdentity({ person }) {
       </span>
       <div className="person-identity-text">
         <strong className="volunteer-nick">@{person.nick}</strong>
+        {person.name && <div className="person-fullname">{person.name}</div>}
         <div className="person-meta">
           <span>{person.role === 'tribe_master' ? 'Трайб-мастер' : 'Волонтёр'}</span>
           <TelegramButton telegram={person.telegram} nick={person.nick} />
@@ -358,11 +359,11 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
 function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
   return (
     <tr>
-      <td>
+      <td data-label="Волонтёр">
         <PersonIdentity person={v} />
       </td>
-      <td>{v.name}</td>
-      <td>
+      <td data-label="Имя">{v.name}</td>
+      <td data-label="Трайб">
         {isStaff ? (
           <div className="tribe-select-wrap">
             <select value={v.tribe || ''} onChange={(e) => onUpdate(v.id, { tribe: e.target.value })}>
@@ -377,15 +378,15 @@ function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
           v.tribe ? <TribeLabel tribe={v.tribe} size={16} className="volunteer-tribe-pill" /> : '—'
         )}
       </td>
-      <td>{v.shifts_count ?? '—'}</td>
-      <td>
+      <td data-label="Смены">{v.shifts_count ?? '—'}</td>
+      <td data-label="Дополнения">
         <div className="status-list">
           {v.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
       </td>
-      <td><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
+      <td data-label="Коины"><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
       {isStaff && (
-        <td>
+        <td data-label="Управление">
           <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} />
         </td>
       )}
@@ -396,20 +397,20 @@ function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
 function VolunteerRow({ volunteer: v, isStaff, onUpdate }) {
   return (
     <tr>
-      <td>
+      <td data-label="Волонтёр">
         <PersonIdentity person={v} />
       </td>
-      <td>{v.name}</td>
-      <td>{v.shifts_count ?? '—'}</td>
-      <td>
+      <td data-label="Имя">{v.name}</td>
+      <td data-label="Смены">{v.shifts_count ?? '—'}</td>
+      <td data-label="Дополнения">
         <div className="status-list">
           {v.is_group_reviewer && <span className="status-pill group">Групповой</span>}
           {v.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
       </td>
-      <td><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
+      <td data-label="Коины"><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
       {isStaff && (
-        <td>
+        <td data-label="Управление">
           <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} />
         </td>
       )}

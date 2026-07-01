@@ -26,6 +26,7 @@ import './styles/theme.css';
 function App() {
   const [user, setUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
 
   useEffect(() => {
     setUser(getUser());
@@ -47,9 +48,18 @@ function App() {
   return (
     <BrowserRouter>
       <div className="app">
-        <Navbar user={user} setUser={setUser} />
+        <Navbar
+          user={user}
+          setUser={setUser}
+          mobileSidebarOpen={mobileSidebarOpen}
+          onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)}
+        />
         <div className="app-container">
-          <Sidebar user={user} />
+          <Sidebar
+            user={user}
+            mobileOpen={mobileSidebarOpen}
+            onMobileClose={() => setMobileSidebarOpen(false)}
+          />
           <main className="main-content">
             <Routes>
               <Route path="/" element={<Dashboard user={user} />} />
