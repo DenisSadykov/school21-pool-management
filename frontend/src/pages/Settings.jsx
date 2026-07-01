@@ -158,6 +158,10 @@ function Settings({ user }) {
       {isAdmin && (
         <section className="manage-section">
           <h2>Добавить администратора / тимлида</h2>
+          <p className="muted">
+            Здесь же указывается Telegram username для привязки через бота. После этого админ или тимлид пишет боту `/start`,
+            и его статус привязки будет виден во вкладке `Уведомления → Telegram`.
+          </p>
           <UserForm onDone={(t, nextUser) => {
             setMsg(t);
             if (nextUser) {
@@ -174,7 +178,7 @@ function Settings({ user }) {
               <StaffUserRow
                 key={u.id}
                 user={u}
-                canDelete={u.id !== user.id}
+                canDelete={u.role !== 'admin' && u.id !== user.id}
                 onSaved={loadStaff}
                 onDeleted={() => setStaffUsers((prev) => prev.filter((item) => item.id !== u.id))}
               />
@@ -244,7 +248,7 @@ function UserForm({ onDone }) {
         onChange={(e) => setForm({ ...form, nick: e.target.value })} />
       <input placeholder="имя" value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <input placeholder="@telegram" value={form.telegram} autoCapitalize="none"
+      <input className="user-form-telegram" placeholder="@telegram" value={form.telegram} autoCapitalize="none"
         onChange={(e) => setForm({ ...form, telegram: e.target.value })} />
       <select className="user-form-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
         <option value="team_lead">Тимлид</option>
@@ -354,7 +358,7 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
         <>
           <span className="u-nick">@{user.nick}</span>
           <span className="u-name">{user.name}</span>
-          <span className="u-name">{user.telegram || 'tg не указан'}</span>
+          <span className={`u-telegram ${user.telegram ? '' : 'is-empty'}`}>{user.telegram || 'tg не указан'}</span>
           <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
           <AvatarUploadButton userId={user.id} onDone={onSaved} />
           <button className="btn-icon" title="Редактировать" onClick={() => setEditing(true)}><Pencil size={16} /></button>

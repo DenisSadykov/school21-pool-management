@@ -95,6 +95,15 @@
   border-bottom: 1px solid var(--border-soft, var(--border));
 }
 
+.user-form-telegram,
+.u-telegram {
+  font-family: var(--font-mono);
+}
+
+.u-telegram.is-empty {
+  color: var(--text-secondary);
+}
+
 .sys-vol-person {
   display: inline-flex;
   align-items: center;
