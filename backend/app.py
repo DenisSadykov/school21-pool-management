@@ -2026,39 +2026,40 @@ def delete_pool(pool_id):
     pool = Pool.query.get_or_404(pool_id)
     if pool.active:
         return jsonify({'error': 'Сначала переведите активный бассейн в другой статус'}), 400
+    try:
+        block_ids = [row.id for row in ShiftBlock.query.with_entities(ShiftBlock.id).filter_by(pool_id=pool_id).all()]
+        student_ids = [row.id for row in Student.query.with_entities(Student.id).filter_by(pool_id=pool_id).all()]
+        penalty_ids = [row.id for row in StudentPenalty.query.with_entities(StudentPenalty.id).filter_by(pool_id=pool_id).all()]
+        notification_ids = [row.id for row in NotificationEvent.query.with_entities(NotificationEvent.id).filter_by(pool_id=pool_id).all()]
 
-    block_ids = [row.id for row in ShiftBlock.query.with_entities(ShiftBlock.id).filter_by(pool_id=pool_id).all()]
-    student_ids = [row.id for row in Student.query.with_entities(Student.id).filter_by(pool_id=pool_id).all()]
-    penalty_ids = [row.id for row in StudentPenalty.query.with_entities(StudentPenalty.id).filter_by(pool_id=pool_id).all()]
+        if block_ids:
+            Signup.query.filter(Signup.block_id.in_(block_ids)).delete(synchronize_session=False)
+        if student_ids:
+            StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
+        if penalty_ids:
+            PenaltyHistory.query.filter(PenaltyHistory.penalty_id.in_(penalty_ids)).delete(synchronize_session=False)
+        if notification_ids:
+            NotificationDelivery.query.filter(NotificationDelivery.notification_id.in_(notification_ids)).delete(synchronize_session=False)
 
-    if block_ids:
-        Signup.query.filter(Signup.block_id.in_(block_ids)).delete(synchronize_session=False)
-    if student_ids:
-        StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
-    if penalty_ids:
-        PenaltyHistory.query.filter(PenaltyHistory.penalty_id.in_(penalty_ids)).delete(synchronize_session=False)
+        ScheduleGeneration.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        ShiftBlock.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        PoolVolunteer.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        Tribe.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        Broadcast.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        DashboardNote.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        NotificationEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        RewardEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        GroupReview.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        TribeEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        StudentPenalty.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        Student.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
 
-    ScheduleGeneration.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    ShiftBlock.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    PoolVolunteer.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    Tribe.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    Broadcast.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    DashboardNote.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    NotificationDelivery.query.filter(
-        NotificationDelivery.notification_id.in_(
-            db.session.query(NotificationEvent.id).filter_by(pool_id=pool_id)
-        )
-    ).delete(synchronize_session=False)
-    NotificationEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    RewardEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    GroupReview.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    TribeEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    StudentPenalty.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-    Student.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
-
-    db.session.delete(pool)
-    db.session.commit()
-    return jsonify({'message': 'Бассейн удалён'})
+        db.session.delete(pool)
+        db.session.commit()
+        return jsonify({'message': 'Бассейн удалён'})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': f'Не удалось удалить бассейн: {exc}'}), 500
 
 
 @app.route('/api/pools/<int:pool_id>/volunteers', methods=['GET'])

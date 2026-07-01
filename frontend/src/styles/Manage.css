@@ -116,6 +116,14 @@
   gap: 6px;
   flex-shrink: 0;
 }
+
+.pool-rename-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+}
 .pool-row.archived { opacity: 0.65; }
 
 /* State badges */

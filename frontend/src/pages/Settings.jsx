@@ -68,7 +68,9 @@ function Settings({ user }) {
               <span className="pool-name">{p.name}{p.start_date ? ` · ${p.start_date}` : ''}</span>
               <div className="pool-actions">
                 <button
-                  className="btn-mini"
+                  className="btn-icon pool-rename-btn"
+                  title="Переименовать бассейн"
+                  aria-label={`Переименовать бассейн ${p.name}`}
                   onClick={async () => {
                     const nextName = window.prompt('Новое название бассейна', p.name);
                     if (nextName === null) return;
@@ -79,7 +81,7 @@ function Settings({ user }) {
                     loadPools();
                   }}
                 >
-                  <Pencil size={14} /> Переименовать
+                  <Pencil size={16} />
                 </button>
                 {!p.active && !p.archived && (
                   <button className="btn-mini primary"

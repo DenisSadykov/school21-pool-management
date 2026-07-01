@@ -320,7 +320,7 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
   }, [open]);
 
   return (
-    <div className="volunteer-menu" ref={menuRef}>
+    <div className={`volunteer-menu ${open ? 'open' : ''}`} ref={menuRef}>
       <button
         type="button"
         className="volunteer-menu-trigger"
