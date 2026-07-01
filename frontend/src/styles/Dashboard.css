@@ -519,18 +519,6 @@
   transform: rotate(1deg);
 }
 
-.dashboard-note-card::before {
-  content: '';
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  width: 58px;
-  height: 16px;
-  transform: translateX(-50%) rotate(-2deg);
-  background: rgba(255, 255, 255, 0.34);
-  border: 1px solid rgba(160, 160, 160, 0.1);
-}
-
 .dashboard-note-card.is-highlighted {
   background: linear-gradient(180deg, #ffd6a0 0%, #ffbe6f 100%);
   border-color: rgba(180, 76, 0, 0.22);
@@ -640,11 +628,6 @@
 
   .dashboard-note-card:nth-child(even) {
     transform: none;
-  }
-
-  .dashboard-note-card::before {
-    width: 46px;
-    height: 14px;
   }
 
   .dashboard-note-card p {
