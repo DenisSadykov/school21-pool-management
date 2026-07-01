@@ -92,6 +92,18 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
             <span className="nav-label">{item.label}</span>
           </Link>
         ))}
+
+        <a
+          className="sidebar-duck-link"
+          href="https://t.me/DenisSadykov"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Открыть Telegram DenisSadykov"
+          title="DenisSadykov в Telegram"
+        >
+          <img className="sidebar-duck-image" src="/duck-odessabu.png" alt="prod_by_odessabu" />
+          <span className="sidebar-duck-text">@DenisSadykov</span>
+        </a>
       </nav>
     </aside>
   );

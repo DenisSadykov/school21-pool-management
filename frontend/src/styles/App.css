@@ -34,11 +34,11 @@
 /* Responsive */
 @media (max-width: 768px) {
   .main-content {
-    padding: 76px 14px calc(72px + env(safe-area-inset-bottom, 0px));
+    padding: 76px 14px calc(108px + env(safe-area-inset-bottom, 0px));
   }
 
   .main-content > *:last-child {
-    margin-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    margin-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
   }
 }
 

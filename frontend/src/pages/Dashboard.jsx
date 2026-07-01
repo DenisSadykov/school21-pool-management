@@ -36,6 +36,11 @@ function getTelegramLink(telegram) {
   return username ? `https://t.me/${username}` : '';
 }
 
+function getTelegramBotLink(botUsername) {
+  const username = (botUsername || '').trim().replace(/^@+/, '');
+  return username ? `https://t.me/${username}` : '';
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -101,6 +106,7 @@ function OpsDashboard({ data }) {
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
   const tomorrowCoverageLabel = tomorrowCoverage(data?.tomorrow_blocks || []);
+  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
   const penaltyLinks = [
     {
       icon: CalendarClock,
@@ -137,16 +143,25 @@ function OpsDashboard({ data }) {
         {!telegram.linked && (
           <section className="info-section info-section-warning wide">
             <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
-            <p>
-              {telegram.needs_username
-                ? 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, сначала укажи свой Telegram username в системе.'
-                : 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, привяжи Telegram-бота.'}
-            </p>
-            <p className="text-muted">
-              {telegram.username
-                ? `Текущий username в системе: ${telegram.username}.`
-                : 'Сейчас username в системе не указан.'}
-            </p>
+            <div className="telegram-connect-card">
+              <div className="telegram-connect-copy">
+                <p>
+                  {telegram.needs_username
+                    ? 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, сначала укажи свой Telegram username в системе.'
+                    : 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, привяжи Telegram-бота.'}
+                </p>
+                <p className="text-muted">
+                  {telegram.username
+                    ? `Текущий username в системе: ${telegram.username}.`
+                    : 'Сейчас username в системе не указан.'}
+                </p>
+              </div>
+              {telegramBotLink && (
+                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+                  Открыть бота <ExternalLink size={16} />
+                </a>
+              )}
+            </div>
           </section>
         )}
 
@@ -195,6 +210,7 @@ function TribeMasterDashboard({ data }) {
   const tribe = data?.tribe || {};
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
+  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
   return (
     <>
       <div className="stats-grid ops-grid">
@@ -219,11 +235,20 @@ function TribeMasterDashboard({ data }) {
         {!telegram.linked && (
           <section className="info-section info-section-warning">
             <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
-            <p>
-              {telegram.needs_username
-                ? 'Чтобы получать уведомления о своих сменах и мероприятиях трайба, сначала укажи Telegram username.'
-                : 'Чтобы получать уведомления о сменах и событиях трайба, привяжи Telegram-бота.'}
-            </p>
+            <div className="telegram-connect-card">
+              <div className="telegram-connect-copy">
+                <p>
+                  {telegram.needs_username
+                    ? 'Чтобы получать уведомления о своих сменах и мероприятиях трайба, сначала укажи Telegram username.'
+                    : 'Чтобы получать уведомления о сменах и событиях трайба, привяжи Telegram-бота.'}
+                </p>
+              </div>
+              {telegramBotLink && (
+                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+                  Открыть бота <ExternalLink size={16} />
+                </a>
+              )}
+            </div>
           </section>
         )}
 
@@ -257,6 +282,7 @@ function VolunteerDashboard({ data, user }) {
   const briefAvailable = Boolean(todayExam || tomorrowExam);
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
+  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
 
   return (
     <>
@@ -264,16 +290,25 @@ function VolunteerDashboard({ data, user }) {
         {!telegram.linked && (
           <section className="info-section info-section-warning">
             <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
-            <p>
-              {telegram.needs_username
-                ? 'Чтобы получать уведомления о сменах и штрафах, сначала укажи свой Telegram username в профиле.'
-                : 'Чтобы получать уведомления о сменах, заменах и пенальти, привяжи аккаунт к Telegram-боту.'}
-            </p>
-            <p className="text-muted">
-              {telegram.username
-                ? `Текущий username в системе: ${telegram.username}.`
-                : 'Сейчас username в системе не указан.'}
-            </p>
+            <div className="telegram-connect-card">
+              <div className="telegram-connect-copy">
+                <p>
+                  {telegram.needs_username
+                    ? 'Чтобы получать уведомления о сменах и штрафах, сначала укажи свой Telegram username в профиле.'
+                    : 'Чтобы получать уведомления о сменах, заменах и пенальти, привяжи аккаунт к Telegram-боту.'}
+                </p>
+                <p className="text-muted">
+                  {telegram.username
+                    ? `Текущий username в системе: ${telegram.username}.`
+                    : 'Сейчас username в системе не указан.'}
+                </p>
+              </div>
+              {telegramBotLink && (
+                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+                  Открыть бота <ExternalLink size={16} />
+                </a>
+              )}
+            </div>
           </section>
         )}
 

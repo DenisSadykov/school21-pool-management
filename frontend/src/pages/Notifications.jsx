@@ -217,7 +217,7 @@ function Notifications() {
             <div className="notifications-form-head">
               <h2>Новая рассылка</h2>
               <button className="btn-primary" type="submit">
-                <Send size={16} /> Сохранить рассылку
+                <Send size={16} /> Отправить рассылку
               </button>
             </div>
             <div className="form-row">
@@ -295,8 +295,8 @@ function Notifications() {
                           className={`notifications-recipient-chip ${active ? 'active' : ''}`}
                           onClick={() => toggleLinkedUser(user.telegram)}
                         >
+                          <span className="notifications-recipient-chip-telegram">{user.telegram || `@${user.nick}`}</span>
                           <strong>{user.name}</strong>
-                          <span>{user.telegram || `@${user.nick}`}</span>
                         </button>
                       );
                     })}

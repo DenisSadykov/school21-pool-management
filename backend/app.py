@@ -608,6 +608,7 @@ def _telegram_link_status(user):
         'linked_at': account.linked_at.isoformat() if account and account.linked_at else None,
         'photo_url': account.photo_url if account else None,
         'needs_username': not username,
+        'bot_username': f'@{TELEGRAM_BOT_USERNAME}' if TELEGRAM_BOT_USERNAME else '',
     }
 
 

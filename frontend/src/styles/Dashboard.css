@@ -118,6 +118,30 @@
   background: rgba(254, 242, 242, 0.92);
 }
 
+.telegram-connect-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.telegram-connect-copy {
+  min-width: 0;
+}
+
+.info-section .telegram-connect-copy p {
+  margin: 0;
+}
+
+.info-section .telegram-connect-copy p + p {
+  margin-top: 6px;
+}
+
+.telegram-connect-action {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
 .info-section.wide {
   grid-column: 1 / -1;
 }
@@ -572,6 +596,16 @@
     padding: 12px;
   }
 
+  .telegram-connect-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .telegram-connect-copy p {
+    line-height: 1.35;
+  }
+
   .section-title {
     align-items: flex-start;
     flex-direction: column;
@@ -585,5 +619,40 @@
 
   .attention-card {
     padding: 10px;
+  }
+
+  .dashboard-notes-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+
+  .dashboard-note-card {
+    min-height: 0;
+    aspect-ratio: 1 / 1;
+    padding: 12px 10px 10px;
+    transform: none;
+  }
+
+  .dashboard-note-card:nth-child(even) {
+    transform: none;
+  }
+
+  .dashboard-note-card::before {
+    width: 46px;
+    height: 14px;
+  }
+
+  .dashboard-note-card p {
+    margin-top: 10px;
+    font-size: 0.92rem;
+    line-height: 1.38;
+    overflow: hidden;
+  }
+
+  .dashboard-note-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 }
