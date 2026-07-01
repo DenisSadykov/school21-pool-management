@@ -228,9 +228,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--bg-card);
@@ -239,15 +239,18 @@
 }
 
 .notifications-recipient-chip strong {
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   font-weight: 600;
   min-width: 0;
   flex: 1;
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .notifications-recipient-chip span {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
 }
 
@@ -255,6 +258,10 @@
   white-space: nowrap;
   color: var(--text-primary);
   font-weight: 600;
+  min-width: 0;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .notifications-recipient-chip.active {
@@ -359,13 +366,7 @@
     justify-content: center;
   }
 
-  .notifications-recipient-chip {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .notifications-recipient-chip strong {
-    text-align: left;
+  .notifications-recipient-picker {
+    padding: 12px 10px;
   }
 }

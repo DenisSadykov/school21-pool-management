@@ -150,7 +150,7 @@
 .sidebar-duck-link {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
   margin-top: auto;
   padding: 12px 10px 8px;
   text-decoration: none;
@@ -176,14 +176,6 @@
   flex-shrink: 0;
   transition: transform var(--transition), box-shadow var(--transition);
   border-radius: 12px;
-}
-
-.sidebar-duck-text {
-  font-size: 0.82rem;
-  font-weight: 700;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sidebar-footer {
@@ -244,8 +236,7 @@
 
   .sidebar.open .sidebar-nav,
   .sidebar.open .nav-label,
-  .sidebar.open .sidebar-pool-name span:last-child,
-  .sidebar.open .sidebar-duck-text {
+  .sidebar.open .sidebar-pool-name span:last-child {
     visibility: visible;
     display: block;
   }

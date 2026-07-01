@@ -102,7 +102,6 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
           title="DenisSadykov в Telegram"
         >
           <img className="sidebar-duck-image" src="/duck-odessabu.png" alt="prod_by_odessabu" />
-          <span className="sidebar-duck-text">@DenisSadykov</span>
         </a>
       </nav>
     </aside>

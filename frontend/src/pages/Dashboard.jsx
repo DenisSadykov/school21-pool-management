@@ -165,6 +165,11 @@ function OpsDashboard({ data }) {
           </section>
         )}
 
+        <section className="info-section wide dashboard-notes-section">
+          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <DashboardNotes notes={notes} />
+        </section>
+
         <section className="info-section">
           <SectionTitle
             icon={Calendar}
@@ -195,11 +200,6 @@ function OpsDashboard({ data }) {
         <section className="info-section wide">
           <SectionTitle icon={Users} title="Ближайшие трайб-мероприятия" tone="users" />
           <TribeEventList events={data?.tomorrow_tribe_events || []} empty="На завтра трайб-мероприятий нет." />
-        </section>
-
-        <section className="info-section wide">
-          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
-          <DashboardNotes notes={notes} />
         </section>
       </div>
     </>
@@ -252,6 +252,11 @@ function TribeMasterDashboard({ data }) {
           </section>
         )}
 
+        <section className="info-section wide dashboard-notes-section">
+          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <DashboardNotes notes={notes} />
+        </section>
+
         <section className="info-section">
           <SectionTitle icon={Calendar} title="Ближайшие встречи трайба" />
           <TribeEventList events={tribe.next_events || []} empty="Пока нет назначенных встреч трайба." />
@@ -263,11 +268,6 @@ function TribeMasterDashboard({ data }) {
         <section className="info-section">
           <SectionTitle icon={Trophy} title="Топ учеников по мероприятиям" />
           <TopStudents students={tribe.top_students || []} />
-        </section>
-
-        <section className="info-section wide">
-          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
-          <DashboardNotes notes={notes} />
         </section>
       </div>
     </>
@@ -312,7 +312,7 @@ function VolunteerDashboard({ data, user }) {
           </section>
         )}
 
-        <section className="info-section">
+        <section className="info-section dashboard-notes-section">
           <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
           <DashboardNotes notes={notes} />
         </section>
