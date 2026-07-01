@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { api, getToken, API_URL } from '../api';
+import { api, getToken, API_URL, emitPoolsChanged, buildAuthenticatedAssetUrl } from '../api';
 import '../styles/Manage.css';
 import '../styles/Settings.css';
 
@@ -48,6 +48,11 @@ function Settings({ user }) {
 
   const activePool = pools.find((p) => p.active);
 
+  const refreshPools = useCallback(() => {
+    loadPools();
+    emitPoolsChanged();
+  }, [loadPools]);
+
   return (
     <div className="page manage-page">
       <h1>Настройки</h1>
@@ -60,7 +65,15 @@ function Settings({ user }) {
           ? <p className="muted">Активный: <strong>{activePool.name}</strong></p>
           : <p className="muted">Нет активного бассейна — создай новый или активируй существующий.</p>
         }
-        <PoolForm onDone={(t) => { setMsg(t); loadPools(); }} />
+        <PoolForm onDone={(t, nextPool) => {
+          setMsg(t);
+          if (nextPool) {
+            setPools((prev) => [nextPool, ...prev]);
+          } else {
+            refreshPools();
+          }
+          emitPoolsChanged();
+        }} />
         <div className="pool-list">
           {pools.map((p) => (
             <div key={p.id} className={`pool-row ${p.active ? 'active' : ''} ${p.archived ? 'archived' : ''}`}>
@@ -76,16 +89,25 @@ function Settings({ user }) {
                     if (nextName === null) return;
                     const trimmed = nextName.trim();
                     if (!trimmed || trimmed === p.name) return;
-                    await api.patch(`/api/pools/${p.id}`, { name: trimmed });
+                    const updatedPool = await api.patch(`/api/pools/${p.id}`, { name: trimmed });
                     setMsg('Название бассейна обновлено');
-                    loadPools();
+                    setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
+                    emitPoolsChanged();
                   }}
                 >
                   <Pencil size={16} />
                 </button>
                 {!p.active && !p.archived && (
                   <button className="btn-mini primary"
-                    onClick={async () => { await api.post(`/api/pools/${p.id}/activate`); loadPools(); }}>
+                    onClick={async () => {
+                      const updatedPool = await api.post(`/api/pools/${p.id}/activate`);
+                      setPools((prev) => prev.map((item) => (
+                        item.id === p.id
+                          ? updatedPool
+                          : { ...item, active: false }
+                      )));
+                      emitPoolsChanged();
+                    }}>
                     Активировать
                   </button>
                 )}
@@ -93,12 +115,18 @@ function Settings({ user }) {
                   <button className="btn-mini danger-outline"
                     onClick={async () => {
                       if (!window.confirm(`Архивировать «${p.name}»? Волонтёры потеряют доступ.`)) return;
-                      await api.post(`/api/pools/${p.id}/archive`); loadPools();
+                      const updatedPool = await api.post(`/api/pools/${p.id}/archive`);
+                      setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
+                      emitPoolsChanged();
                     }}>В архив</button>
                 )}
                 {p.archived && (
                   <button className="btn-mini"
-                    onClick={async () => { await api.post(`/api/pools/${p.id}/unarchive`); loadPools(); }}>
+                    onClick={async () => {
+                      const updatedPool = await api.post(`/api/pools/${p.id}/unarchive`);
+                      setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
+                      emitPoolsChanged();
+                    }}>
                     Восстановить
                   </button>
                 )}
@@ -110,7 +138,8 @@ function Settings({ user }) {
                       try {
                         await api.del(`/api/pools/${p.id}`);
                         setMsg('Бассейн удалён');
-                        loadPools();
+                        setPools((prev) => prev.filter((item) => item.id !== p.id));
+                        emitPoolsChanged();
                       } catch (e) {
                         alert(e.message);
                       }
@@ -129,20 +158,26 @@ function Settings({ user }) {
       {isAdmin && (
         <section className="manage-section">
           <h2>Добавить администратора / тимлида</h2>
-          <UserForm onDone={(t) => { setMsg(t); loadStaff(); }} />
+          <UserForm onDone={(t, nextUser) => {
+            setMsg(t);
+            if (nextUser) {
+              setStaffUsers((prev) => {
+                const withoutSame = prev.filter((item) => item.id !== nextUser.id);
+                return [...withoutSame, nextUser].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+              });
+            } else {
+              loadStaff();
+            }
+          }} />
           <div className="user-list">
             {staffUsers.map((u) => (
-              <div key={u.id} className="user-row">
-                <span className="u-nick">@{u.nick}</span>
-                <span className="u-name">{u.name}</span>
-                <span className={`u-role role-${u.role}`}>{ROLE_LABELS[u.role]}</span>
-                <button className="btn-icon danger" title="Удалить"
-                  onClick={async () => {
-                    if (!window.confirm(`Удалить @${u.nick}?`)) return;
-                    try { await api.del(`/api/users/${u.id}`); loadStaff(); }
-                    catch (e) { alert(e.message); }
-                  }}><Trash2 size={16} /></button>
-              </div>
+              <StaffUserRow
+                key={u.id}
+                user={u}
+                canDelete={u.id !== user.id}
+                onSaved={loadStaff}
+                onDeleted={() => setStaffUsers((prev) => prev.filter((item) => item.id !== u.id))}
+              />
             ))}
           </div>
         </section>
@@ -176,9 +211,9 @@ function PoolForm({ onDone }) {
     e.preventDefault();
     if (!form.name.trim()) return;
     try {
-      await api.post('/api/pools', form);
+      const pool = await api.post('/api/pools', form);
       setForm({ name: '', start_date: '' });
-      onDone('Бассейн добавлен');
+      onDone('Бассейн добавлен', pool);
     } catch (err) { alert(err.message); }
   };
   return (
@@ -193,14 +228,14 @@ function PoolForm({ onDone }) {
 }
 
 function UserForm({ onDone }) {
-  const [form, setForm] = useState({ nick: '', name: '', role: 'team_lead', password: '' });
+  const [form, setForm] = useState({ nick: '', name: '', telegram: '', role: 'team_lead', password: '' });
   const submit = async (e) => {
     e.preventDefault();
     if (!form.nick.trim()) return;
     try {
-      await api.post('/api/users', form);
-      setForm({ nick: '', name: '', role: form.role, password: '' });
-      onDone(`@${form.nick} добавлен`);
+      const createdUser = await api.post('/api/users', form);
+      setForm({ nick: '', name: '', telegram: '', role: form.role, password: '' });
+      onDone(`@${form.nick} добавлен`, createdUser);
     } catch (err) { alert(err.message); }
   };
   return (
@@ -209,6 +244,8 @@ function UserForm({ onDone }) {
         onChange={(e) => setForm({ ...form, nick: e.target.value })} />
       <input placeholder="имя" value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <input placeholder="@telegram" value={form.telegram} autoCapitalize="none"
+        onChange={(e) => setForm({ ...form, telegram: e.target.value })} />
       <select className="user-form-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
         <option value="team_lead">Тимлид</option>
         <option value="admin">Админ</option>
@@ -243,6 +280,96 @@ function GlobalVolunteerUpload({ onDone }) {
         ⬆ Загрузить Excel
         <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={importFile} />
       </label>
+    </div>
+  );
+}
+
+function AvatarUploadButton({ userId, onDone }) {
+  const inputRef = useRef(null);
+
+  const uploadFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      await api.upload(`/api/users/${userId}/avatar`, form);
+      onDone?.();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className="btn-mini" onClick={() => inputRef.current?.click()}>
+        Фото
+      </button>
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={uploadFile} />
+    </>
+  );
+}
+
+function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    nick: user.nick || '',
+    name: user.name || '',
+    telegram: user.telegram || '',
+    password: '',
+  });
+
+  useEffect(() => {
+    setForm({
+      nick: user.nick || '',
+      name: user.name || '',
+      telegram: user.telegram || '',
+      password: '',
+    });
+  }, [user]);
+
+  const save = async () => {
+    await api.patch(`/api/users/${user.id}`, form);
+    setEditing(false);
+    onSaved?.();
+  };
+
+  return (
+    <div className="user-row">
+      <span className="u-avatar">
+        {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
+      </span>
+      {editing ? (
+        <>
+          <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <input value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@telegram" />
+          <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="новый пароль" />
+          <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+          <button className="btn-mini primary" type="button" onClick={save}>Сохранить</button>
+          <button className="btn-mini" type="button" onClick={() => setEditing(false)}>Отмена</button>
+        </>
+      ) : (
+        <>
+          <span className="u-nick">@{user.nick}</span>
+          <span className="u-name">{user.name}</span>
+          <span className="u-name">{user.telegram || 'tg не указан'}</span>
+          <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+          <AvatarUploadButton userId={user.id} onDone={onSaved} />
+          <button className="btn-icon" title="Редактировать" onClick={() => setEditing(true)}><Pencil size={16} /></button>
+          {canDelete && (
+            <button className="btn-icon danger" title="Удалить"
+              onClick={async () => {
+                if (!window.confirm(`Удалить @${user.nick}?`)) return;
+                try {
+                  await api.del(`/api/users/${user.id}`);
+                  onDeleted?.();
+                } catch (e) { alert(e.message); }
+              }}><Trash2 size={16} /></button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -309,7 +436,12 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
             className="sys-vol-input"
           />
         ) : (
-          volunteer.name
+          <div className="sys-vol-person">
+            <span className="u-avatar">
+              {volunteer.avatar_url ? <img src={buildAuthenticatedAssetUrl(volunteer.avatar_url)} alt={volunteer.name || volunteer.nick} /> : (volunteer.nick || '??').slice(0, 2).toUpperCase()}
+            </span>
+            <span>{volunteer.name}</span>
+          </div>
         )}
       </td>
       <td className="nick-cell">
@@ -362,6 +494,7 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
           </div>
         ) : (
           <div className="sys-vol-menu" ref={menuRef}>
+            <AvatarUploadButton userId={volunteer.id} onDone={onSaved} />
             <button
               type="button"
               className="sys-vol-menu-trigger"

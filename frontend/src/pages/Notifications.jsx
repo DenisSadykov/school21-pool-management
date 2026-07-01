@@ -16,12 +16,14 @@ const DEFAULT_BROADCAST = {
   role: '',
   duty_window: '',
   usernames: '',
+  is_anonymous: false,
 };
 
 const DEFAULT_NOTE = {
   text: '',
   is_pinned: false,
   is_highlighted: false,
+  is_anonymous: false,
 };
 
 const DEFAULT_TELEGRAM_SETTINGS = {
@@ -39,8 +41,10 @@ function Notifications() {
   const [noteForm, setNoteForm] = useState(DEFAULT_NOTE);
   const [telegramSettings, setTelegramSettings] = useState(DEFAULT_TELEGRAM_SETTINGS);
 
-  const load = async () => {
-    setLoading(true);
+  const loadOverview = async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
       const overviewData = await api.get('/api/notifications/overview');
       setOverview(overviewData);
@@ -48,13 +52,19 @@ function Notifications() {
     } catch (error) {
       setMessage(`Ошибка загрузки: ${error.message}`);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    load();
+    loadOverview({ showLoading: true });
   }, []);
+
+  const patchOverview = (updater) => {
+    setOverview((prev) => (prev ? updater(prev) : prev));
+  };
 
   const linkedUsers = overview?.linked_users || [];
   const selectedUsernames = useMemo(() => (
@@ -79,9 +89,10 @@ function Notifications() {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
-      await api.post('/api/notifications/broadcasts', {
+      const createdBroadcast = await api.post('/api/notifications/broadcasts', {
         text: broadcastForm.text,
         priority: broadcastForm.priority,
+        is_anonymous: broadcastForm.is_anonymous,
         filters: {
           role: broadcastForm.role || null,
           duty_window: broadcastForm.duty_window || null,
@@ -90,7 +101,11 @@ function Notifications() {
       });
       setBroadcastForm(DEFAULT_BROADCAST);
       setMessage('Рассылка сохранена в системе уведомлений.');
-      load();
+      patchOverview((prev) => ({
+        ...prev,
+        broadcasts: [createdBroadcast, ...(prev.broadcasts || [])],
+      }));
+      loadOverview();
     } catch (error) {
       setMessage(`Ошибка рассылки: ${error.message}`);
     }
@@ -99,10 +114,13 @@ function Notifications() {
   const submitNote = async (event) => {
     event.preventDefault();
     try {
-      await api.post('/api/notifications/notes', noteForm);
+      const createdNote = await api.post('/api/notifications/notes', noteForm);
       setNoteForm(DEFAULT_NOTE);
       setMessage('Заметка добавлена в доску объявлений.');
-      load();
+      patchOverview((prev) => ({
+        ...prev,
+        notes: [createdNote, ...(prev.notes || [])],
+      }));
     } catch (error) {
       setMessage(`Ошибка заметки: ${error.message}`);
     }
@@ -116,7 +134,11 @@ function Notifications() {
       });
       setTelegramSettings(response.telegram_settings || telegramSettings);
       setMessage('Настройки Telegram сохранены.');
-      load();
+      patchOverview((prev) => ({
+        ...prev,
+        telegram_settings: response.telegram_settings || telegramSettings,
+        test_mode: Boolean((response.telegram_settings || telegramSettings).test_mode),
+      }));
     } catch (error) {
       setMessage(`Ошибка сохранения настроек: ${error.message}`);
     }
@@ -138,7 +160,7 @@ function Notifications() {
         `Очередь уведомлений обработана: ${result.processed || 0} событий, `
         + `отправлено ${result.sent || 0}, ошибок ${result.failed || 0}, пропущено ${result.skipped || 0}.`
       );
-      load();
+      loadOverview();
     } catch (error) {
       setMessage(`Ошибка запуска очереди: ${error.message}`);
     }
@@ -149,7 +171,10 @@ function Notifications() {
     try {
       await api.del(`/api/notifications/broadcasts/${id}`);
       setMessage('Рассылка удалена.');
-      load();
+      patchOverview((prev) => ({
+        ...prev,
+        broadcasts: (prev.broadcasts || []).filter((item) => item.id !== id),
+      }));
     } catch (error) {
       setMessage(`Ошибка удаления: ${error.message}`);
     }
@@ -160,7 +185,10 @@ function Notifications() {
     try {
       await api.del(`/api/notifications/notes/${id}`);
       setMessage('Заметка удалена.');
-      load();
+      patchOverview((prev) => ({
+        ...prev,
+        notes: (prev.notes || []).filter((item) => item.id !== id),
+      }));
     } catch (error) {
       setMessage(`Ошибка удаления: ${error.message}`);
     }
@@ -231,6 +259,16 @@ function Notifications() {
                   placeholder="Например: завтра в 14:00 проверьте обновленный график смен."
                 />
               </div>
+            </div>
+            <div className="notifications-checkboxes">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={broadcastForm.is_anonymous}
+                  onChange={(e) => setBroadcastForm((prev) => ({ ...prev, is_anonymous: e.target.checked }))}
+                />
+                Отправить анонимно
+              </label>
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -313,6 +351,7 @@ function Notifications() {
                   <th>Когда</th>
                   <th>Статус</th>
                   <th>Приоритет</th>
+                  <th>Автор</th>
                   <th>Фильтры</th>
                   <th>Текст</th>
                   <th>Действия</th>
@@ -320,13 +359,14 @@ function Notifications() {
               </thead>
               <tbody>
                 {(overview?.broadcasts || []).length === 0 ? (
-                  <tr><td className="text-center" colSpan="6">Рассылок пока нет.</td></tr>
+                  <tr><td className="text-center" colSpan="7">Рассылок пока нет.</td></tr>
                 ) : (
                   (overview?.broadcasts || []).map((item) => (
                     <tr key={item.id}>
                       <td>{item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}</td>
                       <td>{formatBroadcastStatus(item.status)}</td>
                       <td>{formatPriority(item.priority)}</td>
+                      <td>{formatAuthor(item)}</td>
                       <td>{formatFilters(item.filters)}</td>
                       <td className="notifications-text-cell">{item.text}</td>
                       <td>
@@ -379,6 +419,14 @@ function Notifications() {
                 />
                 Выделить ярче
               </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={noteForm.is_anonymous}
+                  onChange={(e) => setNoteForm((prev) => ({ ...prev, is_anonymous: e.target.checked }))}
+                />
+                Опубликовать анонимно
+              </label>
             </div>
           </form>
 
@@ -409,8 +457,8 @@ function Notifications() {
                     </button>
                   </div>
                   <p>{note.text}</p>
-                  <small>
-                    {note.author_nick ? `@${note.author_nick}` : 'система'} · {note.updated_at ? new Date(note.updated_at).toLocaleString('ru-RU') : ''}
+                  <small className="notifications-note-signature">
+                    {formatAuthor(note)} · {note.updated_at ? new Date(note.updated_at).toLocaleString('ru-RU') : ''}
                   </small>
                 </article>
               ))
@@ -601,6 +649,13 @@ function formatFilters(filters) {
     chunks.push(`ники: ${filters.usernames.join(', ')}`);
   }
   return chunks.join(' · ') || 'все доступные получатели';
+}
+
+function formatAuthor(item) {
+  if (item?.is_anonymous) return 'анонимно';
+  if (item?.author_name && item?.author_nick) return `${item.author_name} (@${item.author_nick})`;
+  if (item?.author_nick) return `@${item.author_nick}`;
+  return 'система';
 }
 
 function formatHourLabel(hour) {

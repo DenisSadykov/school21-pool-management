@@ -4,6 +4,7 @@ import time
 import threading
 import zipfile
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from io import BytesIO
 from functools import wraps
 from datetime import datetime, date, timedelta
@@ -16,6 +17,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env.local'), override=True)
 
 app = Flask(__name__)
 
@@ -377,6 +379,7 @@ class Broadcast(db.Model):
     filters = db.Column(db.Text)
     priority = db.Column(db.String(20), default='normal')
     status = db.Column(db.String(20), default='draft')
+    is_anonymous = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -390,6 +393,7 @@ class DashboardNote(db.Model):
     is_pinned = db.Column(db.Boolean, default=False)
     is_highlighted = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
+    is_anonymous = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -558,10 +562,16 @@ def _telegram_account_for_user(user_id):
     return TelegramAccount.query.filter_by(user_id=user_id, is_linked=True).first()
 
 
+def _telegram_account_any(user_id):
+    if not user_id:
+        return None
+    return TelegramAccount.query.filter_by(user_id=user_id).first()
+
+
 def _avatar_url_for_user(user):
     if not user:
         return None
-    account = _telegram_account_for_user(user.id)
+    account = _telegram_account_any(user.id)
     if not account or not (account.photo_file_id or account.photo_url):
         return None
     return f'/api/users/{user.id}/avatar'
@@ -574,7 +584,21 @@ def _telegram_file_download_url(file_path):
 
 
 def _download_telegram_photo_bytes(account):
-    if not account or not account.photo_file_id:
+    if not account:
+        return None, None
+    if account.photo_url and account.photo_url.startswith('data:'):
+        header, _, data = account.photo_url.partition(',')
+        if not data:
+            return None, None
+        mime = 'image/jpeg'
+        if ';base64' in header:
+            mime = header[5:].split(';', 1)[0] or mime
+        try:
+            import base64
+            return base64.b64decode(data), mime
+        except Exception:
+            return None, None
+    if not account.photo_file_id:
         return None, None
     import requests
 
@@ -601,7 +625,7 @@ def _telegram_link_status(user):
             'linked_at': None,
         }
     username = _clean_telegram_username(user.telegram)
-    account = TelegramAccount.query.filter_by(user_id=user.id).first()
+    account = _telegram_account_any(user.id)
     linked = bool(account and account.is_linked)
     return {
         'username': f'@{account.telegram_username}' if account and account.telegram_username else (f'@{username}' if username else ''),
@@ -624,8 +648,9 @@ def _dashboard_note_to_dict(note):
         'is_pinned': bool(note.is_pinned),
         'is_highlighted': bool(note.is_highlighted),
         'is_active': bool(note.is_active),
-        'author_nick': author.nick if author else '',
-        'author_name': author.name if author else '',
+        'is_anonymous': bool(note.is_anonymous),
+        'author_nick': '' if note.is_anonymous else (author.nick if author else ''),
+        'author_name': '' if note.is_anonymous else (author.name if author else ''),
         'created_at': note.created_at.isoformat() if note.created_at else None,
         'updated_at': note.updated_at.isoformat() if note.updated_at else None,
     }
@@ -658,8 +683,9 @@ def _broadcast_to_dict(broadcast):
         'filters': filters,
         'priority': broadcast.priority,
         'status': _broadcast_runtime_status(broadcast),
-        'author_nick': author.nick if author else '',
-        'author_name': author.name if author else '',
+        'is_anonymous': bool(broadcast.is_anonymous),
+        'author_nick': '' if broadcast.is_anonymous else (author.nick if author else ''),
+        'author_name': '' if broadcast.is_anonymous else (author.name if author else ''),
         'created_at': broadcast.created_at.isoformat() if broadcast.created_at else None,
         'updated_at': broadcast.updated_at.isoformat() if broadcast.updated_at else None,
     }
@@ -672,9 +698,13 @@ def _unlinked_users_for_pool(pool_id):
     volunteer_ids = {
         row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
     } if pool_id else set()
-    if not volunteer_ids:
+    staff_ids = {
+        row.id for row in User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead'])).with_entities(User.id).all()
+    }
+    candidate_ids = volunteer_ids | staff_ids
+    if not candidate_ids:
         return []
-    users = User.query.filter(User.id.in_(volunteer_ids)).order_by(User.role, User.nick).all()
+    users = User.query.filter(User.id.in_(candidate_ids)).order_by(User.role, User.nick).all()
     result = []
     for user in users:
         username = _clean_telegram_username(user.telegram)
@@ -696,13 +726,17 @@ def _linked_users_for_pool(pool_id):
     volunteer_ids = {
         row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
     } if pool_id else set()
-    if not volunteer_ids:
+    staff_ids = {
+        row.id for row in User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead'])).with_entities(User.id).all()
+    }
+    candidate_ids = volunteer_ids | staff_ids
+    if not candidate_ids:
         return []
     rows = (
         db.session.query(User, TelegramAccount)
         .join(TelegramAccount, TelegramAccount.user_id == User.id)
         .filter(
-            User.id.in_(volunteer_ids),
+            User.id.in_(candidate_ids),
             TelegramAccount.is_linked.is_(True),
         )
         .order_by(User.role, User.nick)
@@ -1142,6 +1176,12 @@ def build_notification_text(event):
     text = (payload.get('text') or '').strip()
     if not text:
         text = f'Новое уведомление типа {event.type}.'
+    if event.source_entity == 'broadcast' and event.source_entity_id:
+        broadcast = Broadcast.query.get(event.source_entity_id)
+        if broadcast and not broadcast.is_anonymous:
+            author = User.query.get(broadcast.author_id) if broadcast.author_id else None
+            if author:
+                text = f'{text}\n\nОтправил: {author.name or author.nick} (@{author.nick})'
     if get_telegram_settings()['test_mode']:
         text = f'[TEST MODE]\n{text}'
     return text
@@ -1792,8 +1832,8 @@ def me():
 @require_auth
 def user_avatar(user_id):
     user = User.query.get_or_404(user_id)
-    account = _telegram_account_for_user(user.id)
-    if not account or not account.photo_file_id:
+    account = _telegram_account_any(user.id)
+    if not account or not (account.photo_file_id or account.photo_url):
         return jsonify({'error': 'Фото не найдено'}), 404
     try:
         photo_bytes, content_type = _download_telegram_photo_bytes(account)
@@ -1809,6 +1849,39 @@ def user_avatar(user_id):
     except Exception as exc:
         db.session.rollback()
         return jsonify({'error': f'Не удалось получить фото: {exc}'}), 502
+
+
+@app.route('/api/users/<int:user_id>/avatar', methods=['POST'])
+@require_role('team_lead', 'admin')
+def upload_user_avatar(user_id):
+    user = User.query.get_or_404(user_id)
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'Загрузите изображение'}), 400
+    mime = (file.mimetype or '').lower()
+    if mime not in {'image/jpeg', 'image/png', 'image/webp', 'image/jpg'}:
+        return jsonify({'error': 'Поддерживаются только JPG, PNG и WEBP'}), 400
+    content = file.read()
+    if not content:
+        return jsonify({'error': 'Файл пустой'}), 400
+    if len(content) > 3 * 1024 * 1024:
+        return jsonify({'error': 'Файл слишком большой. Максимум 3 МБ'}), 400
+    import base64
+    account = _telegram_account_any(user.id)
+    if not account:
+        account = TelegramAccount(
+            user_id=user.id,
+            telegram_username=normalize_tg_username(user.telegram or user.nick),
+            is_linked=False,
+            delivery_enabled=False,
+        )
+        db.session.add(account)
+    account.photo_file_id = None
+    account.photo_url = f'data:{mime};base64,{base64.b64encode(content).decode("ascii")}'
+    account.last_photo_sync_at = datetime.utcnow()
+    db.session.commit()
+    log_action('upload', 'user_avatar', user.id, 'Загружено фото профиля через платформу', actor=g.user)
+    return jsonify({'ok': True, 'avatar_url': _avatar_url_for_user(user)})
 
 
 # ==================== Пользователи (волонтёры) ====================
@@ -1874,6 +1947,57 @@ def create_user():
     db.session.add(user)
     db.session.commit()
     return jsonify(user.to_dict()), 201
+
+
+@app.route('/api/users/<int:user_id>', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.role in ROLES_WITH_PASSWORD and g.user.role != 'admin':
+        return jsonify({'error': 'Только админ может редактировать тимлидов и админов'}), 403
+    data = request.json or {}
+    changes = {}
+
+    if 'name' in data:
+        new_name = (data.get('name') or '').strip() or user.nick
+        old_name = user.name or user.nick
+        if old_name != new_name:
+            changes['name'] = {'from': old_name, 'to': new_name}
+        user.name = new_name
+
+    if 'nick' in data:
+        new_nick = (data.get('nick') or '').strip()
+        if not new_nick:
+            return jsonify({'error': 'Укажите ник'}), 400
+        existing = User.query.filter(db.func.lower(User.nick) == new_nick.lower(), User.id != user.id).first()
+        if existing:
+            return jsonify({'error': 'Такой ник уже есть'}), 409
+        if user.nick != new_nick:
+            changes['nick'] = {'from': user.nick, 'to': new_nick}
+        user.nick = new_nick
+
+    if 'telegram' in data:
+        raw_telegram = (data.get('telegram') or '').strip()
+        new_telegram = raw_telegram if not raw_telegram or raw_telegram.startswith('@') else f'@{raw_telegram}'
+        old_telegram = user.telegram or ''
+        if old_telegram != (new_telegram or ''):
+            changes['telegram'] = {'from': old_telegram or None, 'to': new_telegram or None}
+        user.telegram = new_telegram or None
+        account = _telegram_account_any(user.id)
+        if account and not account.is_linked:
+            account.telegram_username = normalize_tg_username(user.telegram or user.nick)
+
+    if 'password' in data and user.role in ROLES_WITH_PASSWORD:
+        password = data.get('password') or ''
+        if password:
+            if len(password) < 4:
+                return jsonify({'error': 'Пароль должен быть не короче 4 символов'}), 400
+            user.password_hash = generate_password_hash(password)
+            changes['password'] = {'from': 'set', 'to': 'updated'}
+
+    log_action('update', 'user', user.id, 'Обновлён пользователь', {'changes': changes}, actor=g.user)
+    db.session.commit()
+    return jsonify(user.to_dict())
 
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
@@ -2681,24 +2805,88 @@ def get_volunteers():
         pvs = PoolVolunteer.query.filter_by(pool_id=pool_id).all()
         pv_map = {pv.user_id: pv for pv in pvs}
         users = User.query.filter(User.id.in_(list(pv_map.keys()))).all()
+        user_ids = [user.id for user in users]
+        pool = Pool.query.get(pool_id)
+        shift_counts = defaultdict(int)
+        reward_buckets_by_user = defaultdict(dict)
+
+        signup_rows = (
+            db.session.query(Signup.user_id, ShiftBlock)
+            .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+            .filter(Signup.user_id.in_(user_ids), ShiftBlock.pool_id == pool_id)
+            .all()
+            if user_ids else []
+        )
+        for user_id, block in signup_rows:
+            shift_counts[user_id] += 1
+            hours = _block_hours(block)
+            reward_type, label, rate = _shift_reward_type(block, pool)
+            _add_reward(reward_buckets_by_user[user_id], reward_type, label, hours, int(hours * rate))
+
+        group_rows = (
+            db.session.query(
+                GroupReview.reviewer_id,
+                db.func.coalesce(db.func.sum(GroupReview.quantity), 0),
+            )
+            .filter(GroupReview.pool_id == pool_id, GroupReview.reviewer_id.in_(user_ids))
+            .group_by(GroupReview.reviewer_id)
+            .all()
+            if user_ids else []
+        )
+        group_counts = {user_id: int(total or 0) for user_id, total in group_rows}
+
+        tribe_event_rows = (
+            db.session.query(TribeEvent.tribe, db.func.count(TribeEvent.id))
+            .filter(TribeEvent.pool_id == pool_id)
+            .group_by(TribeEvent.tribe)
+            .all()
+        )
+        tribe_event_counts = {normalize_tribe(tribe): int(total or 0) for tribe, total in tribe_event_rows if tribe}
+
+        reward_events = (
+            RewardEvent.query
+            .filter(
+                RewardEvent.pool_id == pool_id,
+                RewardEvent.user_id.in_(user_ids),
+                RewardEvent.event_type != 'confession',
+            )
+            .all()
+            if user_ids else []
+        )
+        reward_events_by_user = defaultdict(list)
+        for event in reward_events:
+            reward_events_by_user[event.user_id].append(event)
+
         result = []
         for user in users:
             pv = pv_map[user.id]
             role = pv.pool_role or 'volunteer'
             has_conf = bool(pv.has_confession)
             adj = pv.coins_adjustment or 0
-            cnt = (
-                db.session.query(db.func.count(Signup.id))
-                .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
-                .filter(Signup.user_id == user.id, ShiftBlock.pool_id == pool_id)
-                .scalar() or 0
-            )
-            group_cnt = (
-                db.session.query(db.func.coalesce(db.func.sum(GroupReview.quantity), 0))
-                .filter(GroupReview.reviewer_id == user.id, GroupReview.pool_id == pool_id)
-                .scalar() or 0
-            )
-            rewards = calculate_pool_rewards(user, pool_id, has_conf, adj, role, pv_tribe=pv.tribe)
+            group_cnt = group_counts.get(user.id, 0)
+            buckets = reward_buckets_by_user[user.id]
+            if group_cnt:
+                _add_reward(buckets, 'group_review', 'Проверка групповых', group_cnt, group_cnt * REWARD_RATES['group_review'])
+            if has_conf:
+                _add_reward(buckets, 'confession', 'Исповедь', 1, REWARD_RATES['confession'])
+            normalized_tribe = normalize_tribe(pv.tribe) if pv.tribe else None
+            if role == 'tribe_master' and normalized_tribe:
+                tribe_events_count = tribe_event_counts.get(normalized_tribe, 0)
+                if tribe_events_count:
+                    _add_reward(
+                        buckets,
+                        'tribe_master_event',
+                        'Трайб-мастерство',
+                        tribe_events_count,
+                        tribe_events_count * REWARD_RATES['tribe_master_event'],
+                    )
+            for event in reward_events_by_user.get(user.id, []):
+                meta = REWARD_EVENT_TYPES.get(event.event_type, {'label': event.event_type})
+                _add_reward(buckets, event.event_type, meta['label'], event.quantity or 1, event.coins)
+            if adj:
+                _add_reward(buckets, 'manual', 'Ручная корректировка', 1, adj)
+            breakdown = list(buckets.values())
+            total = sum(item['coins'] for item in breakdown)
             result.append({
                 'id': user.id,
                 'nick': user.nick,
@@ -2710,10 +2898,10 @@ def get_volunteers():
                 'is_group_reviewer': bool(group_cnt),
                 'group_reviews_count': int(group_cnt),
                 'has_confession': has_conf,
-                'shifts_count': cnt,
-                'coins': rewards['total'],
+                'shifts_count': shift_counts.get(user.id, 0),
+                'coins': total,
                 'coins_adjustment': adj,
-                'coin_breakdown': rewards['breakdown'],
+                'coin_breakdown': breakdown,
             })
         order = {'team_lead': 0, 'tribe_master': 1, 'volunteer': 2}
         result.sort(key=lambda x: (order.get(x['role'], 9), x['nick']))
@@ -3361,6 +3549,10 @@ def _block_with_people(block):
         .order_by(Signup.created_at)
         .all()
     )
+    return _block_with_people_from_rows(block, signups)
+
+
+def _block_with_people_from_rows(block, signups):
     return {
         'id': block.id,
         'date': block.date.isoformat(),
@@ -3373,10 +3565,27 @@ def _block_with_people(block):
     }
 
 
+def _signups_index_for_blocks(block_ids):
+    if not block_ids:
+        return {}
+    rows = (
+        db.session.query(Signup, User)
+        .join(User, User.id == Signup.user_id)
+        .filter(Signup.block_id.in_(block_ids))
+        .order_by(Signup.created_at)
+        .all()
+    )
+    grouped = defaultdict(list)
+    for signup, user in rows:
+        grouped[signup.block_id].append((signup, user))
+    return grouped
+
+
 def _tomorrow_blocks(pool_id):
     tomorrow = date.today() + timedelta(days=1)
     blocks = ShiftBlock.query.filter_by(pool_id=pool_id, date=tomorrow).order_by(ShiftBlock.time_start).all()
-    return [_block_with_people(block) for block in blocks]
+    signups_by_block = _signups_index_for_blocks([block.id for block in blocks])
+    return [_block_with_people_from_rows(block, signups_by_block.get(block.id, [])) for block in blocks]
 
 
 def _future_my_shifts(user_id, limit=5):
@@ -3389,7 +3598,8 @@ def _future_my_shifts(user_id, limit=5):
         .limit(limit)
         .all()
     )
-    return [_block_with_people(block) for block in rows]
+    signups_by_block = _signups_index_for_blocks([block.id for block in rows])
+    return [_block_with_people_from_rows(block, signups_by_block.get(block.id, [])) for block in rows]
 
 
 def _tribes_for_pool(pool_id):
@@ -3676,6 +3886,10 @@ def _broadcast_recipient_query(pool_id, filters):
         allowed_ids = {
             row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
         }
+        staff_ids = {
+            row.id for row in User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead'])).with_entities(User.id).all()
+        }
+        allowed_ids |= staff_ids
         if allowed_ids:
             query = query.filter(User.id.in_(allowed_ids))
         else:
@@ -3843,6 +4057,7 @@ def create_broadcast():
         filters=json.dumps(filters, ensure_ascii=False),
         priority=priority,
         status='queued',
+        is_anonymous=bool(data.get('is_anonymous')),
     )
     db.session.add(broadcast)
     db.session.flush()
@@ -3880,7 +4095,7 @@ def create_broadcast():
         'broadcast',
         broadcast.id,
         'Создана рассылка в разделе уведомлений',
-        {'filters': filters, 'priority': priority, 'text': text},
+        {'filters': filters, 'priority': priority, 'text': text, 'is_anonymous': bool(broadcast.is_anonymous)},
     )
     db.session.commit()
     try:
@@ -3916,6 +4131,10 @@ def update_broadcast(broadcast_id):
         new_filters = data.get('filters') or {}
         changes['filters'] = {'from': json.loads(broadcast.filters or '{}'), 'to': new_filters}
         broadcast.filters = json.dumps(new_filters, ensure_ascii=False)
+    if 'is_anonymous' in data:
+        new_value = bool(data.get('is_anonymous'))
+        changes['is_anonymous'] = {'from': bool(broadcast.is_anonymous), 'to': new_value}
+        broadcast.is_anonymous = new_value
     log_action('update', 'broadcast', broadcast.id, 'Обновлена рассылка', {'changes': changes})
     db.session.commit()
     return jsonify(_broadcast_to_dict(broadcast))
@@ -3956,6 +4175,7 @@ def create_notification_note():
         is_pinned=bool(data.get('is_pinned')),
         is_highlighted=bool(data.get('is_highlighted')),
         is_active=True if data.get('is_active') is None else bool(data.get('is_active')),
+        is_anonymous=bool(data.get('is_anonymous')),
     )
     db.session.add(note)
     log_action(
@@ -3963,7 +4183,7 @@ def create_notification_note():
         'dashboard_note',
         None,
         'Создана заметка для дашборда',
-        {'text': text, 'is_pinned': note.is_pinned, 'is_highlighted': note.is_highlighted},
+        {'text': text, 'is_pinned': note.is_pinned, 'is_highlighted': note.is_highlighted, 'is_anonymous': note.is_anonymous},
     )
     db.session.commit()
     return jsonify(_dashboard_note_to_dict(note)), 201
@@ -3975,7 +4195,7 @@ def update_notification_note(note_id):
     note = DashboardNote.query.get_or_404(note_id)
     data = request.json or {}
     changes = {}
-    for field in ('text', 'is_pinned', 'is_highlighted', 'is_active'):
+    for field in ('text', 'is_pinned', 'is_highlighted', 'is_active', 'is_anonymous'):
         if field not in data:
             continue
         new_value = data.get(field)
@@ -4007,10 +4227,31 @@ def delete_notification_note(note_id):
 def get_students():
     pool_id = request.args.get('pool_id', type=int) or active_pool_id()
     students = Student.query.filter_by(pool_id=pool_id).all()
+    penalties_by_student = defaultdict(list)
+    events_by_student = defaultdict(list)
+
+    if students:
+        student_ids = [student.id for student in students]
+        student_nicks = [student.nick for student in students]
+        penalties = StudentPenalty.query.filter(
+            StudentPenalty.pool_id == pool_id,
+            StudentPenalty.student_name.in_(student_nicks),
+        ).all()
+        nick_to_ids = defaultdict(list)
+        for student in students:
+            nick_to_ids[student.nick].append(student.id)
+        for penalty in penalties:
+            for student_id in nick_to_ids.get(penalty.student_name, []):
+                penalties_by_student[student_id].append(penalty)
+
+        all_events = StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).all()
+        for event in all_events:
+            events_by_student[event.student_id].append(event)
+
     result = []
     for student in students:
-        penalties = StudentPenalty.query.filter_by(student_name=student.nick, pool_id=pool_id).all()
-        all_events = StudentEvent.query.filter_by(student_id=student.id).all()
+        penalties = penalties_by_student.get(student.id, [])
+        all_events = events_by_student.get(student.id, [])
         events = [e for e in all_events if e.status == 'confirmed']
         total_hours = sum(
             p.hours * p.multiplier
@@ -5455,6 +5696,8 @@ def ensure_user_profile_columns():
             broadcast_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(broadcasts)').fetchall()}
             if 'pool_id' not in broadcast_cols:
                 conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN pool_id INTEGER')
+            if 'is_anonymous' not in broadcast_cols:
+                conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN is_anonymous BOOLEAN DEFAULT 0')
         if 'dashboard_notes' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE dashboard_notes (
@@ -5465,6 +5708,7 @@ def ensure_user_profile_columns():
                     is_pinned BOOLEAN DEFAULT 0,
                     is_highlighted BOOLEAN DEFAULT 0,
                     is_active BOOLEAN DEFAULT 1,
+                    is_anonymous BOOLEAN DEFAULT 0,
                     created_at DATETIME,
                     updated_at DATETIME,
                     PRIMARY KEY (id),
@@ -5476,6 +5720,8 @@ def ensure_user_profile_columns():
             note_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(dashboard_notes)').fetchall()}
             if 'pool_id' not in note_cols:
                 conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN pool_id INTEGER')
+            if 'is_anonymous' not in note_cols:
+                conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN is_anonymous BOOLEAN DEFAULT 0')
         if 'app_settings' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE app_settings (
@@ -5650,12 +5896,20 @@ def ensure_postgres_profile_columns():
         conn.commit()
 
 
-with app.app_context():
-    db.create_all()
-    ensure_user_profile_columns()
-    ensure_postgres_profile_columns()
-    seed_admin()
-    seed_pool_data()
+def should_auto_init_db():
+    value = os.getenv('AUTO_INIT_DB')
+    if value is not None:
+        return value.lower() == 'true'
+    return os.getenv('VERCEL', '').lower() not in {'1', 'true'}
+
+
+if should_auto_init_db():
+    with app.app_context():
+        db.create_all()
+        ensure_user_profile_columns()
+        ensure_postgres_profile_columns()
+        seed_admin()
+        seed_pool_data()
 
 
 if (

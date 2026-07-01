@@ -373,13 +373,20 @@ function DashboardNotes({ notes }) {
               {note.is_pinned ? ' 📌' : ''}
               {note.is_highlighted ? ' 🔥' : ''}
             </strong>
-            <span>{note.author_nick ? `@${note.author_nick}` : 'система'}</span>
+            <span>{formatDashboardAuthor(note)}</span>
           </div>
           <p>{note.text}</p>
         </article>
       ))}
     </div>
   );
+}
+
+function formatDashboardAuthor(note) {
+  if (note?.is_anonymous) return 'анонимно';
+  if (note?.author_name && note?.author_nick) return `${note.author_name} (@${note.author_nick})`;
+  if (note?.author_nick) return `@${note.author_nick}`;
+  return 'система';
 }
 
 function StatCard({ icon: Icon, label, value, tone }) {

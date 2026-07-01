@@ -168,6 +168,11 @@
   color: var(--text-secondary);
 }
 
+.notifications-note-signature {
+  display: block;
+  text-align: right;
+}
+
 .notifications-note-head {
   display: flex;
   align-items: flex-start;
