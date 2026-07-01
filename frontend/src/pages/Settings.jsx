@@ -107,8 +107,13 @@ function Settings({ user }) {
                     className="btn-mini danger-outline"
                     onClick={async () => {
                       if (!window.confirm(`Удалить бассейн «${p.name}»?\nЭто удалит связанные смены, волонтёров, студентов и события.`)) return;
-                      await api.del(`/api/pools/${p.id}`);
-                      loadPools();
+                      try {
+                        await api.del(`/api/pools/${p.id}`);
+                        setMsg('Бассейн удалён');
+                        loadPools();
+                      } catch (e) {
+                        alert(e.message);
+                      }
                     }}
                   >
                     Удалить

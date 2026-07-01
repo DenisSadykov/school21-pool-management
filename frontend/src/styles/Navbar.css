@@ -286,10 +286,13 @@
 
   .navbar-mobile-menu {
     display: inline-flex;
-    order: -1;
+    width: 36px;
+    height: 36px;
   }
 
   .navbar-user {
+    min-height: 36px;
+    height: 36px;
     padding: 0 8px;
   }
 

@@ -729,10 +729,10 @@
   }
 
   .add-tm-inline .btn-mini {
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
+    width: var(--control-height);
+    min-width: var(--control-height);
+    height: var(--control-height);
+    min-height: var(--control-height);
     padding: 0;
     justify-content: center;
   }
@@ -774,6 +774,10 @@
     overflow: visible;
     position: relative;
     background: var(--bg-card);
+  }
+
+  .volunteer-table tr:has(.volunteer-menu.open) {
+    z-index: 80;
   }
 
   .volunteer-table td {

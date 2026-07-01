@@ -55,15 +55,6 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
         </div>
 
         <div className="navbar-actions">
-          <button
-            className={`navbar-mobile-menu ${mobileSidebarOpen ? 'active' : ''}`}
-            onClick={onMobileMenuToggle}
-            aria-label="Открыть меню"
-            type="button"
-          >
-            <Menu size={20} />
-          </button>
-
           {isStaff && <div className="sync-state">synced</div>}
 
           <div className="navbar-user-wrap" ref={ref}>
@@ -99,6 +90,15 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
               </div>
             )}
           </div>
+
+          <button
+            className={`navbar-mobile-menu ${mobileSidebarOpen ? 'active' : ''}`}
+            onClick={onMobileMenuToggle}
+            aria-label="Открыть меню"
+            type="button"
+          >
+            <Menu size={20} />
+          </button>
 
           {!isStaff && (
             <button className="btn-logout" onClick={handleLogout} title="Выход">
