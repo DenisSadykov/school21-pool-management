@@ -98,6 +98,8 @@ function Dashboard({ user }) {
 
 function OpsDashboard({ data }) {
   const penalty = data?.penalties || {};
+  const telegram = data?.telegram || {};
+  const notes = data?.dashboard_notes || [];
   const tomorrowCoverageLabel = tomorrowCoverage(data?.tomorrow_blocks || []);
   const penaltyLinks = [
     {
@@ -132,6 +134,22 @@ function OpsDashboard({ data }) {
   return (
     <>
       <div className="dashboard-sections two-columns">
+        {!telegram.linked && (
+          <section className="info-section info-section-warning wide">
+            <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
+            <p>
+              {telegram.needs_username
+                ? 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, сначала укажи свой Telegram username в системе.'
+                : 'Чтобы получать уведомления о сменах, заменах, штрафах и рассылках, привяжи Telegram-бота.'}
+            </p>
+            <p className="text-muted">
+              {telegram.username
+                ? `Текущий username в системе: ${telegram.username}.`
+                : 'Сейчас username в системе не указан.'}
+            </p>
+          </section>
+        )}
+
         <section className="info-section">
           <SectionTitle
             icon={Calendar}
@@ -162,6 +180,11 @@ function OpsDashboard({ data }) {
         <section className="info-section wide">
           <SectionTitle icon={Users} title="Ближайшие трайб-мероприятия" tone="users" />
           <TribeEventList events={data?.tomorrow_tribe_events || []} empty="На завтра трайб-мероприятий нет." />
+        </section>
+
+        <section className="info-section wide">
+          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <DashboardNotes notes={notes} />
         </section>
       </div>
     </>
