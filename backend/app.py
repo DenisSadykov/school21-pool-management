@@ -1834,7 +1834,25 @@ def create_user():
     # тимлид может заводить только волонтёров и трайб-мастеров
     if g.user.role == 'team_lead' and role in ROLES_WITH_PASSWORD:
         return jsonify({'error': 'Только админ может создавать тимлидов и админов'}), 403
-    if User.query.filter(db.func.lower(User.nick) == nick.lower()).first():
+
+    existing = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
+    if existing:
+        if role in ROLES_WITH_PASSWORD and existing.role not in ROLES_WITH_PASSWORD:
+            password = data.get('password') or ''
+            if len(password) < 4:
+                return jsonify({'error': 'Для этой роли нужен пароль (мин. 4 символа)'}), 400
+            existing.name = data.get('name') or existing.name or nick
+            existing.role = role
+            existing.password_hash = generate_password_hash(password)
+            db.session.commit()
+            log_action(
+                'update',
+                'user',
+                existing.id,
+                f'Повышен @{existing.nick} до роли {role}',
+                {'target_nick': existing.nick, 'role': role},
+            )
+            return jsonify(existing.to_dict()), 200
         return jsonify({'error': 'Такой ник уже есть'}), 409
 
     user = User(
@@ -1860,6 +1878,31 @@ def delete_user(user_id):
     user = User.query.get_or_404(user_id)
     if user.role in ROLES_WITH_PASSWORD and g.user.role != 'admin':
         return jsonify({'error': 'Только админ может удалять тимлидов и админов'}), 403
+    if user.id == g.user.id:
+        return jsonify({'error': 'Нельзя удалить самого себя'}), 400
+
+    NotificationDelivery.query.filter_by(user_id=user.id).delete()
+    NotificationEvent.query.filter_by(recipient_user_id=user.id).delete()
+    NotificationEvent.query.filter_by(created_by=user.id).update({'created_by': None})
+    TelegramAccount.query.filter_by(user_id=user.id).delete()
+    PoolVolunteer.query.filter_by(user_id=user.id).delete()
+    RewardEvent.query.filter(
+        db.or_(RewardEvent.user_id == user.id, RewardEvent.created_by == user.id)
+    ).delete(synchronize_session=False)
+    GroupReview.query.filter(
+        db.or_(GroupReview.reviewer_id == user.id, GroupReview.created_by == user.id)
+    ).delete(synchronize_session=False)
+    TribeEvent.query.filter_by(created_by=user.id).update({'created_by': None})
+    StudentEvent.query.filter_by(created_by=user.id).update({'created_by': None})
+    StudentPenalty.query.filter_by(volunteer_id=user.id).update({
+        'volunteer_id': None,
+        'volunteer_name': None,
+    }, synchronize_session=False)
+    Broadcast.query.filter_by(author_id=user.id).delete()
+    DashboardNote.query.filter_by(author_id=user.id).delete()
+    ActionLog.query.filter_by(actor_id=user.id).update({'actor_id': None})
+    PenaltyHistory.query.filter_by(actor_id=user.id).update({'actor_id': None})
+    ScheduleGeneration.query.filter_by(created_by=user.id).update({'created_by': None})
     Signup.query.filter_by(user_id=user.id).delete()
     db.session.delete(user)
     db.session.commit()
