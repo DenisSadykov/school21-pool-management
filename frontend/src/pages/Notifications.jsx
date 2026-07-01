@@ -122,6 +122,15 @@ function Notifications() {
     }
   };
 
+  const syncTelegramCommands = async () => {
+    try {
+      await api.post('/api/telegram/commands/sync', {});
+      setMessage('Меню команд Telegram-бота обновлено.');
+    } catch (error) {
+      setMessage(`Ошибка синхронизации команд: ${error.message}`);
+    }
+  };
+
   const removeBroadcast = async (id) => {
     if (!window.confirm('Удалить эту рассылку?')) return;
     try {
@@ -402,7 +411,12 @@ function Notifications() {
           <form className="form" onSubmit={saveTelegramSettings}>
             <div className="notifications-form-head">
               <h2>Настройки Telegram</h2>
-              <button className="btn-primary" type="submit">Сохранить настройки</button>
+              <div className="notifications-actions">
+                <button className="btn-secondary" type="button" onClick={syncTelegramCommands}>
+                  Обновить меню команд
+                </button>
+                <button className="btn-primary" type="submit">Сохранить настройки</button>
+              </div>
             </div>
             <div className="notifications-settings-grid">
               <label className="notifications-toggle">

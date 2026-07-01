@@ -771,6 +771,17 @@ def telegram_send_message(chat_id, text, disable_notification=False, reply_marku
     return telegram_api('sendMessage', payload)
 
 
+def telegram_sync_commands():
+    commands = [
+        {'command': 'start', 'description': 'Привязать бота к платформе'},
+        {'command': 'rules', 'description': 'Правила школы'},
+        {'command': 'penalties', 'description': 'Ученики с нарушениями'},
+        {'command': 'photo_sync', 'description': 'Обновить фото профиля'},
+        {'command': 'help', 'description': 'Помощь'},
+    ]
+    return telegram_api('setMyCommands', {'commands': commands})
+
+
 def telegram_delete_message(chat_id, message_id):
     return telegram_api('deleteMessage', {
         'chat_id': chat_id,
@@ -3519,13 +3530,28 @@ def register_telegram_webhook():
     if secret_token:
         payload['secret_token'] = secret_token
     result = telegram_api('setWebhook', payload)
-    return jsonify({'ok': True, 'result': result, 'webhook_url': webhook_url})
+    commands_result = telegram_sync_commands()
+    return jsonify({
+        'ok': True,
+        'result': result,
+        'commands_result': commands_result,
+        'webhook_url': webhook_url,
+    })
 
 
 @app.route('/api/telegram/webhook/info', methods=['GET'])
 @require_role('team_lead', 'admin')
 def telegram_webhook_info():
     result = telegram_get('getWebhookInfo')
+    return jsonify({'ok': True, 'result': result})
+
+
+@app.route('/api/telegram/commands/sync', methods=['POST'])
+@require_role('team_lead', 'admin')
+def sync_telegram_commands():
+    result = telegram_sync_commands()
+    log_action('sync', 'telegram_commands', None, 'Синхронизированы команды меню Telegram-бота')
+    db.session.commit()
     return jsonify({'ok': True, 'result': result})
 
 
