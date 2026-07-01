@@ -1828,6 +1828,47 @@ def me():
     return jsonify(g.user.to_dict())
 
 
+@app.route('/api/me', methods=['PATCH'])
+@require_auth
+def update_me():
+    user = g.user
+    data = request.json or {}
+    changes = {}
+
+    if 'name' in data:
+        new_name = (data.get('name') or '').strip() or user.nick
+        old_name = user.name or user.nick
+        if old_name != new_name:
+            changes['name'] = {'from': old_name, 'to': new_name}
+        user.name = new_name
+
+    if 'nick' in data:
+        new_nick = (data.get('nick') or '').strip()
+        if not new_nick:
+            return jsonify({'error': 'Укажите ник'}), 400
+        existing = User.query.filter(db.func.lower(User.nick) == new_nick.lower(), User.id != user.id).first()
+        if existing:
+            return jsonify({'error': 'Такой ник уже есть'}), 409
+        if user.nick != new_nick:
+            changes['nick'] = {'from': user.nick, 'to': new_nick}
+        user.nick = new_nick
+
+    if 'telegram' in data:
+        raw_telegram = (data.get('telegram') or '').strip()
+        new_telegram = raw_telegram if not raw_telegram or raw_telegram.startswith('@') else f'@{raw_telegram}'
+        old_telegram = user.telegram or ''
+        if old_telegram != (new_telegram or ''):
+            changes['telegram'] = {'from': old_telegram or None, 'to': new_telegram or None}
+        user.telegram = new_telegram or None
+        account = _telegram_account_any(user.id)
+        if account and not account.is_linked:
+            account.telegram_username = normalize_tg_username(user.telegram or user.nick)
+
+    log_action('update', 'profile', user.id, 'Пользователь обновил личные данные', {'changes': changes}, actor=user)
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
 @app.route('/api/users/<int:user_id>/avatar', methods=['GET'])
 @require_auth
 def user_avatar(user_id):
@@ -1882,6 +1923,39 @@ def upload_user_avatar(user_id):
     db.session.commit()
     log_action('upload', 'user_avatar', user.id, 'Загружено фото профиля через платформу', actor=g.user)
     return jsonify({'ok': True, 'avatar_url': _avatar_url_for_user(user)})
+
+
+@app.route('/api/me/avatar', methods=['POST'])
+@require_auth
+def upload_my_avatar():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'Загрузите изображение'}), 400
+    mime = (file.mimetype or '').lower()
+    if mime not in {'image/jpeg', 'image/png', 'image/webp', 'image/jpg'}:
+        return jsonify({'error': 'Поддерживаются только JPG, PNG и WEBP'}), 400
+    content = file.read()
+    if not content:
+        return jsonify({'error': 'Файл пустой'}), 400
+    if len(content) > 3 * 1024 * 1024:
+        return jsonify({'error': 'Файл слишком большой. Максимум 3 МБ'}), 400
+    import base64
+    user = g.user
+    account = _telegram_account_any(user.id)
+    if not account:
+        account = TelegramAccount(
+            user_id=user.id,
+            telegram_username=normalize_tg_username(user.telegram or user.nick),
+            is_linked=False,
+            delivery_enabled=False,
+        )
+        db.session.add(account)
+    account.photo_file_id = None
+    account.photo_url = f'data:{mime};base64,{base64.b64encode(content).decode("ascii")}'
+    account.last_photo_sync_at = datetime.utcnow()
+    db.session.commit()
+    log_action('upload', 'profile_avatar', user.id, 'Пользователь загрузил фото профиля', actor=user)
+    return jsonify({'ok': True, 'avatar_url': _avatar_url_for_user(user), 'user': user.to_dict()})
 
 
 # ==================== Пользователи (волонтёры) ====================

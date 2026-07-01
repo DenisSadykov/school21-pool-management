@@ -18,6 +18,7 @@ import GroupReviews from './pages/GroupReviews';
 import Login from './pages/Login';
 import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
+import Profile from './pages/Profile';
 import { getUser } from './api';
 
 import './styles/App.css';
@@ -67,6 +68,7 @@ function App() {
               <Route path="/penalties" element={<Penalties user={user} />} />
               <Route path="/students" element={<Students user={user} />} />
               <Route path="/volunteers" element={<Volunteers user={user} />} />
+              <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
               <Route path="/exam-brief" element={<ExamBrief />} />
               {canUseTribe && <Route path="/my-tribe" element={<MyTribe user={user} />} />}
               {canUseGroupReviews && <Route path="/group-reviews" element={<GroupReviews user={user} />} />}

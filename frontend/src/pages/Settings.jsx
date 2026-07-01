@@ -158,10 +158,6 @@ function Settings({ user }) {
       {isAdmin && (
         <section className="manage-section">
           <h2>Добавить администратора / тимлида</h2>
-          <p className="muted">
-            Здесь же указывается Telegram username для привязки через бота. После этого админ или тимлид пишет боту `/start`,
-            и его статус привязки будет виден во вкладке `Уведомления → Telegram`.
-          </p>
           <UserForm onDone={(t, nextUser) => {
             setMsg(t);
             if (nextUser) {
@@ -360,7 +356,6 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
           <span className="u-name">{user.name}</span>
           <span className={`u-telegram ${user.telegram ? '' : 'is-empty'}`}>{user.telegram || 'tg не указан'}</span>
           <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
-          <AvatarUploadButton userId={user.id} onDone={onSaved} />
           <button className="btn-icon" title="Редактировать" onClick={() => setEditing(true)}><Pencil size={16} /></button>
           {canDelete && (
             <button className="btn-icon danger" title="Удалить"

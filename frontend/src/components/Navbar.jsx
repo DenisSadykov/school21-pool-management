@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl, clearSession } from '../api';
+import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu, UserCircle2 } from 'lucide-react';
+import { buildAuthenticatedAssetUrl, clearSession } from '../api';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = {
@@ -30,19 +30,6 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/api/auth/me')
-      .then((freshUser) => {
-        if (cancelled || !freshUser) return;
-        setProfile(freshUser);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const go = (path) => { setOpen(false); navigate(path); };
   const handleLogout = () => { clearSession(); setUser(null); };
 
@@ -60,8 +47,8 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
           <div className="navbar-user-wrap" ref={ref}>
             <button
               className={`navbar-user ${open ? 'active' : ''}`}
-              onClick={() => isStaff ? setOpen(!open) : null}
-              style={{ cursor: isStaff ? 'pointer' : 'default' }}
+              onClick={() => setOpen(!open)}
+              style={{ cursor: 'pointer' }}
             >
               <span className="user-avatar">
                 {profile?.avatar_url ? (
@@ -72,17 +59,24 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
               </span>
               <span className="user-name">@{profile?.nick}</span>
               <span className="user-role">{ROLE_LABELS[profile?.role] || profile?.role}</span>
-              {isStaff && <ChevronDown size={13} className={`dropdown-chevron ${open ? 'rotated' : ''}`} />}
+              <ChevronDown size={13} className={`dropdown-chevron ${open ? 'rotated' : ''}`} />
             </button>
 
-            {isStaff && open && (
+            {open && (
               <div className="user-dropdown">
+                <button className="dropdown-item" onClick={() => go('/profile')}>
+                  <UserCircle2 size={15} /> Личные данные
+                </button>
+                {isStaff && (
+                  <>
                 <button className="dropdown-item" onClick={() => go('/settings')}>
                   <SlidersHorizontal size={15} /> Настройки
                 </button>
                 <button className="dropdown-item" onClick={() => go('/admin')}>
                   <Shield size={15} /> Администрирование
                 </button>
+                  </>
+                )}
                 <div className="dropdown-divider" />
                 <button className="dropdown-item danger" onClick={handleLogout}>
                   <LogOut size={15} /> Выйти
@@ -99,12 +93,6 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
           >
             <Menu size={20} />
           </button>
-
-          {!isStaff && (
-            <button className="btn-logout" onClick={handleLogout} title="Выход">
-              <LogOut size={18} />
-            </button>
-          )}
         </div>
       </div>
     </nav>
