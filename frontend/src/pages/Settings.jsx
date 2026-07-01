@@ -337,36 +337,59 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
 
   return (
     <div className="user-row">
-      <span className="u-avatar">
-        {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
-      </span>
       {editing ? (
         <>
-          <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <input value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@telegram" />
-          <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="новый пароль" />
-          <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
-          <button className="btn-mini primary" type="button" onClick={save}>Сохранить</button>
-          <button className="btn-mini" type="button" onClick={() => setEditing(false)}>Отмена</button>
+          <div className="u-profile">
+            <span className="u-avatar">
+              {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
+            </span>
+            <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
+          </div>
+          <div className="u-name-cell">
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="u-telegram-cell">
+            <input value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@telegram" />
+          </div>
+          <div className="u-role-cell">
+            <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+          </div>
+          <div className="u-actions">
+            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="новый пароль" />
+            <button className="btn-mini primary" type="button" onClick={save}>Сохранить</button>
+            <button className="btn-mini" type="button" onClick={() => setEditing(false)}>Отмена</button>
+          </div>
         </>
       ) : (
         <>
-          <span className="u-nick">@{user.nick}</span>
-          <span className="u-name">{user.name}</span>
-          <span className={`u-telegram ${user.telegram ? '' : 'is-empty'}`}>{user.telegram || 'tg не указан'}</span>
-          <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
-          <button className="btn-icon" title="Редактировать" onClick={() => setEditing(true)}><Pencil size={16} /></button>
-          {canDelete && (
-            <button className="btn-icon danger" title="Удалить"
-              onClick={async () => {
-                if (!window.confirm(`Удалить @${user.nick}?`)) return;
-                try {
-                  await api.del(`/api/users/${user.id}`);
-                  onDeleted?.();
-                } catch (e) { alert(e.message); }
-              }}><Trash2 size={16} /></button>
-          )}
+          <div className="u-profile">
+            <span className="u-avatar">
+              {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
+            </span>
+            <span className="u-nick">@{user.nick}</span>
+          </div>
+          <div className="u-name-cell">
+            <span className="u-name">{user.name}</span>
+          </div>
+          <div className="u-telegram-cell">
+            <span className={`u-telegram ${user.telegram ? '' : 'is-empty'}`}>{user.telegram || 'tg не указан'}</span>
+          </div>
+          <div className="u-role-cell">
+            <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+          </div>
+          <div className="u-actions">
+            <button className="btn-icon" title="Редактировать" onClick={() => setEditing(true)}><Pencil size={16} /></button>
+            {canDelete && (
+              <button className="btn-icon danger" title="Удалить"
+                onClick={async () => {
+                  if (!window.confirm(`Удалить @${user.nick}?`)) return;
+                  try {
+                    await api.del(`/api/users/${user.id}`);
+                    onDeleted?.();
+                  } catch (e) { alert(e.message); }
+                }}><Trash2 size={16} /></button>
+            )}
+          </div>
         </>
       )}
     </div>

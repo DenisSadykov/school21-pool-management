@@ -88,10 +88,10 @@
 
 .user-row {
   display: grid;
-  grid-template-columns: 32px 1fr 1fr 1fr auto auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(180px, 0.9fr) minmax(220px, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
-  padding: 10px 0;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-soft, var(--border));
 }
 
@@ -100,8 +100,46 @@
   font-family: var(--font-mono);
 }
 
+.u-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.u-nick,
+.u-name,
+.u-telegram {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u-name-cell,
+.u-telegram-cell {
+  text-align: center;
+}
+
+.u-role-cell {
+  display: flex;
+  justify-content: center;
+}
+
 .u-telegram.is-empty {
   color: var(--text-secondary);
+}
+
+.u-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.u-actions input {
+  width: 148px;
 }
 
 .sys-vol-person {
@@ -193,5 +231,22 @@
 @media (max-width: 768px) {
   .sys-vol-table {
     min-width: 560px;
+  }
+
+  .user-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .u-name-cell,
+  .u-telegram-cell,
+  .u-role-cell {
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .u-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
