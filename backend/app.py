@@ -215,7 +215,8 @@ class RewardEvent(db.Model):
 class Tribe(db.Model):
     __tablename__ = 'tribes'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'))
+    name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -371,6 +372,7 @@ class Broadcast(db.Model):
     __tablename__ = 'broadcasts'
     id = db.Column(db.Integer, primary_key=True)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'))
     text = db.Column(db.Text, nullable=False)
     filters = db.Column(db.Text)
     priority = db.Column(db.String(20), default='normal')
@@ -383,6 +385,7 @@ class DashboardNote(db.Model):
     __tablename__ = 'dashboard_notes'
     id = db.Column(db.Integer, primary_key=True)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'))
     text = db.Column(db.Text, nullable=False)
     is_pinned = db.Column(db.Boolean, default=False)
     is_highlighted = db.Column(db.Boolean, default=False)
@@ -616,6 +619,7 @@ def _dashboard_note_to_dict(note):
     author = User.query.get(note.author_id) if note.author_id else None
     return {
         'id': note.id,
+        'pool_id': note.pool_id,
         'text': note.text,
         'is_pinned': bool(note.is_pinned),
         'is_highlighted': bool(note.is_highlighted),
@@ -1971,6 +1975,21 @@ def create_pool():
     return jsonify(pool.to_dict()), 201
 
 
+@app.route('/api/pools/<int:pool_id>', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_pool(pool_id):
+    pool = Pool.query.get_or_404(pool_id)
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Укажите название бассейна'}), 400
+    pool.name = name
+    if 'start_date' in data:
+        pool.start_date = datetime.fromisoformat(data['start_date']).date() if data.get('start_date') else None
+    db.session.commit()
+    return jsonify(pool.to_dict())
+
+
 @app.route('/api/pools/<int:pool_id>/activate', methods=['POST'])
 @require_role('team_lead', 'admin')
 def activate_pool(pool_id):
@@ -2022,6 +2041,15 @@ def delete_pool(pool_id):
     ScheduleGeneration.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
     ShiftBlock.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
     PoolVolunteer.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    Tribe.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    Broadcast.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    DashboardNote.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+    NotificationDelivery.query.filter(
+        NotificationDelivery.notification_id.in_(
+            db.session.query(NotificationEvent.id).filter_by(pool_id=pool_id)
+        )
+    ).delete(synchronize_session=False)
+    NotificationEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
     RewardEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
     GroupReview.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
     TribeEvent.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
@@ -2595,7 +2623,8 @@ def stats():
 @app.route('/api/tribes', methods=['GET'])
 @require_auth
 def list_tribes():
-    tribes = Tribe.query.order_by(Tribe.name).all()
+    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    tribes = Tribe.query.filter_by(pool_id=pool_id).order_by(Tribe.name).all()
     return jsonify([{'id': t.id, 'name': t.name} for t in tribes])
 
 
@@ -2603,15 +2632,18 @@ def list_tribes():
 @require_role('team_lead', 'admin')
 def create_tribe():
     data = request.json or {}
+    pool_id = data.get('pool_id') or active_pool_id()
+    if not pool_id:
+        return jsonify({'error': 'Нет активного бассейна'}), 400
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Укажите название трайба'}), 400
-    if Tribe.query.filter(db.func.lower(Tribe.name) == name.lower()).first():
+    if Tribe.query.filter(Tribe.pool_id == pool_id, db.func.lower(Tribe.name) == name.lower()).first():
         return jsonify({'error': f'Трайб «{name}» уже существует'}), 409
-    tribe = Tribe(name=name)
+    tribe = Tribe(name=name, pool_id=pool_id)
     db.session.add(tribe)
     db.session.commit()
-    return jsonify({'id': tribe.id, 'name': tribe.name}), 201
+    return jsonify({'id': tribe.id, 'name': tribe.name, 'pool_id': tribe.pool_id}), 201
 
 
 @app.route('/api/tribes/<int:tribe_id>', methods=['DELETE'])
@@ -2626,10 +2658,13 @@ def delete_tribe(tribe_id):
 @app.route('/api/tribes/load-standard', methods=['POST'])
 @require_role('team_lead', 'admin')
 def load_standard_tribes():
+    pool_id = active_pool_id()
+    if not pool_id:
+        return jsonify({'error': 'Нет активного бассейна'}), 400
     added = 0
     for name in STANDARD_TRIBES_NNV:
-        if not Tribe.query.filter(db.func.lower(Tribe.name) == name.lower()).first():
-            db.session.add(Tribe(name=name))
+        if not Tribe.query.filter(Tribe.pool_id == pool_id, db.func.lower(Tribe.name) == name.lower()).first():
+            db.session.add(Tribe(name=name, pool_id=pool_id))
             added += 1
     db.session.commit()
     return jsonify({'message': f'Добавлено {added} трайбов', 'added': added})
@@ -3359,7 +3394,7 @@ def _future_my_shifts(user_id, limit=5):
 def _tribes_for_pool(pool_id):
     defined = [
         normalize_tribe(tribe.name)
-        for tribe in Tribe.query.order_by(Tribe.name).all()
+        for tribe in Tribe.query.filter_by(pool_id=pool_id).order_by(Tribe.name).all()
         if normalize_tribe(tribe.name)
     ]
     rows = (
@@ -3491,7 +3526,7 @@ def dashboard_summary():
         'telegram': _telegram_link_status(g.user),
         'dashboard_notes': [
             _dashboard_note_to_dict(note)
-            for note in DashboardNote.query.filter_by(is_active=True)
+            for note in DashboardNote.query.filter_by(pool_id=pool_id, is_active=True)
             .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
             .limit(10)
             .all()
@@ -3521,8 +3556,9 @@ def dashboard_summary():
 @app.route('/api/dashboard-notes', methods=['GET'])
 @require_auth
 def list_dashboard_notes():
+    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
     notes = (
-        DashboardNote.query.filter_by(is_active=True)
+        DashboardNote.query.filter_by(pool_id=pool_id, is_active=True)
         .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
         .all()
     )
@@ -3683,12 +3719,25 @@ def notifications_overview():
     pool_id = request.args.get('pool_id', type=int) or active_pool_id()
     linked_users = _linked_users_for_pool(pool_id)
     recent_notes = (
-        DashboardNote.query.order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
+        DashboardNote.query.filter_by(pool_id=pool_id)
+        .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
         .limit(20)
         .all()
     )
-    recent_broadcasts = Broadcast.query.order_by(Broadcast.updated_at.desc(), Broadcast.id.desc()).limit(20).all()
-    recent_deliveries = NotificationDelivery.query.order_by(NotificationDelivery.created_at.desc(), NotificationDelivery.id.desc()).limit(50).all()
+    recent_broadcasts = (
+        Broadcast.query.filter_by(pool_id=pool_id)
+        .order_by(Broadcast.updated_at.desc(), Broadcast.id.desc())
+        .limit(20)
+        .all()
+    )
+    recent_deliveries = (
+        NotificationDelivery.query
+        .join(NotificationEvent, NotificationEvent.id == NotificationDelivery.notification_id)
+        .filter(NotificationEvent.pool_id == pool_id)
+        .order_by(NotificationDelivery.created_at.desc(), NotificationDelivery.id.desc())
+        .limit(50)
+        .all()
+    )
     return jsonify({
         'telegram_settings': get_telegram_settings(),
         'test_mode': get_telegram_settings()['test_mode'],
@@ -3733,8 +3782,15 @@ def update_notifications_settings():
 @app.route('/api/notifications/history', methods=['GET'])
 @require_role('team_lead', 'admin')
 def notifications_history():
+    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
     limit = min(request.args.get('limit', default=80, type=int) or 80, 200)
-    events = NotificationEvent.query.order_by(NotificationEvent.created_at.desc(), NotificationEvent.id.desc()).limit(limit).all()
+    events = (
+        NotificationEvent.query
+        .filter(NotificationEvent.pool_id == pool_id)
+        .order_by(NotificationEvent.created_at.desc(), NotificationEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
     result = []
     for event in events:
         user = User.query.get(event.recipient_user_id) if event.recipient_user_id else None
@@ -3776,8 +3832,12 @@ def create_broadcast():
         return jsonify({'error': 'Введите текст рассылки'}), 400
     priority = (data.get('priority') or 'normal').strip() or 'normal'
     filters = data.get('filters') or {}
+    pool_id = active_pool_id()
+    if not pool_id:
+        return jsonify({'error': 'Нет активного бассейна'}), 400
     broadcast = Broadcast(
         author_id=g.user.id,
+        pool_id=pool_id,
         text=text,
         filters=json.dumps(filters, ensure_ascii=False),
         priority=priority,
@@ -3785,7 +3845,6 @@ def create_broadcast():
     )
     db.session.add(broadcast)
     db.session.flush()
-    pool_id = active_pool_id()
     recipients = _broadcast_recipient_query(pool_id, filters).all()
     for user in recipients:
         payload = {
@@ -3886,8 +3945,12 @@ def create_notification_note():
     text = (data.get('text') or '').strip()
     if not text:
         return jsonify({'error': 'Введите текст заметки'}), 400
+    pool_id = active_pool_id()
+    if not pool_id:
+        return jsonify({'error': 'Нет активного бассейна'}), 400
     note = DashboardNote(
         author_id=g.user.id,
+        pool_id=pool_id,
         text=text,
         is_pinned=bool(data.get('is_pinned')),
         is_highlighted=bool(data.get('is_highlighted')),
@@ -4070,7 +4133,8 @@ def students_template():
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    tribes = [t.name for t in Tribe.query.order_by(Tribe.name).all()]
+    pool_id = active_pool_id()
+    tribes = [t.name for t in Tribe.query.filter_by(pool_id=pool_id).order_by(Tribe.name).all()]
     wb = Workbook()
     ws = wb.active
     ws.title = 'Ученики'
@@ -5374,6 +5438,7 @@ def ensure_user_profile_columns():
                 CREATE TABLE broadcasts (
                     id INTEGER NOT NULL,
                     author_id INTEGER NOT NULL,
+                    pool_id INTEGER,
                     text TEXT NOT NULL,
                     filters TEXT,
                     priority VARCHAR(20) DEFAULT 'normal',
@@ -5381,14 +5446,20 @@ def ensure_user_profile_columns():
                     created_at DATETIME,
                     updated_at DATETIME,
                     PRIMARY KEY (id),
-                    FOREIGN KEY(author_id) REFERENCES users (id)
+                    FOREIGN KEY(author_id) REFERENCES users (id),
+                    FOREIGN KEY(pool_id) REFERENCES pools (id)
                 )
             """)
+        else:
+            broadcast_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(broadcasts)').fetchall()}
+            if 'pool_id' not in broadcast_cols:
+                conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN pool_id INTEGER')
         if 'dashboard_notes' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE dashboard_notes (
                     id INTEGER NOT NULL,
                     author_id INTEGER NOT NULL,
+                    pool_id INTEGER,
                     text TEXT NOT NULL,
                     is_pinned BOOLEAN DEFAULT 0,
                     is_highlighted BOOLEAN DEFAULT 0,
@@ -5396,9 +5467,14 @@ def ensure_user_profile_columns():
                     created_at DATETIME,
                     updated_at DATETIME,
                     PRIMARY KEY (id),
-                    FOREIGN KEY(author_id) REFERENCES users (id)
+                    FOREIGN KEY(author_id) REFERENCES users (id),
+                    FOREIGN KEY(pool_id) REFERENCES pools (id)
                 )
             """)
+        else:
+            note_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(dashboard_notes)').fetchall()}
+            if 'pool_id' not in note_cols:
+                conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN pool_id INTEGER')
         if 'app_settings' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE app_settings (
@@ -5448,11 +5524,56 @@ def ensure_user_profile_columns():
             conn.exec_driver_sql("""
                 CREATE TABLE tribes (
                     id INTEGER NOT NULL,
-                    name VARCHAR(100) NOT NULL UNIQUE,
+                    pool_id INTEGER,
+                    name VARCHAR(100) NOT NULL,
                     created_at DATETIME,
-                    PRIMARY KEY (id)
+                    PRIMARY KEY (id),
+                    FOREIGN KEY(pool_id) REFERENCES pools (id)
                 )
             """)
+        else:
+            tribe_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(tribes)').fetchall()}
+            if 'pool_id' not in tribe_cols:
+                conn.exec_driver_sql('ALTER TABLE tribes RENAME TO tribes_legacy')
+                conn.exec_driver_sql("""
+                    CREATE TABLE tribes (
+                        id INTEGER NOT NULL,
+                        pool_id INTEGER,
+                        name VARCHAR(100) NOT NULL,
+                        created_at DATETIME,
+                        PRIMARY KEY (id),
+                        FOREIGN KEY(pool_id) REFERENCES pools (id)
+                    )
+                """)
+                active_pool = conn.exec_driver_sql(
+                    'SELECT id FROM pools WHERE active = 1 ORDER BY created_at DESC LIMIT 1'
+                ).fetchone()
+                active_pool_id_value = active_pool[0] if active_pool else None
+                conn.exec_driver_sql(
+                    'INSERT INTO tribes (id, pool_id, name, created_at) SELECT id, ?, name, created_at FROM tribes_legacy',
+                    (active_pool_id_value,),
+                )
+                conn.exec_driver_sql('DROP TABLE tribes_legacy')
+        active_pool = conn.exec_driver_sql(
+            'SELECT id FROM pools WHERE active = 1 ORDER BY created_at DESC LIMIT 1'
+        ).fetchone()
+        active_pool_id_value = active_pool[0] if active_pool else None
+        if active_pool_id_value is not None:
+            conn.exec_driver_sql("""
+                UPDATE broadcasts
+                SET pool_id = (
+                    SELECT ne.pool_id
+                    FROM notification_events ne
+                    WHERE ne.source_entity = 'broadcast'
+                      AND ne.source_entity_id = broadcasts.id
+                      AND ne.pool_id IS NOT NULL
+                    ORDER BY ne.id ASC
+                    LIMIT 1
+                )
+                WHERE pool_id IS NULL
+            """)
+            conn.exec_driver_sql('UPDATE dashboard_notes SET pool_id = ? WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE broadcasts SET pool_id = ? WHERE pool_id IS NULL', (active_pool_id_value,))
         for table in ('users', 'students', 'tribe_events'):
             if table in tables:
                 conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
@@ -5485,12 +5606,41 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('UPDATE group_reviews SET quantity = 1 WHERE quantity IS NULL OR quantity < 1')
 
         conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS pool_id INTEGER')
+        conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN IF NOT EXISTS pool_id INTEGER')
+        conn.exec_driver_sql('ALTER TABLE tribes ADD COLUMN IF NOT EXISTS pool_id INTEGER')
+        conn.exec_driver_sql('ALTER TABLE tribes DROP CONSTRAINT IF EXISTS tribes_name_key')
 
         conn.exec_driver_sql("ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS pool_role VARCHAR(20) DEFAULT 'volunteer'")
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
 
         conn.exec_driver_sql('ALTER TABLE reward_events ADD COLUMN IF NOT EXISTS pool_id INTEGER')
+
+        active_pool = conn.exec_driver_sql(
+            'SELECT id FROM pools WHERE active = TRUE ORDER BY created_at DESC LIMIT 1'
+        ).fetchone()
+        active_pool_id_value = active_pool[0] if active_pool else None
+        if active_pool_id_value is not None:
+            conn.exec_driver_sql("""
+                UPDATE broadcasts
+                SET pool_id = COALESCE(
+                    pool_id,
+                    (
+                        SELECT ne.pool_id
+                        FROM notification_events ne
+                        WHERE ne.source_entity = 'broadcast'
+                          AND ne.source_entity_id = broadcasts.id
+                          AND ne.pool_id IS NOT NULL
+                        ORDER BY ne.id ASC
+                        LIMIT 1
+                    ),
+                    %s
+                )
+                WHERE pool_id IS NULL
+            """, (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE dashboard_notes SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE tribes SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
 
         for table in ('users', 'students', 'tribe_events'):
             conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")

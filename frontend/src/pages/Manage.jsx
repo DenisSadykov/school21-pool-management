@@ -16,15 +16,23 @@ function Manage({ user }) {
     const all = await api.get('/api/users');
     setAllVolunteers(all.filter((u) => ['volunteer', 'tribe_master'].includes(u.role)));
   }, []);
-  const loadTribes = useCallback(async () => setTribes(await api.get('/api/tribes')), []);
+  const activePool = pools.find((p) => p.active);
+  const loadTribes = useCallback(async () => {
+    if (!activePool?.id) {
+      setTribes([]);
+      return;
+    }
+    setTribes(await api.get(`/api/tribes?pool_id=${activePool.id}`));
+  }, [activePool?.id]);
 
   useEffect(() => {
     loadPools();
     loadVolunteers();
-    loadTribes();
-  }, [loadPools, loadVolunteers, loadTribes]);
+  }, [loadPools, loadVolunteers]);
 
-  const activePool = pools.find((p) => p.active);
+  useEffect(() => {
+    loadTribes();
+  }, [loadTribes]);
 
   return (
     <div className="page manage-page">

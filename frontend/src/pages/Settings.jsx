@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api, getToken, API_URL } from '../api';
 import '../styles/Manage.css';
 import '../styles/Settings.css';
@@ -67,6 +67,20 @@ function Settings({ user }) {
               <span className={`pool-state-badge state-${p.state}`}>{STATE_LABELS[p.state]}</span>
               <span className="pool-name">{p.name}{p.start_date ? ` · ${p.start_date}` : ''}</span>
               <div className="pool-actions">
+                <button
+                  className="btn-mini"
+                  onClick={async () => {
+                    const nextName = window.prompt('Новое название бассейна', p.name);
+                    if (nextName === null) return;
+                    const trimmed = nextName.trim();
+                    if (!trimmed || trimmed === p.name) return;
+                    await api.patch(`/api/pools/${p.id}`, { name: trimmed });
+                    setMsg('Название бассейна обновлено');
+                    loadPools();
+                  }}
+                >
+                  <Pencil size={14} /> Переименовать
+                </button>
                 {!p.active && !p.archived && (
                   <button className="btn-mini primary"
                     onClick={async () => { await api.post(`/api/pools/${p.id}/activate`); loadPools(); }}>
