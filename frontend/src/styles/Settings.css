@@ -88,13 +88,12 @@
 
 .user-row {
   display: grid;
-  grid-template-columns: minmax(230px, 300px) minmax(140px, 180px) minmax(160px, 220px) auto auto;
+  grid-template-columns: minmax(230px, 300px) minmax(140px, 180px) minmax(160px, 220px) minmax(170px, 1fr);
   column-gap: 18px;
   row-gap: 10px;
   align-items: center;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-soft, var(--border));
-  justify-content: start;
 }
 
 .user-form-telegram,
@@ -129,8 +128,7 @@
 
 .u-role-cell {
   display: flex;
-  justify-content: center;
-  justify-self: center;
+  justify-content: flex-end;
 }
 
 .u-telegram.is-empty {
@@ -142,7 +140,6 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  justify-self: end;
 }
 
 .u-actions input {
