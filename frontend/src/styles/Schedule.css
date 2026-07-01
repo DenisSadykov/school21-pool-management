@@ -346,8 +346,8 @@
   .week-block-row,
   .week-add-row,
   .week-events-row {
-    grid-template-columns: repeat(7, minmax(132px, 1fr));
-    min-width: 980px;
+    grid-template-columns: repeat(7, minmax(176px, 1fr));
+    min-width: 1300px;
   }
 
   .week-table {
@@ -361,5 +361,14 @@
 
   .assign-volunteer {
     grid-template-columns: 1fr;
+  }
+
+  .block-time {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .block-time-right {
+    margin-left: 0;
   }
 }

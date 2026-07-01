@@ -707,6 +707,75 @@
   }
 
   .volunteer-table {
-    min-width: 820px;
+    min-width: 0;
+  }
+
+  .volunteer-table,
+  .volunteer-table thead,
+  .volunteer-table tbody,
+  .volunteer-table tr,
+  .volunteer-table th,
+  .volunteer-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .volunteer-table thead {
+    display: none;
+  }
+
+  .volunteer-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .volunteer-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-card);
+  }
+
+  .volunteer-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    text-align: left !important;
+  }
+
+  .volunteer-table td:last-child {
+    border-bottom: none;
+  }
+
+  .person-identity {
+    align-items: flex-start;
+  }
+
+  .person-meta {
+    gap: 6px;
+  }
+
+  .status-list,
+  .coin-breakdown,
+  .volunteer-actions {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .volunteer-menu,
+  .volunteer-menu-trigger {
+    width: 100%;
+  }
+
+  .volunteer-menu-trigger {
+    min-height: 34px;
+    justify-content: center;
+  }
+
+  .volunteer-menu-dropdown {
+    left: 0;
+    right: 0;
+    min-width: 0;
   }
 }
