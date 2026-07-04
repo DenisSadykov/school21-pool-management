@@ -209,6 +209,12 @@
   font-size: 1rem;
 }
 
+.student-person-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .nick-button {
   width: fit-content;
   padding: 0;
@@ -228,6 +234,11 @@
 .workoff-stack small {
   color: var(--text-secondary);
   font-size: 0.85rem;
+}
+
+.student-person-name {
+  display: inline-flex;
+  align-items: center;
 }
 
 .student-events span {
@@ -962,9 +973,13 @@
   }
 
   .students-table td {
-    padding: 0;
+    padding: 10px 12px;
     border: none;
     min-width: 0;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(210, 222, 239, 0.9);
+    border-radius: var(--radius-md);
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
   }
 
   .students-table td::before {
@@ -981,17 +996,51 @@
     grid-column: 1 / -1;
   }
 
+  .students-table td[data-label="Ученик"] {
+    padding: 12px 14px;
+    background: linear-gradient(180deg, rgba(255, 252, 243, 0.96), rgba(255, 249, 235, 0.9));
+    border-color: rgba(245, 208, 123, 0.45);
+  }
+
   .students-table td[data-label="Управление"]::before {
     margin-bottom: 6px;
   }
 
   .student-person {
-    gap: 2px;
+    gap: 0;
+  }
+
+  .student-person-line {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+  }
+
+  .student-person .nick-button strong {
+    font-size: 1.05rem;
+    line-height: 1.1;
+  }
+
+  .student-person-name {
+    font-size: 0.92rem;
+    line-height: 1.25;
+    color: var(--text-secondary);
+  }
+
+  .students-table td[data-label="Трайб"],
+  .students-table td[data-label="Мероприятия"],
+  .students-table td[data-label="Статус"],
+  .students-table td[data-label="Штрафы"] {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
   }
 
   .student-events {
     align-items: flex-start;
     justify-content: flex-start;
+    gap: 4px;
   }
 
   .student-events-inline {
