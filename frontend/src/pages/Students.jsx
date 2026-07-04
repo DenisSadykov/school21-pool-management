@@ -520,10 +520,12 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
     <tr className={rowClass}>
       <td data-label="Ученик">
         <div className="student-person">
-          <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
-            <strong>{copied ? 'Скопировано' : student.nick}</strong>
-          </button>
-          <span>{student.name}</span>
+          <div className="student-person-line">
+            <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
+              <strong>{copied ? 'Скопировано' : student.nick}</strong>
+            </button>
+            <span className="student-person-name">{student.name}</span>
+          </div>
         </div>
       </td>
       <td data-label="Трайб">

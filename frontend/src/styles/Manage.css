@@ -407,6 +407,14 @@
     gap: 6px;
     position: relative;
     padding: 12px;
+    padding-right: 58px;
+  }
+
+  .pv-row .pv-del {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    justify-self: auto;
   }
 
   .responsibles-row .pv-name,
