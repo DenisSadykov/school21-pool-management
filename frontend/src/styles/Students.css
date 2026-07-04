@@ -970,6 +970,7 @@
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    position: relative;
   }
 
   .students-table td {
@@ -997,17 +998,19 @@
   }
 
   .students-table td[data-label="Ученик"] {
-    padding: 12px 14px;
-    background: linear-gradient(180deg, rgba(255, 252, 243, 0.96), rgba(255, 249, 235, 0.9));
-    border-color: rgba(245, 208, 123, 0.45);
-  }
-
-  .students-table td[data-label="Ученик"]::before {
-    margin-bottom: 8px;
+    padding: 0 52px 4px 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
   .students-table td[data-label="Управление"]::before {
     margin-bottom: 6px;
+  }
+
+  .students-table td[data-label="Ученик"]::before,
+  .students-table td[data-label="Управление"]::before {
+    display: none;
   }
 
   .student-person {
@@ -1017,7 +1020,7 @@
   .student-person-line {
     flex-direction: row;
     flex-wrap: nowrap;
-    align-items: baseline;
+    align-items: center;
     gap: 6px 10px;
     justify-content: flex-start;
     min-width: 0;
@@ -1042,6 +1045,18 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .students-table td[data-label="Управление"] {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: auto;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    grid-column: auto;
   }
 
   .students-table td[data-label="Трайб"],
@@ -1082,11 +1097,13 @@
   }
 
   .students-table td[data-label="Мероприятия"] .student-events {
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
   }
 
   .students-table td[data-label="Мероприятия"] .student-events strong {
-    font-size: 1.75rem;
+    font-size: 1.2rem;
     line-height: 1;
   }
 
@@ -1095,7 +1112,8 @@
   }
 
   .students-table td[data-label="Управление"] .student-actions {
-    justify-content: flex-start;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .penalties-disclosure,
