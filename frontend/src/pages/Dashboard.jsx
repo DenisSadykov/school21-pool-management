@@ -105,6 +105,7 @@ function OpsDashboard({ data }) {
   const penalty = data?.penalties || {};
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
+  const responsibles = data?.pool_responsibles || [];
   const tomorrowCoverageLabel = tomorrowCoverage(data?.tomorrow_blocks || []);
   const telegramBotLink = getTelegramBotLink(telegram.bot_username);
   const penaltyLinks = [
@@ -170,6 +171,11 @@ function OpsDashboard({ data }) {
           <DashboardNotes notes={notes} />
         </section>
 
+        <section className="info-section wide">
+          <SectionTitle icon={Users} title="Ответственные за бассейн" tone="users" />
+          <PoolResponsiblesRow responsibles={responsibles} />
+        </section>
+
         <section className="info-section">
           <SectionTitle
             icon={Calendar}
@@ -210,6 +216,7 @@ function TribeMasterDashboard({ data }) {
   const tribe = data?.tribe || {};
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
+  const responsibles = data?.pool_responsibles || [];
   const telegramBotLink = getTelegramBotLink(telegram.bot_username);
   return (
     <>
@@ -257,6 +264,11 @@ function TribeMasterDashboard({ data }) {
           <DashboardNotes notes={notes} />
         </section>
 
+        <section className="info-section wide">
+          <SectionTitle icon={Users} title="Ответственные за бассейн" tone="users" />
+          <PoolResponsiblesRow responsibles={responsibles} />
+        </section>
+
         <section className="info-section">
           <SectionTitle icon={Calendar} title="Ближайшие встречи трайба" />
           <TribeEventList events={tribe.next_events || []} empty="Пока нет назначенных встреч трайба." />
@@ -282,6 +294,7 @@ function VolunteerDashboard({ data, user }) {
   const briefAvailable = Boolean(todayExam || tomorrowExam);
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
+  const responsibles = data?.pool_responsibles || [];
   const telegramBotLink = getTelegramBotLink(telegram.bot_username);
 
   return (
@@ -315,6 +328,11 @@ function VolunteerDashboard({ data, user }) {
         <section className="info-section dashboard-notes-section">
           <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
           <DashboardNotes notes={notes} />
+        </section>
+
+        <section className="info-section wide">
+          <SectionTitle icon={Users} title="Ответственные за бассейн" tone="users" />
+          <PoolResponsiblesRow responsibles={responsibles} />
         </section>
 
         <section className="info-section">
@@ -542,6 +560,33 @@ function TopStudents({ students }) {
           <span>{index + 1}. @{student.nick}</span>
           <strong>{student.events_total}</strong>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function PoolResponsiblesRow({ responsibles }) {
+  if (!responsibles.length) {
+    return <p className="text-muted">Ответственные за бассейн пока не назначены.</p>;
+  }
+  return (
+    <div className="pool-responsibles-row">
+      {responsibles.map((person) => (
+        <span className="pool-responsible-pill" key={person.id}>
+          <span className="pool-responsible-pill-text">@{person.nick}</span>
+          {getTelegramLink(person.telegram) && (
+            <a
+              className="pool-responsible-pill-tg"
+              href={getTelegramLink(person.telegram)}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Написать ${person.telegram || `@${person.nick}`}`}
+              title={`Написать ${person.telegram || `@${person.nick}`}`}
+            >
+              <img src="/icons/telegram.webp" alt="" />
+            </a>
+          )}
+        </span>
       ))}
     </div>
   );

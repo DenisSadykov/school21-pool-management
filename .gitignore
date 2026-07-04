@@ -57,6 +57,7 @@ build/
 logs/
 backend/backups/
 *.bak
+.codex-audits/
 
 # OS
 .DS_Store

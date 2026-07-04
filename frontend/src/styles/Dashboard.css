@@ -496,6 +496,50 @@
   background: var(--border-soft);
 }
 
+.pool-responsibles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pool-responsible-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.pool-responsible-pill-text {
+  font-weight: 600;
+}
+
+.pool-responsible-pill-tg {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.pool-responsible-pill-tg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(34, 158, 217, 0.2);
+}
+
+.pool-responsible-pill-tg img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  object-fit: contain;
+  border-radius: 999px;
+}
+
 .dashboard-notes-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 220px));

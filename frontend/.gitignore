@@ -1,0 +1,14 @@
+# Local secrets
+.env
+.env.local
+.env.*.local
+
+# Local dependencies and builds
+node_modules/
+build/
+playwright-report/
+test-results/
+
+# Tooling metadata
+.claude/
+.vercel/

@@ -659,6 +659,14 @@
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
 }
 
+.volunteer-menu-dropdown-portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  z-index: 500;
+}
+
 .volunteer-role-select {
   width: 100%;
   min-height: 30px;
@@ -849,5 +857,11 @@
     right: 0;
     min-width: 0;
     z-index: 60;
+  }
+
+  .volunteer-menu-dropdown-portal {
+    left: 12px;
+    right: 12px;
+    width: auto !important;
   }
 }

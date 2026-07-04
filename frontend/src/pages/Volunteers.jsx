@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import { api, buildAuthenticatedAssetUrl } from '../api';
 import TribeLabel from '../components/TribeLabel';
@@ -58,33 +59,55 @@ function Volunteers({ user }) {
   const [loading, setLoading] = useState(true);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
-  const load = useCallback(async () => {
+  const loadVolunteers = useCallback(async (poolId) => {
+    if (!poolId) {
+      setAllVols([]);
+      return;
+    }
+
+    const volList = await api.get(`/api/volunteers?pool_id=${poolId}`);
+    const filtered = (volList || []).filter((v) =>
+      ['volunteer', 'tribe_master'].includes(v.role)
+    );
+    setAllVols(filtered);
+  }, []);
+
+  const loadPage = useCallback(async () => {
     setLoading(true);
     try {
       const pools = await api.get('/api/pools');
       const pool = (pools || []).find((p) => p.active) || null;
       setActivePool(pool);
-      if (!pool) { setAllVols([]); return; }
+      if (!pool) {
+        setAllVols([]);
+        setTribes([]);
+        return;
+      }
 
-      const [volList, tribeList] = await Promise.all([
-        api.get(`/api/volunteers?pool_id=${pool.id}`),
+      const [tribeList] = await Promise.all([
         api.get('/api/tribes'),
+        loadVolunteers(pool.id),
       ]);
       setTribes(tribeList || []);
-      const filtered = (volList || []).filter((v) =>
-        ['volunteer', 'tribe_master'].includes(v.role)
-      );
-      setAllVols(filtered);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadVolunteers]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadPage(); }, [loadPage]);
 
   const updateVolunteer = async (id, patch) => {
-    try { await api.patch(`/api/volunteers/${id}`, { ...patch, pool_id: activePool?.id }); load(); }
-    catch (e) { alert(e.message); }
+    try {
+      setAllVols((prev) => prev.map((item) => (
+        item.id === id ? { ...item, ...patch } : item
+      )));
+      await api.patch(`/api/volunteers/${id}`, { ...patch, pool_id: activePool?.id });
+      loadVolunteers(activePool?.id);
+    }
+    catch (e) {
+      loadVolunteers(activePool?.id);
+      alert(e.message);
+    }
   };
 
   if (loading) return <div className="loading">Загрузка волонтёров...</div>;
@@ -217,7 +240,7 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  }, [open, v.id]);
 
   useEffect(() => {
     if (!infoPinned) return undefined;
@@ -307,17 +330,49 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
 function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const updatePosition = () => {
+      if (!menuRef.current) return;
+      const rect = menuRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const menuWidth = Math.min(Math.max(rect.width, 240), viewportWidth - 24);
+      const left = Math.min(
+        Math.max(12, rect.right - menuWidth),
+        viewportWidth - menuWidth - 12,
+      );
+
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 8,
+        left,
+        width: menuWidth,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, v.id]);
 
   useEffect(() => {
     if (!open) return undefined;
     const handleClickOutside = (event) => {
-      if (!menuRef.current?.contains(event.target)) {
+      const dropdownNode = document.querySelector(`[data-volunteer-menu="${v.id}"]`);
+      if (!menuRef.current?.contains(event.target) && !dropdownNode?.contains(event.target)) {
         setOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  }, [open, v.id]);
 
   return (
     <div className={`volunteer-menu ${open ? 'open' : ''}`} ref={menuRef}>
@@ -329,8 +384,12 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
       >
         <MoreHorizontal size={18} />
       </button>
-      {open && (
-        <div className="volunteer-menu-dropdown">
+      {open && dropdownStyle && createPortal(
+        <div
+          className="volunteer-menu-dropdown volunteer-menu-dropdown-portal"
+          data-volunteer-menu={v.id}
+          style={dropdownStyle}
+        >
           <label className="check-control">
             <input
               type="checkbox"
@@ -350,7 +409,8 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
             <option value="volunteer">Волонтёр</option>
             <option value="tribe_master">Трайб-мастер</option>
           </select>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

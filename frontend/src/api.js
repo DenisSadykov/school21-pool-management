@@ -20,6 +20,14 @@ export function clearSession() {
   localStorage.removeItem('user');
 }
 
+export const POOLS_CHANGED_EVENT = 'app:pools-changed';
+
+export function emitPoolsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(POOLS_CHANGED_EVENT));
+  }
+}
+
 export function buildAuthenticatedAssetUrl(path) {
   if (!path) return '';
   const token = getToken();
