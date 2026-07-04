@@ -168,6 +168,7 @@ def test_telegram_callback_marks_penalty_awaiting_unlock(client, factories, db_s
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
+    factories.assign(admin, pool, pool_role='responsible_admin')
 
     penalty = app_module.StudentPenalty(
         student_name='Petr Student',

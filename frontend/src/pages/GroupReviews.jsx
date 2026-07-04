@@ -10,15 +10,23 @@ function todayIso() {
 function GroupReviews({ user }) {
   const [reviews, setReviews] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
+  const [activePool, setActivePool] = useState(null);
   const [loading, setLoading] = useState(true);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
   const load = async () => {
     setLoading(true);
     try {
+      const pool = await api.get('/api/pools/active');
+      setActivePool(pool);
+      if (!pool) {
+        setReviews([]);
+        setVolunteers([]);
+        return;
+      }
       const [reviewRows, people] = await Promise.all([
-        api.get('/api/group-reviews'),
-        isStaff ? api.get('/api/volunteers') : Promise.resolve([]),
+        api.get(`/api/group-reviews?pool_id=${pool.id}`),
+        isStaff ? api.get(`/api/volunteers?pool_id=${pool.id}`) : Promise.resolve([]),
       ]);
       setReviews(reviewRows);
       setVolunteers(people);
@@ -54,7 +62,7 @@ function GroupReviews({ user }) {
         </div>
       </div>
 
-      {isStaff && <GroupReviewForm volunteers={volunteers} onSuccess={load} />}
+      {isStaff && <GroupReviewForm volunteers={volunteers} poolId={activePool?.id} onSuccess={load} />}
 
       <div className="group-review-summary">
         <Summary label="Всего проверок" value={reviews.reduce((sum, review) => sum + (review.quantity || 1), 0)} />
@@ -118,7 +126,7 @@ function Summary({ label, value }) {
   );
 }
 
-function GroupReviewForm({ volunteers, onSuccess }) {
+function GroupReviewForm({ volunteers, poolId, onSuccess }) {
   const [form, setForm] = useState({
     date: todayIso(),
     time_start: '10:00',
@@ -133,7 +141,7 @@ function GroupReviewForm({ volunteers, onSuccess }) {
       return;
     }
     try {
-      await api.post('/api/group-reviews', form);
+      await api.post('/api/group-reviews', { ...form, pool_id: poolId });
       setForm({ ...form, quantity: 1, reviewer_id: '' });
       onSuccess();
     } catch (error) {

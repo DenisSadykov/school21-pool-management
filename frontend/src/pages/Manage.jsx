@@ -6,19 +6,20 @@ import TribeLabel from '../components/TribeLabel';
 import '../styles/Manage.css';
 
 function Manage({ user }) {
-  const [pools, setPools] = useState([]);
+  const [activePool, setActivePool] = useState(null);
   const [allVolunteers, setAllVolunteers] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
   const [tribes, setTribes] = useState([]);
   const [msg, setMsg] = useState('');
 
-  const loadPools = useCallback(async () => setPools(await api.get('/api/pools')), []);
+  const loadActivePool = useCallback(async () => {
+    setActivePool(await api.get('/api/pools/active'));
+  }, []);
   const loadVolunteers = useCallback(async () => {
     const all = await api.get('/api/users');
     setAllVolunteers(all.filter((u) => ['volunteer', 'tribe_master'].includes(u.role)));
     setAllStaff(all.filter((u) => ['team_lead', 'admin'].includes(u.role)));
   }, []);
-  const activePool = pools.find((p) => p.active);
   const loadTribes = useCallback(async () => {
     if (!activePool?.id) {
       setTribes([]);
@@ -28,9 +29,9 @@ function Manage({ user }) {
   }, [activePool?.id]);
 
   useEffect(() => {
-    loadPools();
+    loadActivePool();
     loadVolunteers();
-  }, [loadPools, loadVolunteers]);
+  }, [loadActivePool, loadVolunteers]);
 
   useEffect(() => {
     loadTribes();
@@ -58,7 +59,10 @@ function Manage({ user }) {
                   Генерирует 14-дневный шаблон School21 pool: стартовый понедельник 09:00–19:00 и 19:00–20:00,
                   по четвергам — EXAM 11:00–17:00, остальные дни — слоты 10:00–14:00 и 15:00–19:00.
                 </p>
-                <GenerateScheduleForm poolId={activePool.id} onDone={(t) => setMsg(t)} />
+                <GenerateScheduleForm pool={activePool} onDone={async (t) => {
+                  setMsg(t);
+                  await loadActivePool();
+                }} />
               </>
             ) : (
               <p className="muted">У активного бассейна не задана дата начала. Укажи её в <Link to="/settings">Настройках</Link>.</p>
@@ -106,9 +110,10 @@ function SmallAvatar({ person }) {
   );
 }
 
-function GenerateScheduleForm({ poolId, onDone }) {
+function GenerateScheduleForm({ pool, onDone }) {
   const [loading, setLoading] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const poolId = pool?.id;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -139,14 +144,19 @@ function GenerateScheduleForm({ poolId, onDone }) {
 
   return (
     <div className="schedule-generator">
-      <form className="inline-form" onSubmit={submit}>
+      {pool?.has_schedule_generation && (
+        <div className="schedule-generator-notice">
+          Расписание этого бассейна уже генерировалось ранее.
+        </div>
+      )}
+      <form className="inline-form schedule-generator-actions" onSubmit={submit}>
         <button className="btn-primary" type="submit" disabled={loading}>
           <Plus size={16} /> {loading ? 'Создаю...' : 'Сгенерировать бассейн на 14 дней'}
         </button>
+        <button className="btn-secondary" type="button" onClick={undo} disabled={undoing}>
+          {undoing ? 'Отменяю...' : 'Отменить последнюю генерацию'}
+        </button>
       </form>
-      <button className="btn-secondary" type="button" onClick={undo} disabled={undoing}>
-        {undoing ? 'Отменяю...' : 'Отменить последнюю генерацию'}
-      </button>
     </div>
   );
 }

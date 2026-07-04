@@ -14,12 +14,14 @@ const ROLE_LABELS = {
 function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(user);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
   useEffect(() => {
     setProfile(user);
+    setAvatarFailed(false);
   }, [user]);
 
   useEffect(() => {
@@ -51,8 +53,12 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
               style={{ cursor: 'pointer' }}
             >
               <span className="user-avatar">
-                {profile?.avatar_url ? (
-                  <img src={buildAuthenticatedAssetUrl(profile.avatar_url)} alt={profile?.name || profile?.nick || 'avatar'} />
+                {profile?.avatar_url && !avatarFailed ? (
+                  <img
+                    src={buildAuthenticatedAssetUrl(profile.avatar_url)}
+                    alt={profile?.name || profile?.nick || 'avatar'}
+                    onError={() => setAvatarFailed(true)}
+                  />
                 ) : (
                   (profile?.nick || 'AD').slice(0, 2).toUpperCase()
                 )}

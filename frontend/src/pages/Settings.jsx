@@ -12,6 +12,7 @@ function Settings({ user }) {
   const location = useLocation();
   const isAdmin = user.role === 'admin';
   const [pools, setPools] = useState([]);
+  const [activePool, setActivePool] = useState(null);
   const [staffUsers, setStaffUsers] = useState([]);
   const [systemVols, setSystemVols] = useState([]);
   const [msg, setMsg] = useState('');
@@ -19,6 +20,7 @@ function Settings({ user }) {
   const volunteerUploadRef = useRef(null);
 
   const loadPools = useCallback(async () => setPools(await api.get('/api/pools')), []);
+  const loadActivePool = useCallback(async () => setActivePool(await api.get('/api/pools/active')), []);
   const loadStaff = useCallback(async () => {
     if (!isAdmin) return;
     const all = await api.get('/api/users');
@@ -29,7 +31,7 @@ function Settings({ user }) {
     setSystemVols(all.filter((u) => ['volunteer', 'tribe_master'].includes(u.role)));
   }, []);
 
-  useEffect(() => { loadPools(); loadStaff(); loadSystemVols(); }, [loadPools, loadStaff, loadSystemVols]);
+  useEffect(() => { loadPools(); loadActivePool(); loadStaff(); loadSystemVols(); }, [loadPools, loadActivePool, loadStaff, loadSystemVols]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -46,12 +48,11 @@ function Settings({ user }) {
     return () => window.clearTimeout(timer);
   }, [location.search]);
 
-  const activePool = pools.find((p) => p.active);
-
   const refreshPools = useCallback(() => {
     loadPools();
+    loadActivePool();
     emitPoolsChanged();
-  }, [loadPools]);
+  }, [loadPools, loadActivePool]);
 
   return (
     <div className="page manage-page">
@@ -89,10 +90,9 @@ function Settings({ user }) {
                     if (nextName === null) return;
                     const trimmed = nextName.trim();
                     if (!trimmed || trimmed === p.name) return;
-                    const updatedPool = await api.patch(`/api/pools/${p.id}`, { name: trimmed });
+                    await api.patch(`/api/pools/${p.id}`, { name: trimmed });
                     setMsg('Название бассейна обновлено');
-                    setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
-                    emitPoolsChanged();
+                    refreshPools();
                   }}
                 >
                   <Pencil size={16} />
@@ -100,13 +100,8 @@ function Settings({ user }) {
                 {!p.active && !p.archived && (
                   <button className="btn-mini primary"
                     onClick={async () => {
-                      const updatedPool = await api.post(`/api/pools/${p.id}/activate`);
-                      setPools((prev) => prev.map((item) => (
-                        item.id === p.id
-                          ? updatedPool
-                          : { ...item, active: false }
-                      )));
-                      emitPoolsChanged();
+                      await api.post(`/api/pools/${p.id}/activate`);
+                      refreshPools();
                     }}>
                     Активировать
                   </button>
@@ -115,17 +110,15 @@ function Settings({ user }) {
                   <button className="btn-mini danger-outline"
                     onClick={async () => {
                       if (!window.confirm(`Архивировать «${p.name}»? Волонтёры потеряют доступ.`)) return;
-                      const updatedPool = await api.post(`/api/pools/${p.id}/archive`);
-                      setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
-                      emitPoolsChanged();
+                      await api.post(`/api/pools/${p.id}/archive`);
+                      refreshPools();
                     }}>В архив</button>
                 )}
                 {p.archived && (
                   <button className="btn-mini"
                     onClick={async () => {
-                      const updatedPool = await api.post(`/api/pools/${p.id}/unarchive`);
-                      setPools((prev) => prev.map((item) => (item.id === p.id ? updatedPool : item)));
-                      emitPoolsChanged();
+                      await api.post(`/api/pools/${p.id}/unarchive`);
+                      refreshPools();
                     }}>
                     Восстановить
                   </button>
@@ -138,8 +131,7 @@ function Settings({ user }) {
                       try {
                         await api.del(`/api/pools/${p.id}`);
                         setMsg('Бассейн удалён');
-                        setPools((prev) => prev.filter((item) => item.id !== p.id));
-                        emitPoolsChanged();
+                        refreshPools();
                       } catch (e) {
                         alert(e.message);
                       }

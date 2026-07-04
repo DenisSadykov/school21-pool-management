@@ -16,6 +16,7 @@ def test_volunteer_can_create_penalty_in_accessible_active_pool(client, factorie
     volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
     pool = factories.pool('Active pool', active=True)
     factories.assign(volunteer, pool)
+    factories.assign(admin, pool, pool_role='responsible_admin')
 
     response = client.post(
         '/api/penalties',
@@ -97,6 +98,7 @@ def test_manual_penalty_status_to_awaiting_unlock_notifies_admins_and_cancels_pe
     volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
     pool = factories.pool('Active pool', active=True)
     factories.assign(volunteer, pool)
+    factories.assign(admin, pool, pool_role='responsible_admin')
 
     penalty = app_module.StudentPenalty(
         student_name='Petr Student',
@@ -147,3 +149,36 @@ def test_manual_penalty_status_to_awaiting_unlock_notifies_admins_and_cancels_pe
     ).all()
     assert admin_events
     assert any(item.recipient_user_id == admin.id for item in admin_events)
+
+
+def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, auth_headers, db_session):
+    responsible_admin = factories.user('resp_admin', role='admin', password='secret123')
+    unrelated_admin = factories.user('other_admin', role='admin', password='secret123')
+    responsible_lead = factories.user('resp_lead', role='team_lead', password='lead1234')
+    unrelated_lead = factories.user('other_lead', role='team_lead', password='lead1234')
+    volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+    factories.assign(responsible_admin, pool, pool_role='responsible_admin')
+    factories.assign(responsible_lead, pool, pool_role='responsible_team_lead')
+
+    response = client.post(
+        '/api/penalties',
+        headers=auth_headers(volunteer),
+        json={'student_name': 'Only Responsibles', 'description': 'Late'},
+    )
+
+    assert response.status_code == 201
+
+    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_name='Only Responsibles').one()
+    notifications = db_session.query(app_module.NotificationEvent).filter_by(
+        type='penalty_admin_block',
+        source_entity='penalty',
+        source_entity_id=penalty.id,
+    ).all()
+    recipients = {event.recipient_user_id for event in notifications}
+
+    assert responsible_admin.id in recipients
+    assert responsible_lead.id in recipients
+    assert unrelated_admin.id not in recipients
+    assert unrelated_lead.id not in recipients
