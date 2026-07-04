@@ -67,11 +67,52 @@ python3 app.py
 
 Если позже backend переедет на Render, можно использовать и polling-режим отдельным процессом. Он использует ту же БД, что и backend.
 
+Для GitHub Actions scheduler используй тот же секрет, что и у backend:
+- `INTERNAL_API_SECRET`
+
 ```bash
 cd backend
 source venv/bin/activate
 python3 telegram_bot.py
 ```
+
+### Ежедневная проверка
+
+Для быстрой smoke-проверки без ручного перебора команд:
+
+```bash
+./scripts/daily_check.sh
+```
+
+Скрипт проверяет:
+
+- production-сборку frontend
+- frontend test runner в CI-режиме
+- зависимости backend через `pip check`
+- компиляцию Python-файлов
+- smoke-test backend endpoint `GET /api/health`
+
+Важно: локальные секреты храним только в `backend/.env.local` и `frontend/.env.local`. Эти файлы не должны попадать в git.
+
+### Локальная E2E-проверка
+
+Для проверки реального сценария логина и открытия ключевых экранов без обращения к продовой базе:
+
+```bash
+./scripts/e2e_check.sh
+```
+
+Скрипт поднимает отдельный backend на SQLite, стартует локальный frontend и запускает Playwright smoke-тесты.
+
+### GitHub Actions
+
+В репозитории есть workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), который:
+
+- на `push` и `pull_request` запускает quality-check
+- ежедневно запускает автоматическую проверку проекта
+- отдельно прогоняет локальный Playwright smoke-контур
+
+Для безопасного деплоя рекомендуется в GitHub включить required checks для workflow `CI`, чтобы изменения попадали в основную ветку только после зелёных проверок.
 
 ## 📚 Документация
 

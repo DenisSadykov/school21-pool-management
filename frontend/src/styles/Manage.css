@@ -266,7 +266,35 @@
 }
 .pv-name { color: var(--text-secondary); min-width: 0; }
 .pv-tg, .pv-tribe { font-size: 0.75rem; color: var(--text-secondary); min-width: 0; }
+.pv-role { color: var(--text-secondary); min-width: 0; }
 .pv-del { justify-self: center; }
+
+.responsibles-head,
+.responsibles-row {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 1fr) minmax(180px, 1fr) minmax(140px, 0.8fr) 48px;
+}
+
+.responsibles-head span:nth-child(2),
+.responsibles-head span:nth-child(3),
+.responsibles-head span:nth-child(4),
+.responsibles-row .pv-name,
+.responsibles-row .pv-tg,
+.responsibles-row .pv-role {
+  text-align: center;
+}
+
+.responsibles-row .pv-nick,
+.responsibles-row .pv-name,
+.responsibles-row .pv-tg,
+.responsibles-row .pv-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.responsibles-row .pv-del {
+  justify-self: end;
+}
 
 .tribe-manage-row {
   display: flex;
@@ -352,6 +380,13 @@
 
   .pv-row {
     gap: 6px;
+  }
+
+  .responsibles-row .pv-name,
+  .responsibles-row .pv-tg,
+  .responsibles-row .pv-role {
+    text-align: left;
+    white-space: normal;
   }
 
   .pv-del,

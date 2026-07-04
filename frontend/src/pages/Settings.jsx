@@ -284,33 +284,6 @@ function GlobalVolunteerUpload({ onDone }) {
   );
 }
 
-function AvatarUploadButton({ userId, onDone }) {
-  const inputRef = useRef(null);
-
-  const uploadFile = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    const form = new FormData();
-    form.append('file', file);
-    try {
-      await api.upload(`/api/users/${userId}/avatar`, form);
-      onDone?.();
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
-  return (
-    <>
-      <button type="button" className="btn-mini" onClick={() => inputRef.current?.click()}>
-        Фото
-      </button>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={uploadFile} />
-    </>
-  );
-}
-
 function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -516,7 +489,6 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
           </div>
         ) : (
           <div className="sys-vol-menu" ref={menuRef}>
-            <AvatarUploadButton userId={volunteer.id} onDone={onSaved} />
             <button
               type="button"
               className="sys-vol-menu-trigger"

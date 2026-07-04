@@ -8,6 +8,7 @@ import '../styles/Manage.css';
 function Manage({ user }) {
   const [pools, setPools] = useState([]);
   const [allVolunteers, setAllVolunteers] = useState([]);
+  const [allStaff, setAllStaff] = useState([]);
   const [tribes, setTribes] = useState([]);
   const [msg, setMsg] = useState('');
 
@@ -15,6 +16,7 @@ function Manage({ user }) {
   const loadVolunteers = useCallback(async () => {
     const all = await api.get('/api/users');
     setAllVolunteers(all.filter((u) => ['volunteer', 'tribe_master'].includes(u.role)));
+    setAllStaff(all.filter((u) => ['team_lead', 'admin'].includes(u.role)));
   }, []);
   const activePool = pools.find((p) => p.active);
   const loadTribes = useCallback(async () => {
@@ -70,6 +72,15 @@ function Manage({ user }) {
               poolId={activePool.id}
               allVolunteers={allVolunteers}
               onChanged={loadVolunteers}
+            />
+          </section>
+
+          <section className="manage-section">
+            <h2>Ответственные за бассейн</h2>
+            <p className="muted">Добавь админов и тимлидов, которые отвечают за этот бассейн.</p>
+            <PoolResponsiblesSection
+              poolId={activePool.id}
+              allStaff={allStaff}
             />
           </section>
 
@@ -146,13 +157,19 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
   const [addUserId, setAddUserId] = useState('');
   const [msg, setMsg] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try { setPvs(await api.get(`/api/pools/${poolId}/volunteers`)); }
-    finally { setLoading(false); }
+    finally {
+      if (showLoading) {
+        setLoading(false);
+      }
+    }
   }, [poolId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ showLoading: true }); }, [load]);
 
   const assignedIds = new Set(pvs.map((v) => v.id));
   const available = allVolunteers.filter((v) => !assignedIds.has(v.id));
@@ -215,6 +232,87 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
               <span className="pv-name">{v.name || '—'}</span>
               <span className="pv-tg">{v.telegram || '—'}</span>
               <button className="btn-icon danger pv-del" onClick={() => remove(v)} title="Удалить из бассейна">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PoolResponsiblesSection({ poolId, allStaff }) {
+  const [responsibles, setResponsibles] = useState([]);
+  const [addUserId, setAddUserId] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    setResponsibles(await api.get(`/api/pools/${poolId}/responsibles`));
+  }, [poolId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const assignedIds = new Set(responsibles.map((item) => item.id));
+  const available = allStaff.filter((item) => !assignedIds.has(item.id));
+
+  const add = async () => {
+    if (!addUserId) return;
+    try {
+      await api.post(`/api/pools/${poolId}/responsibles`, { user_id: Number(addUserId) });
+      setAddUserId('');
+      setMsg('Ответственный добавлен');
+      load();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const remove = async (person) => {
+    if (!window.confirm(`Убрать @${person.nick} из ответственных?`)) return;
+    try {
+      await api.del(`/api/pools/${poolId}/responsibles/${person.id}`);
+      setMsg('Ответственный удалён');
+      load();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="pool-volunteers-section" style={{ border: 'none', padding: 0, borderRadius: 0 }}>
+      {msg && <div className="pv-msg">{msg}</div>}
+      <div className="pv-toolbar">
+        <div className="pv-add-row">
+          <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
+            <option value="">Добавить ответственного</option>
+            {available.map((person) => (
+              <option key={person.id} value={person.id}>
+                @{person.nick} {person.name ? `· ${person.name}` : ''} · {person.role === 'admin' ? 'Админ' : 'Тимлид'}
+              </option>
+            ))}
+          </select>
+          <button className="btn-mini primary" onClick={add} disabled={!addUserId}>+</button>
+        </div>
+      </div>
+      {responsibles.length === 0 ? (
+        <p className="pv-empty">Ответственные пока не назначены.</p>
+      ) : (
+        <div className="pv-list responsibles-list" style={{ marginTop: 8 }}>
+          <div className="pv-head responsibles-head">
+            <span>Ник</span>
+            <span>Имя</span>
+            <span>Телеграм</span>
+            <span>Роль</span>
+            <span>Удалить</span>
+          </div>
+          {responsibles.map((person) => (
+            <div key={person.id} className="pv-row responsibles-row">
+              <span className="pv-nick"><SmallAvatar person={person} />@{person.nick}</span>
+              <span className="pv-name">{person.name || '—'}</span>
+              <span className="pv-tg">{person.telegram || '—'}</span>
+              <span className="pv-role">{person.role === 'admin' ? 'Админ' : 'Тимлид'}</span>
+              <button className="btn-icon danger pv-del" onClick={() => remove(person)} title="Убрать из ответственных">
                 <Trash2 size={14} />
               </button>
             </div>

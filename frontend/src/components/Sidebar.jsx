@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Calendar, Users, AlertCircle, BookOpen, Trophy, ClipboardCheck, SlidersHorizontal, Bell } from 'lucide-react';
-import { api } from '../api';
+import { api, POOLS_CHANGED_EVENT } from '../api';
 import '../styles/Sidebar.css';
 import TribeLabel from './TribeLabel';
 
@@ -17,10 +17,16 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
   const canUseGroupReviews = isStaff;
 
   useEffect(() => {
-    api.get('/api/pools').then((pools) => {
-      setActivePool((pools || []).find((p) => p.active) || null);
-    }).catch(() => {});
-  }, [location.pathname]);
+    const loadActivePool = () => {
+      api.get('/api/pools/active').then((pool) => {
+        setActivePool(pool || null);
+      }).catch(() => {});
+    };
+
+    loadActivePool();
+    window.addEventListener(POOLS_CHANGED_EVENT, loadActivePool);
+    return () => window.removeEventListener(POOLS_CHANGED_EVENT, loadActivePool);
+  }, []);
 
   useEffect(() => {
     function syncSidebarState() {

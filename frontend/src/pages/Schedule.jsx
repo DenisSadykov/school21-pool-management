@@ -53,35 +53,80 @@ function Schedule({ user }) {
   const [error, setError] = useState('');
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
 
-  const load = useCallback(async () => {
+  const loadSchedule = useCallback(async ({ showLoading = false, includeVolunteers = false } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
+    setError('');
     try {
       const [res, people] = await Promise.all([
         api.get('/api/schedule'),
-        isStaff ? api.get('/api/volunteers') : Promise.resolve([]),
+        includeVolunteers && isStaff ? api.get('/api/volunteers') : Promise.resolve(null),
       ]);
       setData(res);
-      setVolunteers(people);
+      if (people) {
+        setVolunteers(people);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [isStaff]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadSchedule({ showLoading: true, includeVolunteers: true });
+  }, [loadSchedule]);
 
   const isMine = (block) => block.volunteers.some((v) => v.user_id === user.id);
+
+  const updateBlockState = useCallback((blockId, updater) => {
+    setData((prev) => ({
+      ...prev,
+      days: prev.days.map((day) => ({
+        ...day,
+        blocks: day.blocks.map((block) => (
+          block.id === blockId ? updater(block) : block
+        )),
+      })),
+    }));
+  }, []);
+
+  const removeBlockState = useCallback((blockId) => {
+    setData((prev) => ({
+      ...prev,
+      days: prev.days.map((day) => ({
+        ...day,
+        blocks: day.blocks.filter((block) => block.id !== blockId),
+      })),
+    }));
+  }, []);
 
   const toggleSignup = async (block) => {
     try {
       if (isMine(block)) {
         await api.del(`/api/blocks/${block.id}/signup`);
+        updateBlockState(block.id, (current) => {
+          const volunteers = current.volunteers.filter((v) => v.user_id !== user.id);
+          return { ...current, volunteers, count: volunteers.length };
+        });
       } else {
         await api.post(`/api/blocks/${block.id}/signup`);
+        updateBlockState(block.id, (current) => {
+          if (current.volunteers.some((v) => v.user_id === user.id)) return current;
+          const volunteer = {
+            user_id: user.id,
+            nick: user.nick,
+            name: user.name || user.nick,
+            telegram: user.telegram,
+            role: user.role,
+          };
+          const volunteers = [...current.volunteers, volunteer];
+          return { ...current, volunteers, count: volunteers.length };
+        });
       }
-      load();
     } catch (e) {
       alert(e.message);
     }
@@ -91,7 +136,10 @@ function Schedule({ user }) {
     if (!window.confirm(`Снять @${v.nick} со смены?`)) return;
     try {
       await api.del(`/api/blocks/${block.id}/signup?user_id=${v.user_id}`);
-      load();
+      updateBlockState(block.id, (current) => {
+        const volunteers = current.volunteers.filter((item) => item.user_id !== v.user_id);
+        return { ...current, volunteers, count: volunteers.length };
+      });
     } catch (e) {
       alert(e.message);
     }
@@ -101,7 +149,7 @@ function Schedule({ user }) {
     if (!window.confirm('Удалить этот тайм-блок со всеми записями?')) return;
     try {
       await api.del(`/api/blocks/${block.id}`);
-      load();
+      removeBlockState(block.id);
     } catch (e) {
       alert(e.message);
     }
@@ -109,8 +157,8 @@ function Schedule({ user }) {
 
   const changeCapacity = async (blockId, delta) => {
     try {
-      await api.patch(`/api/blocks/${blockId}/capacity`, { delta });
-      load();
+      const response = await api.patch(`/api/blocks/${blockId}/capacity`, { delta });
+      updateBlockState(blockId, (current) => ({ ...current, capacity: response.capacity }));
     } catch (e) {
       alert(e.message);
     }
@@ -120,7 +168,20 @@ function Schedule({ user }) {
     if (!userId) return;
     try {
       await api.post(`/api/blocks/${block.id}/signup`, { user_id: Number(userId) });
-      load();
+      const person = (volunteers || []).find((item) => item.id === Number(userId));
+      if (!person) return;
+      updateBlockState(block.id, (current) => {
+        if (current.volunteers.some((v) => v.user_id === person.id)) return current;
+        const volunteer = {
+          user_id: person.id,
+          nick: person.nick,
+          name: person.name || person.nick,
+          telegram: person.telegram,
+          role: person.role,
+        };
+        const nextVolunteers = [...current.volunteers, volunteer];
+        return { ...current, volunteers: nextVolunteers, count: nextVolunteers.length };
+      });
     } catch (e) {
       alert(e.message);
     }
@@ -203,7 +264,7 @@ function Schedule({ user }) {
                 <div className="week-add-row">
                   {week.days.map((day) => (
                     <div key={day.date} className="week-cell">
-                      <AddBlock date={day.date} poolId={data.pool.id} onAdded={load} />
+                      <AddBlock date={day.date} poolId={data.pool.id} onAdded={() => loadSchedule()} />
                     </div>
                   ))}
                 </div>
