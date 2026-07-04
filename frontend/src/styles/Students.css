@@ -1002,6 +1002,10 @@
     border-color: rgba(245, 208, 123, 0.45);
   }
 
+  .students-table td[data-label="Ученик"]::before {
+    margin-bottom: 8px;
+  }
+
   .students-table td[data-label="Управление"]::before {
     margin-bottom: 6px;
   }
@@ -1012,9 +1016,11 @@
 
   .student-person-line {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: baseline;
     gap: 6px 10px;
+    justify-content: flex-start;
+    min-width: 0;
   }
 
   .student-person .nick-button strong {
@@ -1022,19 +1028,27 @@
     line-height: 1.1;
   }
 
+  .student-person .nick-button {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
   .student-person-name {
     font-size: 0.92rem;
     line-height: 1.25;
     color: var(--text-secondary);
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .students-table td[data-label="Трайб"],
   .students-table td[data-label="Мероприятия"],
   .students-table td[data-label="Статус"],
   .students-table td[data-label="Штрафы"] {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    width: 100%;
   }
 
   .student-events {
@@ -1049,6 +1063,38 @@
 
   .student-penalties-cell,
   .student-actions {
+    justify-content: flex-start;
+  }
+
+  .students-table td[data-label="Трайб"] .tribe-badge,
+  .students-table td[data-label="Статус"] .workoff-pill,
+  .students-table td[data-label="Статус"] .workoff-pill-button,
+  .students-table td[data-label="Штрафы"] .penalties-trigger,
+  .students-table td[data-label="Управление"] .student-actions {
+    width: 100%;
+  }
+
+  .students-table td[data-label="Трайб"] .tribe-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: 0;
+  }
+
+  .students-table td[data-label="Мероприятия"] .student-events {
+    flex-direction: column;
+  }
+
+  .students-table td[data-label="Мероприятия"] .student-events strong {
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  .students-table td[data-label="Штрафы"] .penalties-trigger {
+    justify-content: space-between;
+  }
+
+  .students-table td[data-label="Управление"] .student-actions {
     justify-content: flex-start;
   }
 
