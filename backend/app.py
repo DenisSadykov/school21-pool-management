@@ -188,6 +188,13 @@ class Pool(db.Model):
             state = 'active'
         else:
             state = 'ended'
+        generations_count = ScheduleGeneration.query.filter_by(pool_id=self.id).count()
+        last_generation = (
+            ScheduleGeneration.query
+            .filter_by(pool_id=self.id)
+            .order_by(ScheduleGeneration.created_at.desc())
+            .first()
+        )
         return {
             'id': self.id,
             'name': self.name,
@@ -195,6 +202,9 @@ class Pool(db.Model):
             'active': self.active,
             'archived': bool(self.archived),
             'state': state,
+            'schedule_generations_count': generations_count,
+            'has_schedule_generation': generations_count > 0,
+            'last_schedule_generation_at': last_generation.created_at.isoformat() if last_generation and last_generation.created_at else None,
         }
 
 
@@ -928,6 +938,22 @@ def _admin_team_leads(pool_id=None):
     return query.order_by(User.role, User.nick).all()
 
 
+def _pool_responsible_users(pool_id):
+    if not pool_id:
+        return []
+    return (
+        db.session.query(User)
+        .join(PoolVolunteer, PoolVolunteer.user_id == User.id)
+        .filter(
+            PoolVolunteer.pool_id == pool_id,
+            PoolVolunteer.pool_role.in_(['responsible_admin', 'responsible_team_lead']),
+            User.active.is_(True),
+        )
+        .order_by(User.role, User.nick)
+        .all()
+    )
+
+
 def _pool_responsibles(pool_id):
     if not pool_id:
         return []
@@ -1345,7 +1371,7 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
 
 
 def _notify_admins_penalty_created(penalty):
-    for user in _admin_team_leads(penalty.pool_id):
+    for user in _pool_responsible_users(penalty.pool_id):
         _queue_notification(
             user,
             'penalty_admin_block',
@@ -1363,7 +1389,7 @@ def _notify_admins_penalty_created(penalty):
 
 
 def _notify_admins_penalty_awaiting_unlock(penalty):
-    for user in _admin_team_leads(penalty.pool_id):
+    for user in _pool_responsible_users(penalty.pool_id):
         _queue_notification(
             user,
             'penalty_admin_unlock',

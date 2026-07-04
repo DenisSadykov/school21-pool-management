@@ -31,6 +31,8 @@
   height: var(--control-height);
   padding: 0 var(--control-padding-x);
   font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .group-review-form .btn-primary {
@@ -128,6 +130,11 @@
 @media (max-width: 768px) {
   .group-review-form {
     grid-template-columns: 1fr;
+  }
+
+  .group-review-form .btn-primary {
+    width: 100%;
+    justify-content: center;
   }
 
   .group-review-table {

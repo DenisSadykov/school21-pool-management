@@ -61,6 +61,14 @@ function App() {
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
           />
+          {mobileSidebarOpen && (
+            <button
+              type="button"
+              className="mobile-sidebar-backdrop"
+              aria-label="Закрыть меню"
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+          )}
           <main className="main-content">
             <Routes>
               <Route path="/" element={<Dashboard user={user} />} />

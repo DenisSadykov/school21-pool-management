@@ -75,8 +75,7 @@ function Volunteers({ user }) {
   const loadPage = useCallback(async () => {
     setLoading(true);
     try {
-      const pools = await api.get('/api/pools');
-      const pool = (pools || []).find((p) => p.active) || null;
+      const pool = await api.get('/api/pools/active');
       setActivePool(pool);
       if (!pool) {
         setAllVols([]);
@@ -85,7 +84,7 @@ function Volunteers({ user }) {
       }
 
       const [tribeList] = await Promise.all([
-        api.get('/api/tribes'),
+        api.get(`/api/tribes?pool_id=${pool.id}`),
         loadVolunteers(pool.id),
       ]);
       setTribes(tribeList || []);

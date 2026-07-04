@@ -518,7 +518,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
 
   return (
     <tr className={rowClass}>
-      <td>
+      <td data-label="Ученик">
         <div className="student-person">
           <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
             <strong>{copied ? 'Скопировано' : student.nick}</strong>
@@ -526,10 +526,10 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
           <span>{student.name}</span>
         </div>
       </td>
-      <td>
+      <td data-label="Трайб">
         {student.tribe ? <span className="tribe-badge"><TribeLabel tribe={student.tribe} size={16} /></span> : <span className="text-muted">—</span>}
       </td>
-      <td>
+      <td data-label="Мероприятия">
         <div className="student-events">
           <strong>{student.events_total || 0}</strong>
           <div className="student-events-inline">
@@ -538,7 +538,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
           </div>
         </div>
       </td>
-      <td>
+      <td data-label="Статус">
         {PENALTY_ROUTE_STATUS[student.penalty_status] ? (
           <button
             type="button"
@@ -554,7 +554,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
           </span>
         )}
       </td>
-      <td>
+      <td data-label="Штрафы">
         <div className="student-penalties-cell">
           {student.penalties?.length > 0 ? (
             <div className="penalties-disclosure">
@@ -591,7 +591,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
           )}
         </div>
       </td>
-      <td>
+      <td data-label="Управление">
         <div className="student-actions">
           {canManage ? (
             <div className="student-menu">

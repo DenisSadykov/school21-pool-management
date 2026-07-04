@@ -44,6 +44,8 @@
 .tribe-panel select,
 .tribe-panel textarea {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background-color: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -609,6 +611,26 @@
 
   .tribe-switcher {
     width: 100%;
+  }
+
+  .student-event-compact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tribe-meeting-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tribe-meeting-actions {
+    flex-direction: column;
+  }
+
+  .tribe-meeting-actions .btn-primary,
+  .tribe-meeting-actions .btn-secondary,
+  .compact-submit {
+    width: 100%;
+    min-height: var(--control-height);
+    justify-content: center;
   }
 
   .ranking-row {

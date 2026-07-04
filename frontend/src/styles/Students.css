@@ -77,6 +77,7 @@
 .students-filters label {
   display: flex;
   width: 230px;
+  min-width: 0;
   flex-direction: column;
   gap: var(--spacing-sm);
   color: var(--text-secondary);
@@ -244,7 +245,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .event-pill {
@@ -887,6 +889,11 @@
     flex-direction: column;
   }
 
+  .students-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .page-actions,
   .page-actions button {
     width: 100%;
@@ -896,9 +903,13 @@
     grid-template-columns: 1fr;
   }
 
-  .students-filters,
+  .students-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .students-filters label {
-    width: 100%;
+    width: auto;
   }
 
   .form-row,
@@ -913,6 +924,96 @@
   }
 
   .students-table {
-    min-width: 820px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .students-table-wrap {
+    overflow: visible;
+    background: transparent;
+    border: none;
+  }
+
+  .students-table thead {
+    display: none;
+  }
+
+  .students-table,
+  .students-table tbody,
+  .students-table tr,
+  .students-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .students-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .students-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .students-table td {
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+
+  .students-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 600;
+  }
+
+  .students-table td[data-label="Ученик"],
+  .students-table td[data-label="Управление"] {
+    grid-column: 1 / -1;
+  }
+
+  .students-table td[data-label="Управление"]::before {
+    margin-bottom: 6px;
+  }
+
+  .student-person {
+    gap: 2px;
+  }
+
+  .student-events {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .student-events-inline {
+    justify-content: flex-start;
+  }
+
+  .student-penalties-cell,
+  .student-actions {
+    justify-content: flex-start;
+  }
+
+  .penalties-disclosure,
+  .penalties-trigger {
+    width: 100%;
+  }
+
+  .penalties-trigger {
+    justify-content: flex-start;
+  }
+
+  .student-form .form-actions button {
+    flex: none;
+    width: 100%;
   }
 }
