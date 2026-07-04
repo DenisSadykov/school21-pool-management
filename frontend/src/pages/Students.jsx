@@ -524,6 +524,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
             <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
               <strong>{copied ? 'Скопировано' : student.nick}</strong>
             </button>
+            <span className="student-person-divider">/</span>
             <span className="student-person-name">{student.name}</span>
           </div>
         </div>

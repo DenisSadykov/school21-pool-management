@@ -998,7 +998,7 @@
   }
 
   .students-table td[data-label="Ученик"] {
-    padding: 0 52px 4px 0;
+    padding: 0 64px 14px 0;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -1032,19 +1032,22 @@
   }
 
   .student-person .nick-button {
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+  }
+
+  .student-person-divider {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1;
+    flex: 0 0 auto;
   }
 
   .student-person-name {
     font-size: 0.92rem;
     line-height: 1.25;
     color: var(--text-secondary);
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 1 auto;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .students-table td[data-label="Управление"] {
