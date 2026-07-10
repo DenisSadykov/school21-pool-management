@@ -15,6 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Dashboard.css';
 
@@ -83,7 +84,7 @@ function Dashboard({ user }) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loading) return <Loader text="Загрузка..." />;
 
   const role = user.role;
   const isOps = role === 'admin' || role === 'team_lead';

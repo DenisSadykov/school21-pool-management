@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { UserPlus, UserMinus, Trash2, Plus } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
 import '../styles/Schedule.css';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -187,7 +188,7 @@ function Schedule({ user }) {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка графика...</div>;
+  if (loading) return <Loader text="Загрузка графика..." />;
   if (error) return <div className="page"><div className="error-message">{error}</div></div>;
 
   if (!data.pool) {

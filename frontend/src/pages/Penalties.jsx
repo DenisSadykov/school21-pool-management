@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AlertCircle, Plus, Check, X, Trash2, ExternalLink } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
 import '../styles/Penalties.css';
 
 const STATUS_LABELS = {
@@ -122,7 +123,7 @@ function Penalties() {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка штрафов...</div>;
+  if (loading) return <Loader text="Загрузка штрафов..." />;
   const activePenalties = penalties.filter((p) => p.workoff_status !== 'unlocked');
   const workedOffPenalties = penalties
     .filter((p) => ['awaiting_unlock', 'unlocked', 'done'].includes(p.workoff_status) && p.date_worked_off)

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CalendarPlus, ChevronDown, Link as LinkIcon, Plus, Trash2, Trophy } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/MyTribe.css';
 
@@ -76,7 +77,7 @@ function MyTribe({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading && !data) return <div className="loading">Загрузка трайба...</div>;
+  if (loading && !data) return <Loader text="Загрузка трайба..." />;
   const isStaff = user?.role === 'admin' || user?.role === 'team_lead';
   const isTribeMaster = user?.role === 'tribe_master';
   const canSwitchTribe = isStaff;
