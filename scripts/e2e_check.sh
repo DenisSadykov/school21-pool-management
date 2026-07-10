@@ -63,5 +63,5 @@ wait_for_url "${FRONTEND_URL}" "frontend"
 echo "Running Playwright tests"
 (
   cd "${ROOT_DIR}/frontend"
-  PLAYWRIGHT_BASE_URL="${FRONTEND_URL}" ./node_modules/.bin/playwright test
+  env -u NO_COLOR FORCE_COLOR=0 PLAYWRIGHT_BASE_URL="${FRONTEND_URL}" ./node_modules/.bin/playwright test
 )

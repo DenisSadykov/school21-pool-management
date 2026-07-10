@@ -15,16 +15,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "ajv": "^8.20.0",
     "react-scripts": "5.0.1"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "test:ci": "react-scripts test --watchAll=false --passWithNoTests",
+    "start": "NODE_OPTIONS=--no-deprecation react-scripts start",
+    "build": "NODE_OPTIONS=--no-deprecation react-scripts build",
+    "test": "NODE_OPTIONS=--no-deprecation react-scripts test",
+    "test:ci": "NODE_OPTIONS=--no-deprecation react-scripts test --watchAll=false --passWithNoTests",
     "test:e2e": "playwright test",
     "eject": "react-scripts eject"
   },
