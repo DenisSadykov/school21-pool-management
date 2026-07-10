@@ -564,6 +564,15 @@
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
 }
 
+.coins-popover-portal,
+.coins-breakdown-popover-portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  z-index: 520;
+}
+
 .coins-popover-label {
   display: block;
   margin-bottom: 8px;

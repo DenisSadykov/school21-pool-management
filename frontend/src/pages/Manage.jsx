@@ -166,6 +166,10 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [addUserId, setAddUserId] = useState('');
   const [msg, setMsg] = useState('');
+  const [invite, setInvite] = useState(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMaxUses, setInviteMaxUses] = useState('');
+  const [inviteExpiresAt, setInviteExpiresAt] = useState('');
 
   const load = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) {
@@ -181,8 +185,25 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
 
   useEffect(() => { load({ showLoading: true }); }, [load]);
 
+  const loadInvite = useCallback(async () => {
+    try {
+      const data = await api.get(`/api/pools/${poolId}/invite-link`);
+      setInvite(data.invite || null);
+    } catch (error) {
+      setInvite(null);
+    }
+  }, [poolId]);
+
+  useEffect(() => { loadInvite(); }, [loadInvite]);
+
+  useEffect(() => {
+    setInviteMaxUses(invite?.max_uses ? String(invite.max_uses) : '');
+    setInviteExpiresAt(invite?.expires_at ? invite.expires_at.slice(0, 16) : '');
+  }, [invite]);
+
   const assignedIds = new Set(pvs.map((v) => v.id));
   const available = allVolunteers.filter((v) => !assignedIds.has(v.id));
+  const inviteUrl = invite?.invite_url ? `${window.location.origin}${invite.invite_url}` : '';
 
   const add = async () => {
     if (!addUserId) return;
@@ -205,9 +226,107 @@ function PoolVolunteersSection({ poolId, allVolunteers, onChanged }) {
     } catch (e) { alert(e.message); }
   };
 
+  const refreshInvite = async () => {
+    setInviteLoading(true);
+    try {
+      const data = await api.post(`/api/pools/${poolId}/invite-link`, {
+        max_uses: inviteMaxUses.trim() ? Number(inviteMaxUses) : null,
+        expires_at: inviteExpiresAt || null,
+      });
+      setInvite(data.invite);
+      setMsg('Инвайт-ссылка обновлена');
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const disableInvite = async () => {
+    if (!invite || !invite.is_active) return;
+    if (!window.confirm('Отключить инвайт-ссылку для этого бассейна?')) return;
+    setInviteLoading(true);
+    try {
+      await api.del(`/api/pools/${poolId}/invite-link`);
+      setInvite((prev) => (prev ? { ...prev, is_active: false } : prev));
+      setMsg('Инвайт-ссылка отключена');
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setMsg('Ссылка скопирована');
+    } catch (error) {
+      alert('Не удалось скопировать ссылку');
+    }
+  };
+
   return (
     <div className="pool-volunteers-section" style={{ border: 'none', padding: 0, borderRadius: 0 }}>
       {msg && <div className="pv-msg">{msg}</div>}
+      <div className="pool-invite-box">
+        <div className="pool-invite-meta">
+          <strong>Инвайт-ссылка на бассейн</strong>
+          <span>
+            {inviteUrl
+              ? (
+                invite?.is_available
+                  ? `Использований: ${invite?.uses_count || 0}${invite?.remaining_uses !== null ? ` · Осталось: ${invite.remaining_uses}` : ''}`
+                  : invite?.is_expired
+                    ? 'Ссылка истекла'
+                    : invite?.is_limit_reached
+                      ? 'Лимит входов исчерпан'
+                      : 'Ссылка отключена'
+              )
+              : 'Лимит входов и срок действия необязательны'}
+          </span>
+        </div>
+        <div className="pool-invite-controls">
+          <input
+            className="pool-invite-url"
+            type="text"
+            readOnly
+            value={inviteUrl || 'Нажми «Создать ссылку», чтобы открыть доступ по приглашению'}
+          />
+          <input
+            className="pool-invite-limit"
+            type="number"
+            min="1"
+            inputMode="numeric"
+            placeholder="Лимит входов"
+            value={inviteMaxUses}
+            onChange={(e) => setInviteMaxUses(e.target.value)}
+          />
+          <input
+            className="pool-invite-expiry"
+            type="datetime-local"
+            value={inviteExpiresAt}
+            onChange={(e) => setInviteExpiresAt(e.target.value)}
+          />
+          <div className="pool-invite-actions">
+          <button className="btn-mini" type="button" onClick={refreshInvite} disabled={inviteLoading}>
+            {invite ? 'Обновить ссылку' : 'Создать ссылку'}
+          </button>
+          <button className="btn-mini" type="button" onClick={copyInvite} disabled={!inviteUrl}>
+            Копировать
+          </button>
+          <button
+            className="btn-mini danger-outline"
+            type="button"
+            onClick={disableInvite}
+            disabled={!invite || !invite.is_active || inviteLoading}
+          >
+            Отключить
+          </button>
+          </div>
+        </div>
+      </div>
       <div className="pv-toolbar">
         <Link to="/settings?focus=volunteer-upload" className="btn-mini" style={{ textDecoration: 'none' }}>
           ⬆ Загрузить волонтёров в систему

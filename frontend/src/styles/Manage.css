@@ -224,6 +224,64 @@
   color: var(--success);
   margin-bottom: 6px;
 }
+
+.pool-invite-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.pool-invite-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pool-invite-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.pool-invite-controls {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.4fr) minmax(120px, 0.42fr) minmax(190px, 0.62fr) auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.pool-invite-box input {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  font-size: 0.84rem;
+}
+
+.pool-invite-actions {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.pool-invite-actions .btn-mini,
+.pool-invite-actions .danger-outline {
+  min-height: var(--control-height);
+  white-space: nowrap;
+}
+
 .pv-empty {
   font-size: 0.8rem;
   color: var(--text-secondary);
@@ -380,6 +438,7 @@
   .pool-actions,
   .pool-actions > *,
   .user-row > *,
+  .pool-invite-actions,
   .pv-toolbar > *,
   .pv-add-row > * {
     width: 100%;
@@ -401,6 +460,14 @@
 
   .pv-head {
     display: none;
+  }
+
+  .pool-invite-box,
+  .pool-invite-meta,
+  .pool-invite-controls,
+  .pool-invite-actions {
+    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .pv-row {

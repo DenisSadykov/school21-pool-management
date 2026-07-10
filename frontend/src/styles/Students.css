@@ -13,8 +13,15 @@
 .page-actions {
   display: flex;
   gap: var(--spacing-md);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.page-actions .btn-secondary,
+.page-actions .btn-primary {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .page-header h1 {
@@ -67,7 +74,7 @@
 
 .students-filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, 230px);
+  grid-template-columns: repeat(2, 230px);
   gap: var(--spacing-md);
   align-items: end;
   justify-content: start;
@@ -127,10 +134,10 @@
 
 .students-table th,
 .students-table td {
-  padding: 9px 12px;
+  padding: 9px 12px 6px;
   border-bottom: 1px solid var(--border);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   overflow: visible;
 }
 
@@ -595,7 +602,9 @@
 }
 
 .tribe-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--border-soft);
   color: var(--text-primary);
   border: 1px solid var(--border);
@@ -603,7 +612,8 @@
   border-radius: 20px;
   font-size: 0.8rem;
   font-weight: 600;
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 0;
+  vertical-align: middle;
 }
 
 .penalties-summary {
@@ -810,7 +820,7 @@
 .import-summary,
 .import-row {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 0.6fr;
+  grid-template-columns: 1fr 0.8fr;
   gap: var(--spacing-md);
   align-items: center;
 }
@@ -908,6 +918,10 @@
   .page-actions,
   .page-actions button {
     width: 100%;
+  }
+
+  .page-actions {
+    flex-wrap: wrap;
   }
 
   .students-grid {
@@ -1017,15 +1031,6 @@
     gap: 0;
   }
 
-  .student-person-line {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 6px 10px;
-    justify-content: flex-start;
-    min-width: 0;
-  }
-
   .student-person .nick-button strong {
     font-size: 1.05rem;
     line-height: 1.1;
@@ -1033,21 +1038,6 @@
 
   .student-person .nick-button {
     flex: 0 0 auto;
-  }
-
-  .student-person-divider {
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-    line-height: 1;
-    flex: 0 0 auto;
-  }
-
-  .student-person-name {
-    font-size: 0.92rem;
-    line-height: 1.25;
-    color: var(--text-secondary);
-    flex: 0 1 auto;
-    white-space: nowrap;
   }
 
   .students-table td[data-label="Управление"] {

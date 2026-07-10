@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import { api, buildAuthenticatedAssetUrl } from '../api';
+import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/Volunteers.css';
@@ -109,7 +110,7 @@ function Volunteers({ user }) {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка волонтёров...</div>;
+  if (loading) return <Loader text="Загрузка волонтёров..." />;
 
   if (!activePool) {
     return (
@@ -227,8 +228,53 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
   const [infoPinned, setInfoPinned] = useState(false);
   const [coins, setCoins] = useState(v.coins_adjustment || 0);
   const wrapRef = useRef(null);
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const [infoPopoverStyle, setInfoPopoverStyle] = useState(null);
 
   useEffect(() => { setCoins(v.coins_adjustment || 0); }, [v.coins_adjustment]);
+
+  useEffect(() => {
+    if (!open && !infoOpen) return undefined;
+
+    const updatePosition = () => {
+      if (!wrapRef.current) return;
+      const rect = wrapRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const maxWidth = Math.max(180, viewportWidth - 24);
+      const popoverWidth = Math.min(220, maxWidth);
+      const infoWidth = Math.min(260, maxWidth);
+      const popoverLeft = Math.min(
+        Math.max(12, rect.right - popoverWidth),
+        viewportWidth - popoverWidth - 12,
+      );
+      const infoLeft = Math.min(
+        Math.max(12, rect.right - infoWidth),
+        viewportWidth - infoWidth - 12,
+      );
+      const top = rect.bottom + 8;
+
+      setPopoverStyle({
+        position: 'fixed',
+        top,
+        left: popoverLeft,
+        width: popoverWidth,
+      });
+      setInfoPopoverStyle({
+        position: 'fixed',
+        top,
+        left: infoLeft,
+        width: infoWidth,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, infoOpen]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -277,8 +323,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
       >
         i
       </button>
-      {infoOpen && (
-        <div className="coins-breakdown-popover">
+      {infoOpen && infoPopoverStyle && createPortal(
+        <div className="coins-breakdown-popover coins-breakdown-popover-portal" style={infoPopoverStyle}>
           <span className="coins-popover-label">Начисление коинов</span>
           {breakdown.length > 0 ? (
             <div className="coins-breakdown-list">
@@ -289,7 +335,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
           ) : (
             <span className="coins-breakdown-empty">Пока начислений нет</span>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
       {canEdit && (
         <>
@@ -302,8 +349,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
           >
             <Plus size={14} />
           </button>
-          {open && (
-            <div className="coins-popover">
+          {open && popoverStyle && createPortal(
+            <div className="coins-popover coins-popover-portal" style={popoverStyle}>
               <span className="coins-popover-label">Ручная корректировка</span>
               <div className="coin-editor">
                 <input type="number" value={coins} onChange={(e) => setCoins(e.target.value)} aria-label="Коины" />
@@ -318,7 +365,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
                   OK
                 </button>
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
         </>
       )}

@@ -180,8 +180,9 @@ function Settings({ user }) {
         className={`manage-section ${highlightedSection === 'volunteer-upload' ? 'manage-section-highlighted' : ''}`}
         ref={volunteerUploadRef}
       >
-        <h2>Загрузить волонтёров в систему</h2>
-        <p className="muted">Шаблон: Имя / Ник школьный / Ник Telegram. Роль назначается во вкладке «Волонтёры».</p>
+        <h2>Добавить волонтёров в систему</h2>
+        <p className="muted">Можно добавить вручную или загрузить Excel. Шаблон: Имя / Ник школьный / Ник Telegram.</p>
+        <ManualVolunteerForm onDone={(t) => { setMsg(t); loadSystemVols(); }} />
         <GlobalVolunteerUpload onDone={(t) => { setMsg(t); loadSystemVols(); }} />
       </section>
 
@@ -273,6 +274,60 @@ function GlobalVolunteerUpload({ onDone }) {
         <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={importFile} />
       </label>
     </div>
+  );
+}
+
+function ManualVolunteerForm({ onDone }) {
+  const [form, setForm] = useState({
+    name: '',
+    nick: '',
+    telegram: '',
+  });
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.nick.trim()) {
+      alert('Укажи ник');
+      return;
+    }
+    try {
+      const created = await api.post('/api/volunteers', {
+        name: form.name.trim(),
+        nick: form.nick.trim(),
+        telegram: form.telegram.trim(),
+      });
+      setForm({
+        name: '',
+        nick: '',
+        telegram: '',
+      });
+      onDone(`@${created.nick} добавлен в систему`);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <form className="inline-form volunteer-manual-form" onSubmit={submit}>
+      <input
+        placeholder="имя"
+        value={form.name}
+        onChange={(e) => setForm({ ...form, name: e.target.value })}
+      />
+      <input
+        placeholder="ник"
+        value={form.nick}
+        autoCapitalize="none"
+        onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
+      />
+      <input
+        placeholder="@telegram"
+        value={form.telegram}
+        autoCapitalize="none"
+        onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+      />
+      <button className="btn-primary" type="submit"><Plus size={16} /> Добавить вручную</button>
+    </form>
   );
 }
 

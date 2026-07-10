@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { api, API_URL, getToken } from '../api';
+import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Students.css';
 
@@ -10,12 +11,14 @@ const HEADER_MAP = {
   ник: 'nick',
   login: 'nick',
   логин: 'nick',
+  'ник школьный': 'nick',
   name: 'name',
   имя: 'name',
   фио: 'name',
   tribe: 'tribe',
   группа: 'tribe',
   триб: 'tribe',
+  трайб: 'tribe',
 };
 
 const PENALTY_STATUS_LABELS = {
@@ -73,8 +76,8 @@ function parseStudentsFile(text) {
 
   const delimiter = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
   const first = splitCsvLine(lines[0], delimiter).map((cell) => HEADER_MAP[cell.toLowerCase()] || null);
-  const hasHeader = first.includes('nick') || first.includes('name');
-  const columns = hasHeader ? first : ['name', 'nick', 'tribe'];
+  const hasHeader = first.includes('nick') || first.includes('name') || first.includes('tribe');
+  const columns = hasHeader ? first : ['nick', 'tribe'];
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
   return dataLines
@@ -86,7 +89,7 @@ function parseStudentsFile(text) {
         return student;
       }, {});
     })
-    .filter((student) => student.nick || student.name);
+    .filter((student) => student.nick);
 }
 
 function Students({ user }) {
@@ -133,7 +136,7 @@ function Students({ user }) {
     return true;
   });
 
-  if (loading) return <div className="loading">Загрузка учеников...</div>;
+  if (loading) return <Loader text="Загрузка учеников..." />;
 
   return (
     <div className="page students-page">
@@ -143,8 +146,20 @@ function Students({ user }) {
         </div>
         {isStaff && (
           <div className="page-actions">
+            <a
+              className="btn-secondary"
+              href={`${API_URL}/api/students/export-penalties.xlsx?token=${encodeURIComponent(getToken() || '')}`}
+            >
+              <Download size={16} /> Скачать штрафы
+            </a>
+            <a
+              className="btn-secondary"
+              href={`${API_URL}/api/students/export-events.xlsx?token=${encodeURIComponent(getToken() || '')}`}
+            >
+              <Download size={16} /> Скачать мероприятия
+            </a>
             <button className="btn-secondary" onClick={() => setShowImport(!showImport)}>
-              <FileUp size={20} /> Загрузить файл
+              <FileUp size={20} /> Загрузить файлом
             </button>
             <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
               <Plus size={20} /> Добавить ученика
@@ -309,7 +324,7 @@ function StudentsImport({ tribes, onClose, onSuccess }) {
     <section className="student-form import-form">
       <h2>Загрузить учеников из файла</h2>
       <div className="import-help">
-        <strong>Формат:</strong> лучше скачать XLSX-шаблон. Также поддерживается CSV/TXT: <code>name,nick,tribe</code>.
+        <strong>Формат:</strong> лучше скачать XLSX-шаблон. Также поддерживается CSV/TXT: <code>nick,tribe</code>.
         {tribes.length > 0 && <span> В шаблоне трайб выбирается из списка: {tribes.join(', ')}.</span>}
         <a
           className="btn-secondary template-button inline-template-button"
@@ -353,7 +368,6 @@ function StudentsImport({ tribes, onClose, onSuccess }) {
           {students.slice(0, 5).map((student, index) => (
             <div className="import-row" key={`${student.nick}-${index}`}>
               <span>@{student.nick || '—'}</span>
-              <span>{student.name || '—'}</span>
               <span>{student.tribe || '—'}</span>
             </div>
           ))}
@@ -436,7 +450,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
   }, [penaltiesOpen]);
 
   const handleDelete = async () => {
-    if (!window.confirm(`Удалить ученика ${student.name}?`)) return;
+    if (!window.confirm(`Удалить ученика @${student.nick}?`)) return;
 
     try {
       await api.del(`/api/students/${student.id}`);
@@ -520,13 +534,9 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
     <tr className={rowClass}>
       <td data-label="Ученик">
         <div className="student-person">
-          <div className="student-person-line">
-            <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
-              <strong>{copied ? 'Скопировано' : student.nick}</strong>
-            </button>
-            <span className="student-person-divider">/</span>
-            <span className="student-person-name">{student.name}</span>
-          </div>
+          <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
+            <strong>{copied ? 'Скопировано' : student.nick}</strong>
+          </button>
         </div>
       </td>
       <td data-label="Трайб">
@@ -645,7 +655,6 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
 function StudentForm({ tribes, onClose, onSuccess }) {
   const [form, setForm] = useState({
     nick: '',
-    name: '',
     tribe: tribes[0] || ''
   });
 
@@ -656,8 +665,8 @@ function StudentForm({ tribes, onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.nick.trim() || !form.name.trim()) {
-      alert('Заполните все поля');
+    if (!form.nick.trim()) {
+      alert('Укажите ник');
       return;
     }
 
@@ -675,23 +684,13 @@ function StudentForm({ tribes, onClose, onSuccess }) {
 
       <div className="form-row">
         <div className="form-group">
-          <label>Имя Фамилия</label>
-          <input
-            type="text"
-            placeholder="Иван Петров"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            autoFocus
-          />
-        </div>
-
-        <div className="form-group">
           <label>Ник школьный</label>
           <input
             type="text"
             placeholder="example_nick"
             value={form.nick}
             onChange={(e) => setForm({ ...form, nick: e.target.value })}
+            autoFocus
           />
         </div>
 
