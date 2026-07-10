@@ -11,6 +11,8 @@ def _payload_text(event):
 def test_daily_shift_notifications_at_14_include_coworkers_and_exam_brief(factories, db_session, monkeypatch):
     admin = factories.user('admin', role='admin', password='secret123', telegram='@admin_tg', name='Админ')
     team_lead = factories.user('lead', role='team_lead', password='lead1234', telegram='@lead_tg', name='Лид')
+    unrelated_admin = factories.user('other_admin', role='admin', password='secret123', telegram='@other_admin_tg', name='Чужой админ')
+    unrelated_lead = factories.user('other_lead', role='team_lead', password='lead1234', telegram='@other_lead_tg', name='Чужой лид')
     volunteer = factories.user('odessabu', role='volunteer', telegram='@DenisSadykov', name='Денис')
     coworker = factories.user('masha', role='volunteer', telegram='@masha_tg', name='Маша')
     pool = factories.pool('Active pool', active=True)
@@ -32,6 +34,8 @@ def test_daily_shift_notifications_at_14_include_coworkers_and_exam_brief(factor
 
     factories.assign(volunteer, pool)
     factories.assign(coworker, pool)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    factories.assign(team_lead, pool, pool_role='responsible_team_lead')
     db_session.add_all([
         app_module.Signup(block_id=exam_block.id, user_id=volunteer.id),
         app_module.Signup(block_id=exam_block.id, user_id=coworker.id),
@@ -58,6 +62,11 @@ def test_daily_shift_notifications_at_14_include_coworkers_and_exam_brief(factor
         pool_id=pool.id,
     ).order_by(app_module.NotificationEvent.recipient_user_id).all()
     assert len(staff_events) == 2
+    recipients = {event.recipient_user_id for event in staff_events}
+    assert admin.id in recipients
+    assert team_lead.id in recipients
+    assert unrelated_admin.id not in recipients
+    assert unrelated_lead.id not in recipients
     summary_text = _payload_text(staff_events[0])
     assert 'Кто дежурит завтра' in summary_text
     assert 'Денис (@DenisSadykov)' in summary_text
@@ -93,6 +102,8 @@ def test_daily_shift_notifications_do_not_run_before_14(factories, db_session, m
 def test_signup_after_14_queues_shift_change_notifications(client, factories, auth_headers, db_session, monkeypatch):
     admin = factories.user('admin', role='admin', password='secret123', telegram='@admin_tg', name='Админ')
     team_lead = factories.user('lead', role='team_lead', password='lead1234', telegram='@lead_tg', name='Лид')
+    unrelated_admin = factories.user('other_admin', role='admin', password='secret123', telegram='@other_admin_tg', name='Чужой админ')
+    unrelated_lead = factories.user('other_lead', role='team_lead', password='lead1234', telegram='@other_lead_tg', name='Чужой лид')
     volunteer = factories.user('odessabu', role='volunteer', telegram='@DenisSadykov', name='Денис')
     coworker = factories.user('masha', role='volunteer', telegram='@masha_tg', name='Маша')
     pool = factories.pool('Active pool', active=True)
@@ -106,6 +117,8 @@ def test_signup_after_14_queues_shift_change_notifications(client, factories, au
 
     factories.assign(volunteer, pool)
     factories.assign(coworker, pool)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    factories.assign(team_lead, pool, pool_role='responsible_team_lead')
     block = app_module.ShiftBlock(
         pool_id=pool.id,
         date=tomorrow,
@@ -140,5 +153,10 @@ def test_signup_after_14_queues_shift_change_notifications(client, factories, au
         pool_id=pool.id,
     ).order_by(app_module.NotificationEvent.recipient_user_id).all()
     assert len(staff_events) == 2
+    recipients = {event.recipient_user_id for event in staff_events}
+    assert admin.id in recipients
+    assert team_lead.id in recipients
+    assert unrelated_admin.id not in recipients
+    assert unrelated_lead.id not in recipients
     assert all(event.scheduled_for == fixed_now_utc + timedelta(minutes=5) for event in staff_events)
     assert any('@DenisSadykov' in _payload_text(event) for event in staff_events)
