@@ -2075,14 +2075,16 @@ def _effective_access_role(user, pool_id=None):
     membership = _pool_membership_for_user(user, pool_id)
     if membership and membership.pool_role in {'volunteer', 'tribe_master'}:
         return membership.pool_role
-    return user.role
+    return 'volunteer'
 
 
 def _effective_access_tribe(user, pool_id=None):
+    if user.role in {'team_lead', 'admin'}:
+        return user.tribe
     membership = _pool_membership_for_user(user, pool_id)
     if membership and membership.pool_role == 'tribe_master' and membership.tribe:
         return membership.tribe
-    return user.tribe
+    return None
 
 
 def _session_user_dict(user, pool_id=None):
@@ -4351,7 +4353,7 @@ def dashboard_summary():
     )
     data = {
         'pool': pool.to_dict() if pool else None,
-        'role': g.user.role,
+        'role': g.current_role,
         'tomorrow': tomorrow.isoformat(),
         'tomorrow_blocks': _tomorrow_blocks(pool_id) if pool_id else [],
         'penalties': counts,
@@ -4367,7 +4369,7 @@ def dashboard_summary():
             .all()
         ],
     }
-    if g.user.role == 'tribe_master' and pool_id:
+    if g.current_role == 'tribe_master' and pool_id:
         tribe = _resolve_user_tribe(g.user, pool_id)
         rankings = _tribe_rankings(pool_id)
         own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
