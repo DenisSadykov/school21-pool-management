@@ -14,7 +14,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl } from '../api';
+import { api } from '../api';
 import Loader from '../components/Loader';
 import '../styles/Pages.css';
 import TribeLabel from '../components/TribeLabel';
@@ -44,16 +44,14 @@ function getTelegramBotLink(botUsername) {
 }
 
 function TelegramConnectTitle({ telegram }) {
-  const botAvatarUrl = telegram?.bot_avatar_url ? buildAuthenticatedAssetUrl(telegram.bot_avatar_url) : '';
+  const botAvatarUrl = '/telegram-bot-logo.png';
 
   return (
     <span className="telegram-connect-title">
       <span>Подключи Telegram-бота</span>
-      {botAvatarUrl ? (
-        <span className="telegram-connect-botmark" aria-hidden="true">
-          <img src={botAvatarUrl} alt="" />
-        </span>
-      ) : null}
+      <span className="telegram-connect-botmark" aria-hidden="true">
+        <img src={botAvatarUrl} alt="" />
+      </span>
     </span>
   );
 }
