@@ -411,8 +411,8 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
   return (
     <div className="pool-volunteers-section" style={{ border: 'none', padding: 0, borderRadius: 0 }}>
       {msg && <div className="pv-msg">{msg}</div>}
-      <div className="pv-toolbar">
-        <div className="pv-add-row">
+      <div className="pv-toolbar responsibles-toolbar">
+        <div className="pv-add-row responsibles-add-row">
           <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
             <option value="">Добавить ответственного</option>
             {available.map((person) => (
@@ -421,7 +421,9 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
               </option>
             ))}
           </select>
-          <button className="btn-mini primary" onClick={add} disabled={!addUserId}>+</button>
+          <button className="btn-mini primary" onClick={add} disabled={!addUserId}>
+            <Plus size={14} /> Добавить
+          </button>
         </div>
       </div>
       {responsibles.length === 0 ? (
@@ -484,8 +486,8 @@ function TribesSection({ tribes, onChanged }) {
   return (
     <div>
       {msg && <p className="pv-msg">{msg}</p>}
-      <div className="pv-toolbar" style={{ marginBottom: 10 }}>
-        <form className="inline-form" onSubmit={add} style={{ margin: 0 }}>
+      <div className="pv-toolbar tribe-toolbar" style={{ marginBottom: 10 }}>
+        <form className="inline-form tribe-toolbar-form" onSubmit={add} style={{ margin: 0 }}>
           <input
             placeholder="Название трайба"
             value={name}
