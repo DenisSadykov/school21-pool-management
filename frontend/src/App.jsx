@@ -21,7 +21,7 @@ import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
-import { api, getToken, getUser, setSession } from './api';
+import { api, getToken, getUser, POOLS_CHANGED_EVENT, setSession } from './api';
 
 import './styles/App.css';
 import './styles/theme.css';
@@ -70,8 +70,10 @@ function App() {
     };
 
     syncUser();
+    window.addEventListener(POOLS_CHANGED_EVENT, syncUser);
     return () => {
       alive = false;
+      window.removeEventListener(POOLS_CHANGED_EVENT, syncUser);
     };
   }, []);
 
