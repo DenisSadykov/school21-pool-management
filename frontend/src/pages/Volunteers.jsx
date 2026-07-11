@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import { api, buildAuthenticatedAssetUrl } from '../api';
+import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/Volunteers.css';
@@ -42,9 +43,7 @@ function PersonIdentity({ person }) {
       </span>
       <div className="person-identity-text">
         <strong className="volunteer-nick">@{person.nick}</strong>
-        {person.name && <div className="person-fullname">{person.name}</div>}
         <div className="person-meta">
-          <span>{person.role === 'tribe_master' ? 'Трайб-мастер' : 'Волонтёр'}</span>
           <TelegramButton telegram={person.telegram} nick={person.nick} />
         </div>
       </div>
@@ -57,6 +56,7 @@ function Volunteers({ user }) {
   const [allVols, setAllVols] = useState([]);
   const [tribes, setTribes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
   const loadVolunteers = useCallback(async (poolId) => {
@@ -74,6 +74,7 @@ function Volunteers({ user }) {
 
   const loadPage = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const pool = await api.get('/api/pools/active');
       setActivePool(pool);
@@ -88,6 +89,8 @@ function Volunteers({ user }) {
         loadVolunteers(pool.id),
       ]);
       setTribes(tribeList || []);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -109,12 +112,14 @@ function Volunteers({ user }) {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка волонтёров...</div>;
+  if (loading) return <Loader text="Загрузка волонтёров..." />;
 
   if (!activePool) {
     return (
-      <div className="page">
-        <h1>Волонтёры</h1>
+      <div className="page volunteers-page">
+        <div className="page-header">
+          <h1>Волонтёры</h1>
+        </div>
         <div className="empty-state">
           <p>Нет активного бассейна.</p>
           {isStaff && <Link to="/settings" className="btn-primary" style={{ display: 'inline-block', marginTop: 8 }}>Перейти в Настройки</Link>}
@@ -129,8 +134,20 @@ function Volunteers({ user }) {
 
   return (
     <div className="page volunteers-page">
+      <div className="page-header">
+        <h1>Волонтёры</h1>
+      </div>
 
-      {allVols.length === 0 && (
+      {error && (
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={loadPage}>
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {!error && allVols.length === 0 && (
         <div className="empty-state">
           <p>На бассейн ещё не назначено волонтёров.</p>
           {isStaff && <Link to="/manage">Настройки бассейна →</Link>}
@@ -138,7 +155,7 @@ function Volunteers({ user }) {
       )}
 
       {/* Трайб-мастера */}
-      {(tribeMasters.length > 0 || (isStaff && volunteers.length > 0)) && (
+      {!error && (tribeMasters.length > 0 || (isStaff && volunteers.length > 0)) && (
         <section className="volunteer-group volunteer-group-masters">
           <div className="group-title-row">
             <span className="group-title-label">Трайб-мастера</span>
@@ -174,7 +191,7 @@ function Volunteers({ user }) {
       )}
 
       {/* Волонтёры */}
-      {volunteers.length > 0 && (
+      {!error && volunteers.length > 0 && (
         <section className="volunteer-group">
           <div className="group-title-row">
             <span className="group-title-label">Волонтёры</span>
@@ -227,8 +244,53 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
   const [infoPinned, setInfoPinned] = useState(false);
   const [coins, setCoins] = useState(v.coins_adjustment || 0);
   const wrapRef = useRef(null);
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const [infoPopoverStyle, setInfoPopoverStyle] = useState(null);
 
   useEffect(() => { setCoins(v.coins_adjustment || 0); }, [v.coins_adjustment]);
+
+  useEffect(() => {
+    if (!open && !infoOpen) return undefined;
+
+    const updatePosition = () => {
+      if (!wrapRef.current) return;
+      const rect = wrapRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const maxWidth = Math.max(180, viewportWidth - 24);
+      const popoverWidth = Math.min(220, maxWidth);
+      const infoWidth = Math.min(260, maxWidth);
+      const popoverLeft = Math.min(
+        Math.max(12, rect.right - popoverWidth),
+        viewportWidth - popoverWidth - 12,
+      );
+      const infoLeft = Math.min(
+        Math.max(12, rect.right - infoWidth),
+        viewportWidth - infoWidth - 12,
+      );
+      const top = rect.bottom + 8;
+
+      setPopoverStyle({
+        position: 'fixed',
+        top,
+        left: popoverLeft,
+        width: popoverWidth,
+      });
+      setInfoPopoverStyle({
+        position: 'fixed',
+        top,
+        left: infoLeft,
+        width: infoWidth,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, infoOpen]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -277,8 +339,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
       >
         i
       </button>
-      {infoOpen && (
-        <div className="coins-breakdown-popover">
+      {infoOpen && infoPopoverStyle && createPortal(
+        <div className="coins-breakdown-popover coins-breakdown-popover-portal" style={infoPopoverStyle}>
           <span className="coins-popover-label">Начисление коинов</span>
           {breakdown.length > 0 ? (
             <div className="coins-breakdown-list">
@@ -289,7 +351,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
           ) : (
             <span className="coins-breakdown-empty">Пока начислений нет</span>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
       {canEdit && (
         <>
@@ -302,8 +365,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
           >
             <Plus size={14} />
           </button>
-          {open && (
-            <div className="coins-popover">
+          {open && popoverStyle && createPortal(
+            <div className="coins-popover coins-popover-portal" style={popoverStyle}>
               <span className="coins-popover-label">Ручная корректировка</span>
               <div className="coin-editor">
                 <input type="number" value={coins} onChange={(e) => setCoins(e.target.value)} aria-label="Коины" />
@@ -318,7 +381,8 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
                   OK
                 </button>
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
         </>
       )}

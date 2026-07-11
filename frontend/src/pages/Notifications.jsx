@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin } from 'lucide-react';
 import { api, buildAuthenticatedAssetUrl } from '../api';
+import Loader from '../components/Loader';
 import '../styles/Pages.css';
 import '../styles/Notifications.css';
 
@@ -195,7 +196,7 @@ function Notifications() {
   };
 
   if (loading) {
-    return <div className="loading">Загрузка уведомлений...</div>;
+    return <Loader text="Загрузка уведомлений..." />;
   }
 
   return (

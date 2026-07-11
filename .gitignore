@@ -58,6 +58,11 @@ logs/
 backend/backups/
 *.bak
 .codex-audits/
+.codex/
+docs/artifacts/
+.github/hooks/
+.github/skills/
+skills-lock.json
 
 # OS
 .DS_Store

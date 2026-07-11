@@ -1,6 +1,17 @@
 .sys-vol-table-wrap {
   overflow-x: auto;
+  overflow-y: visible;
   margin-top: 8px;
+  position: relative;
+}
+
+.volunteer-manual-form {
+  margin-bottom: 12px;
+}
+
+.volunteer-manual-form input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .sys-vol-table {
@@ -183,6 +194,7 @@
 .sys-vol-menu {
   position: relative;
   display: inline-flex;
+  z-index: 2;
 }
 
 .sys-vol-menu-trigger {
@@ -207,13 +219,25 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 10;
+  z-index: 20;
   min-width: 160px;
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-card);
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.sys-vol-menu-dropdown-portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  z-index: 700;
 }
 
 .sys-vol-menu-item {
@@ -233,6 +257,10 @@
 
 .sys-vol-menu-item:hover {
   background: var(--bg-hover);
+}
+
+.sys-vol-menu-item-danger {
+  color: var(--danger, #ef4444);
 }
 
 @media (max-width: 768px) {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api, getToken, API_URL, emitPoolsChanged, buildAuthenticatedAssetUrl } from '../api';
@@ -180,13 +181,14 @@ function Settings({ user }) {
         className={`manage-section ${highlightedSection === 'volunteer-upload' ? 'manage-section-highlighted' : ''}`}
         ref={volunteerUploadRef}
       >
-        <h2>Загрузить волонтёров в систему</h2>
-        <p className="muted">Шаблон: Имя / Ник школьный / Ник Telegram. Роль назначается во вкладке «Волонтёры».</p>
+        <h2>Добавить волонтёров в систему</h2>
+        <p className="muted">Можно добавить вручную или загрузить Excel. Шаблон: Имя / Ник школьный / Ник Telegram.</p>
+        <ManualVolunteerForm onDone={(t) => { setMsg(t); loadSystemVols(); }} />
         <GlobalVolunteerUpload onDone={(t) => { setMsg(t); loadSystemVols(); }} />
       </section>
 
       {/* 4. Волонтёры в системе */}
-      <section className="manage-section">
+      <section className="manage-section manage-section-system-volunteers">
         <h2>Волонтёры в системе</h2>
         {systemVols.length === 0
           ? <p className="muted">Волонтёров ещё нет. Загрузи через шаблон выше.</p>
@@ -199,9 +201,22 @@ function Settings({ user }) {
 
 function PoolForm({ onDone }) {
   const [form, setForm] = useState({ name: '', start_date: '' });
+  const [datePulse, setDatePulse] = useState(false);
+
+  useEffect(() => {
+    if (!datePulse) return undefined;
+    const timer = window.setTimeout(() => setDatePulse(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [datePulse]);
+
   const submit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    if (!form.start_date) {
+      setDatePulse(false);
+      window.requestAnimationFrame(() => setDatePulse(true));
+      return;
+    }
     try {
       const pool = await api.post('/api/pools', form);
       setForm({ name: '', start_date: '' });
@@ -212,7 +227,10 @@ function PoolForm({ onDone }) {
     <form className="inline-form" onSubmit={submit}>
       <input className="pool-form-name" placeholder="Название (Бассейн 08.06)" value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <input type="date" value={form.start_date}
+      <input
+        type="date"
+        className={datePulse ? 'field-error-pulse' : ''}
+        value={form.start_date}
         onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
       <button className="btn-primary" type="submit"><Plus size={16} /> Создать</button>
     </form>
@@ -273,6 +291,60 @@ function GlobalVolunteerUpload({ onDone }) {
         <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={importFile} />
       </label>
     </div>
+  );
+}
+
+function ManualVolunteerForm({ onDone }) {
+  const [form, setForm] = useState({
+    name: '',
+    nick: '',
+    telegram: '',
+  });
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.nick.trim()) {
+      alert('Укажи ник');
+      return;
+    }
+    try {
+      const created = await api.post('/api/volunteers', {
+        name: form.name.trim(),
+        nick: form.nick.trim(),
+        telegram: form.telegram.trim(),
+      });
+      setForm({
+        name: '',
+        nick: '',
+        telegram: '',
+      });
+      onDone(`@${created.nick} добавлен в систему`);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <form className="inline-form volunteer-manual-form" onSubmit={submit}>
+      <input
+        placeholder="имя"
+        value={form.name}
+        onChange={(e) => setForm({ ...form, name: e.target.value })}
+      />
+      <input
+        placeholder="ник"
+        value={form.nick}
+        autoCapitalize="none"
+        onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
+      />
+      <input
+        placeholder="@telegram"
+        value={form.telegram}
+        autoCapitalize="none"
+        onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+      />
+      <button className="btn-primary" type="submit"><Plus size={16} /> Добавить вручную</button>
+    </form>
   );
 }
 
@@ -371,12 +443,15 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
   const [form, setForm] = useState({
     name: volunteer.name || '',
     nick: volunteer.nick || '',
     telegram: volunteer.telegram || '',
   });
   const menuRef = useRef(null);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     setForm({
@@ -388,8 +463,31 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
 
   useEffect(() => {
     if (!menuOpen) return undefined;
+    const updatePosition = () => {
+      const triggerNode = triggerRef.current;
+      if (!triggerNode) return;
+      const rect = triggerNode.getBoundingClientRect();
+      const dropdownWidth = 188;
+      const left = Math.max(12, Math.min(rect.right - dropdownWidth, window.innerWidth - dropdownWidth - 12));
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left,
+        width: dropdownWidth,
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
     const handleClickOutside = (event) => {
-      if (!menuRef.current?.contains(event.target)) {
+      if (!menuRef.current?.contains(event.target) && !dropdownRef.current?.contains(event.target)) {
         setMenuOpen(false);
       }
     };
@@ -486,11 +584,16 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
               className="sys-vol-menu-trigger"
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label={`Действия для @${volunteer.nick}`}
+              ref={triggerRef}
             >
               <MoreHorizontal size={16} />
             </button>
-            {menuOpen && (
-              <div className="sys-vol-menu-dropdown">
+            {menuOpen && dropdownStyle && createPortal(
+              <div
+                className="sys-vol-menu-dropdown sys-vol-menu-dropdown-portal"
+                style={dropdownStyle}
+                ref={dropdownRef}
+              >
                 <button
                   type="button"
                   className="sys-vol-menu-item"
@@ -501,7 +604,24 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
                 >
                   Редактировать
                 </button>
-              </div>
+                <button
+                  type="button"
+                  className="sys-vol-menu-item sys-vol-menu-item-danger"
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    if (!window.confirm(`Удалить @${volunteer.nick} из системы?`)) return;
+                    try {
+                      await api.del(`/api/users/${volunteer.id}`);
+                      onSaved();
+                    } catch (e) {
+                      alert(e.message);
+                    }
+                  }}
+                >
+                  Удалить
+                </button>
+              </div>,
+              document.body,
             )}
           </div>
         )}

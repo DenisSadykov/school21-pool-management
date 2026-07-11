@@ -15,6 +15,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
+import '../styles/Pages.css';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Dashboard.css';
 
@@ -39,6 +41,19 @@ function getTelegramLink(telegram) {
 function getTelegramBotLink(botUsername) {
   const username = (botUsername || '').trim().replace(/^@+/, '');
   return username ? `https://t.me/${username}` : '';
+}
+
+function TelegramConnectTitle({ telegram }) {
+  return (
+    <span className="telegram-connect-title">
+      {telegram?.bot_avatar_url ? (
+        <span className="telegram-connect-botmark">
+          <img src={telegram.bot_avatar_url} alt="Логотип Telegram-бота" />
+        </span>
+      ) : null}
+      <span>Подключи Telegram-бота</span>
+    </span>
+  );
 }
 
 function todayIso() {
@@ -75,15 +90,37 @@ function tomorrowCoverage(blocks = []) {
 function Dashboard({ user }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadDashboard = () => {
+    setLoading(true);
+    setError('');
     api.get('/api/dashboard')
       .then(setData)
-      .catch((e) => console.error(e))
+      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadDashboard();
   }, []);
 
-  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loading) return <Loader text="Загрузка..." />;
+  if (error) {
+    return (
+      <div className="page">
+        <div className="dashboard-head">
+          <h1>Дашборд</h1>
+        </div>
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={loadDashboard}>
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const role = user.role;
   const isOps = role === 'admin' || role === 'team_lead';
@@ -141,9 +178,9 @@ function OpsDashboard({ data }) {
   return (
     <>
       <div className="dashboard-sections two-columns">
-        {!telegram.linked && (
+        {data?.role !== 'admin' && !telegram.linked && (
           <section className="info-section info-section-warning wide">
-            <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
+            <SectionTitle icon={Bell} title={<TelegramConnectTitle telegram={telegram} />} tone="danger" />
             <div className="telegram-connect-card">
               <div className="telegram-connect-copy">
                 <p>
@@ -241,7 +278,7 @@ function TribeMasterDashboard({ data }) {
       <div className="dashboard-sections two-columns">
         {!telegram.linked && (
           <section className="info-section info-section-warning">
-            <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
+            <SectionTitle icon={Bell} title={<TelegramConnectTitle telegram={telegram} />} tone="danger" />
             <div className="telegram-connect-card">
               <div className="telegram-connect-copy">
                 <p>
@@ -302,7 +339,7 @@ function VolunteerDashboard({ data, user }) {
       <div className="dashboard-sections volunteer-dashboard-sections">
         {!telegram.linked && (
           <section className="info-section info-section-warning">
-            <SectionTitle icon={Bell} title="Подключи Telegram-бота" tone="danger" />
+            <SectionTitle icon={Bell} title={<TelegramConnectTitle telegram={telegram} />} tone="danger" />
             <div className="telegram-connect-card">
               <div className="telegram-connect-copy">
                 <p>

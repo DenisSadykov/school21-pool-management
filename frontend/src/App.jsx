@@ -5,6 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import Loader from './components/Loader';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/Schedule';
 import Students from './pages/Students';
@@ -19,10 +20,13 @@ import Login from './pages/Login';
 import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
-import { getUser } from './api';
+import PoolInvite from './pages/PoolInvite';
+import { api, getToken, getUser, setSession } from './api';
 
 import './styles/App.css';
 import './styles/theme.css';
+
+const ACCENT_SCHEMES = new Set(['cobalt', 'jade', 'amber']);
 
 function App() {
   const [user, setUser] = React.useState(null);
@@ -30,16 +34,74 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
 
   useEffect(() => {
-    setUser(getUser());
-    setLoading(false);
+    let alive = true;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', 'light');
+
+    const params = new URLSearchParams(window.location.search);
+    const accentFromUrl = params.get('accent');
+    const accentFromStorage = localStorage.getItem('uiAccentScheme');
+    const accentScheme = ACCENT_SCHEMES.has(accentFromUrl)
+      ? accentFromUrl
+      : (ACCENT_SCHEMES.has(accentFromStorage) ? accentFromStorage : 'cobalt');
+
+    root.setAttribute('data-accent-scheme', accentScheme);
+    localStorage.setItem('uiAccentScheme', accentScheme);
+
+    const sessionUser = getUser();
+    setUser(sessionUser);
+
+    const syncUser = async () => {
+      if (!getToken()) {
+        if (alive) setLoading(false);
+        return;
+      }
+      try {
+        const freshUser = await api.get('/api/auth/me');
+        if (!alive) return;
+        setSession(getToken(), freshUser);
+        setUser(freshUser);
+      } catch (error) {
+        if (!alive) return;
+        setUser(getUser());
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    syncUser();
+    return () => {
+      alive = false;
+    };
   }, []);
 
+  return (
+    <BrowserRouter>
+      <AppRoutes
+        user={user}
+        setUser={setUser}
+        loading={loading}
+        mobileSidebarOpen={mobileSidebarOpen}
+        setMobileSidebarOpen={setMobileSidebarOpen}
+      />
+      <ToastContainer position="bottom-right" autoClose={3000} theme="light" />
+    </BrowserRouter>
+  );
+}
+
+function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebarOpen }) {
   if (loading) {
-    return <div className="loading">Загрузка...</div>;
+    return <Loader text="Загрузка..." fullscreen />;
   }
 
   if (!user) {
-    return <Login setUser={setUser} />;
+    return (
+      <Routes>
+        <Route path="/login" element={<Login setUser={setUser} />} />
+        <Route path="/join/:token" element={<PoolInvite user={null} setUser={setUser} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
   }
 
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
@@ -47,50 +109,56 @@ function App() {
   const canUseGroupReviews = isStaff;
 
   return (
-    <BrowserRouter>
-      <div className="app">
-        <Navbar
-          user={user}
-          setUser={setUser}
-          mobileSidebarOpen={mobileSidebarOpen}
-          onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)}
-        />
-        <div className="app-container">
-          <Sidebar
-            user={user}
-            mobileOpen={mobileSidebarOpen}
-            onMobileClose={() => setMobileSidebarOpen(false)}
-          />
-          {mobileSidebarOpen && (
-            <button
-              type="button"
-              className="mobile-sidebar-backdrop"
-              aria-label="Закрыть меню"
-              onClick={() => setMobileSidebarOpen(false)}
+    <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/join/:token" element={<PoolInvite user={user} setUser={setUser} />} />
+      <Route
+        path="*"
+        element={(
+          <div className="app">
+            <Navbar
+              user={user}
+              setUser={setUser}
+              mobileSidebarOpen={mobileSidebarOpen}
+              onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)}
             />
-          )}
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<Dashboard user={user} />} />
-              <Route path="/schedule" element={<Schedule user={user} />} />
-              <Route path="/penalties" element={<Penalties user={user} />} />
-              <Route path="/students" element={<Students user={user} />} />
-              <Route path="/volunteers" element={<Volunteers user={user} />} />
-              <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
-              <Route path="/exam-brief" element={<ExamBrief />} />
-              {canUseTribe && <Route path="/my-tribe" element={<MyTribe user={user} />} />}
-              {canUseGroupReviews && <Route path="/group-reviews" element={<GroupReviews user={user} />} />}
-              {isStaff && <Route path="/manage" element={<Manage user={user} />} />}
-              {isStaff && <Route path="/notifications" element={<Notifications user={user} />} />}
-              {isStaff && <Route path="/settings" element={<Settings user={user} />} />}
-              {isStaff && <Route path="/admin" element={<Admin user={user} />} />}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
-        </div>
-      </div>
-      <ToastContainer position="bottom-right" autoClose={3000} theme="dark" />
-    </BrowserRouter>
+            <div className="app-container">
+              <Sidebar
+                user={user}
+                mobileOpen={mobileSidebarOpen}
+                onMobileClose={() => setMobileSidebarOpen(false)}
+              />
+              {mobileSidebarOpen && (
+                <button
+                  type="button"
+                  className="mobile-sidebar-backdrop"
+                  aria-label="Закрыть меню"
+                  onClick={() => setMobileSidebarOpen(false)}
+                />
+              )}
+              <main className="main-content">
+                <Routes>
+                  <Route path="/" element={<Dashboard user={user} />} />
+                  <Route path="/schedule" element={<Schedule user={user} />} />
+                  <Route path="/penalties" element={<Penalties user={user} />} />
+                  <Route path="/students" element={<Students user={user} />} />
+                  <Route path="/volunteers" element={<Volunteers user={user} />} />
+                  <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+                  <Route path="/exam-brief" element={<ExamBrief />} />
+                  {canUseTribe && <Route path="/my-tribe" element={<MyTribe user={user} />} />}
+                  {canUseGroupReviews && <Route path="/group-reviews" element={<GroupReviews user={user} />} />}
+                  {isStaff && <Route path="/manage" element={<Manage user={user} />} />}
+                  {isStaff && <Route path="/notifications" element={<Notifications user={user} />} />}
+                  {isStaff && <Route path="/settings" element={<Settings user={user} />} />}
+                  {isStaff && <Route path="/admin" element={<Admin user={user} />} />}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </main>
+            </div>
+          </div>
+        )}
+      />
+    </Routes>
   );
 }
 

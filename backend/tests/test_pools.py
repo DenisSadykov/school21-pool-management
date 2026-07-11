@@ -58,6 +58,121 @@ def test_responsibles_are_not_shown_in_pool_volunteers_list(client, factories, a
     assert 'lead' not in nicks
 
 
+def test_manual_broadcast_targets_only_users_linked_to_pool(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    responsible_lead = factories.user('lead', role='team_lead', password='lead1234', telegram='@lead_tg')
+    unrelated_lead = factories.user('other_lead', role='team_lead', password='lead1234', telegram='@other_lead_tg')
+    volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer_tg')
+    outsider = factories.user('outsider', role='volunteer', telegram='@outsider_tg')
+    pool = factories.pool('Broadcast pool', active=True)
+
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    factories.assign(responsible_lead, pool, pool_role='responsible_team_lead')
+    factories.assign(volunteer, pool)
+
+    response = client.post(
+        '/api/notifications/broadcasts',
+        headers=auth_headers(admin),
+        json={'text': 'Тестовая рассылка', 'filters': {}},
+    )
+
+    assert response.status_code == 201
+    recipients = {
+        event.recipient_user_id
+        for event in db_session.query(app_module.NotificationEvent).filter_by(type='manual_broadcast', pool_id=pool.id).all()
+    }
+    assert admin.id in recipients
+    assert responsible_lead.id in recipients
+    assert volunteer.id in recipients
+    assert unrelated_lead.id not in recipients
+    assert outsider.id not in recipients
+
+
+def test_create_and_update_volunteer_normalize_telegram_username(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+
+    create_response = client.post(
+        '/api/volunteers',
+        headers=auth_headers(admin),
+        json={'nick': 'newvol', 'name': 'Новый', 'telegram': '@NewVolunteer'},
+    )
+
+    assert create_response.status_code == 201
+    payload = create_response.get_json()
+    assert payload['telegram'] == '@NewVolunteer'
+
+    update_response = client.patch(
+        f"/api/volunteers/{payload['id']}",
+        headers=auth_headers(admin),
+        json={'telegram': '@UpdatedVolunteer'},
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.get_json()['telegram'] == '@UpdatedVolunteer'
+
+
+def test_admin_can_create_pool_invite_link(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool('Invite pool', active=True, archived=False)
+
+    response = client.post(
+        f'/api/pools/{pool.id}/invite-link',
+        headers=auth_headers(admin),
+        json={'max_uses': 3, 'expires_at': '2099-01-01T12:00'},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['message'] == 'Инвайт-ссылка обновлена'
+    assert payload['invite']['is_active'] is True
+    assert payload['invite']['token']
+    assert payload['invite']['invite_url'].endswith(payload['invite']['token'])
+    assert payload['invite']['max_uses'] == 3
+    assert payload['invite']['expires_at'].startswith('2099-01-01T12:00')
+
+
+def test_user_can_accept_pool_invite_link(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('joinme', role='volunteer')
+    pool = factories.pool('Join pool', active=True, archived=False)
+
+    create_response = client.post(f'/api/pools/{pool.id}/invite-link', headers=auth_headers(admin))
+    token = create_response.get_json()['invite']['token']
+
+    response = client.post(f'/api/invites/{token}/accept', headers=auth_headers(volunteer))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['already_joined'] is False
+    assert payload['pool']['id'] == pool.id
+    assert payload['user']['role'] == 'volunteer'
+
+    membership = app_module.PoolVolunteer.query.filter_by(pool_id=pool.id, user_id=volunteer.id).first()
+    assert membership is not None
+    assert membership.pool_role == 'volunteer'
+
+
+def test_pool_invite_link_respects_max_uses(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    first = factories.user('first_joiner', role='volunteer')
+    second = factories.user('second_joiner', role='volunteer')
+    pool = factories.pool('Limited pool', active=True, archived=False)
+
+    create_response = client.post(
+        f'/api/pools/{pool.id}/invite-link',
+        headers=auth_headers(admin),
+        json={'max_uses': 1},
+    )
+    token = create_response.get_json()['invite']['token']
+
+    first_response = client.post(f'/api/invites/{token}/accept', headers=auth_headers(first))
+    assert first_response.status_code == 200
+
+    second_response = client.post(f'/api/invites/{token}/accept', headers=auth_headers(second))
+    assert second_response.status_code == 410
+    assert second_response.get_json()['error'] == 'Лимит входов по этой ссылке уже исчерпан'
+
+
 def test_delete_pool_cascades_related_records(client, factories, auth_headers, db_session):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer1', role='volunteer')

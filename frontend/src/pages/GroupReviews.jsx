@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
+import Loader from '../components/Loader';
 import '../styles/GroupReviews.css';
 
 function todayIso() {
@@ -52,7 +53,7 @@ function GroupReviews({ user }) {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка групповых проверок...</div>;
+  if (loading) return <Loader text="Загрузка групповых проверок..." />;
 
   return (
     <div className="page group-reviews-page">

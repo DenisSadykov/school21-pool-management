@@ -395,21 +395,21 @@
 }
 
 .event-status.pending {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(154, 103, 0, 0.12);
   color: var(--warning);
-  border: 1px solid rgba(245, 158, 11, 0.28);
+  border: 1px solid rgba(154, 103, 0, 0.28);
 }
 
 .event-status.confirmed {
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(26, 127, 55, 0.1);
   color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.26);
+  border: 1px solid rgba(26, 127, 55, 0.26);
 }
 
 .event-status.rejected {
-  background: rgba(244, 63, 94, 0.12);
+  background: rgba(207, 34, 46, 0.12);
   color: var(--danger);
-  border: 1px solid rgba(244, 63, 94, 0.28);
+  border: 1px solid rgba(207, 34, 46, 0.28);
 }
 
 .student-event-admin {

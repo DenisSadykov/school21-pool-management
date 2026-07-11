@@ -11,7 +11,7 @@
 }
 
 .page-header h1 {
-  font-size: 1.25rem;
+  font-size: var(--h1-size);
   line-height: 1.15;
   color: var(--text-primary);
   font-weight: 700;
@@ -139,15 +139,15 @@
 }
 
 .badge-confirmed {
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(26, 127, 55, 0.1);
   color: var(--success);
-  border-color: rgba(34, 197, 94, 0.28);
+  border-color: rgba(26, 127, 55, 0.28);
 }
 
 .badge-pending {
-  background: rgba(255, 170, 0, 0.1);
+  background: rgba(154, 103, 0, 0.1);
   color: var(--warning);
-  border-color: rgba(245, 158, 11, 0.28);
+  border-color: rgba(154, 103, 0, 0.28);
 }
 
 .form {
@@ -203,6 +203,22 @@
   text-align: center;
   padding: var(--spacing-lg) !important;
   color: var(--text-secondary);
+}
+
+.page-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 16px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.date-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 @media (max-width: 768px) {

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api, setSession } from '../api';
 import '../styles/Login.css';
 
@@ -12,6 +13,8 @@ const ROLE_OPTIONS = [
 const PASSWORD_ROLES = new Set(['team_lead', 'admin']);
 
 function Login({ setUser }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [role, setRole] = useState(() => localStorage.getItem('loginRole') || 'volunteer');
   const [nick, setNick] = useState('');
   const [password, setPassword] = useState('');
@@ -54,6 +57,7 @@ function Login({ setUser }) {
       });
       setSession(data.token, data.user);
       setUser(data.user);
+      navigate(location.state?.from || '/', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
