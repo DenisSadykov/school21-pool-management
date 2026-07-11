@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { AlertCircle, Plus, Check, X, Trash2, ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
+import '../styles/Pages.css';
 import '../styles/Penalties.css';
 
 const STATUS_LABELS = {
@@ -32,6 +33,7 @@ function Penalties() {
   const [showForm, setShowForm] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [students, setStudents] = useState([]);
+  const [error, setError] = useState('');
   const [highlightedStatus, setHighlightedStatus] = useState('');
   const [highlightedPenaltyId, setHighlightedPenaltyId] = useState(null);
   const sectionRefs = useRef({});
@@ -113,11 +115,12 @@ function Penalties() {
   }, [loading, location.search, penalties]);
 
   const fetchPenalties = async () => {
+    setError('');
     try {
       const data = await api.get('/api/penalties');
       setPenalties(data);
     } catch (error) {
-      console.error('Ошибка загрузки штрафов:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -205,6 +208,17 @@ function Penalties() {
         </div>
       )}
 
+      {error && (
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={fetchPenalties}>
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {!error && (
+        <>
       <div className="penalties-stats">
         <button type="button" className="stat" onClick={() => scrollToStatus('all')}>
           <span>Всего штрафов:</span>
@@ -229,6 +243,8 @@ function Penalties() {
           </strong>
         </button>
       </div>
+        </>
+      )}
 
       <div className="penalties-grid">
         <div

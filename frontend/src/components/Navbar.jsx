@@ -44,13 +44,10 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
         </div>
 
         <div className="navbar-actions">
-          {isStaff && <div className="sync-state">synced</div>}
-
           <div className="navbar-user-wrap" ref={ref}>
             <button
               className={`navbar-user ${open ? 'active' : ''}`}
               onClick={() => setOpen(!open)}
-              style={{ cursor: 'pointer' }}
             >
               <span className="user-avatar">
                 {profile?.avatar_url && !avatarFailed ? (

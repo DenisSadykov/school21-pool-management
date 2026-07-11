@@ -53,8 +53,8 @@
 }
 
 .admin-section.warning {
-  border-color: rgba(245, 158, 11, 0.36);
-  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(154, 103, 0, 0.36);
+  background: rgba(154, 103, 0, 0.06);
 }
 
 .admin-actions {
@@ -98,12 +98,12 @@
 }
 
 .btn-danger {
-  background: rgba(244, 63, 94, 0.12);
+  background: rgba(207, 34, 46, 0.12);
   color: var(--danger);
   min-height: var(--control-height);
   padding: 0 var(--control-padding-x);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(244, 63, 94, 0.28);
+  border: 1px solid rgba(207, 34, 46, 0.28);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
@@ -111,7 +111,7 @@
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(244, 63, 94, 0.18);
+  background: rgba(207, 34, 46, 0.18);
 }
 
 .btn-danger:disabled {
@@ -128,14 +128,14 @@
 }
 
 .alert.success {
-  background: rgba(34, 197, 94, 0.1);
-  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(26, 127, 55, 0.1);
+  border-color: rgba(26, 127, 55, 0.28);
   color: var(--success);
 }
 
 .alert.error {
-  background: rgba(244, 63, 94, 0.1);
-  border-color: rgba(244, 63, 94, 0.28);
+  background: rgba(207, 34, 46, 0.1);
+  border-color: rgba(207, 34, 46, 0.28);
   color: var(--danger);
 }
 

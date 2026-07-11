@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { UserPlus, UserMinus, Trash2, Plus } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
+import '../styles/Pages.css';
 import '../styles/Schedule.css';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -22,6 +23,11 @@ function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function todayIso() {
+  const now = new Date();
+  return toIso(now);
 }
 
 function getMonday(iso) {
@@ -52,6 +58,7 @@ function Schedule({ user }) {
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const currentDay = todayIso();
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
 
   const loadSchedule = useCallback(async ({ showLoading = false, includeVolunteers = false } = {}) => {
@@ -189,12 +196,28 @@ function Schedule({ user }) {
   };
 
   if (loading) return <Loader text="Загрузка графика..." />;
-  if (error) return <div className="page"><div className="error-message">{error}</div></div>;
+  if (error) {
+    return (
+      <div className="page schedule-page">
+        <div className="page-header">
+          <h1>График смен</h1>
+        </div>
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => loadSchedule({ showLoading: true, includeVolunteers: true })}>
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!data.pool) {
     return (
-      <div className="page">
-        <h1>График смен</h1>
+      <div className="page schedule-page">
+        <div className="page-header">
+          <h1>График смен</h1>
+        </div>
         <div className="empty-state">
           {isStaff
             ? <p>Активного бассейна пока нет. Создай его в разделе «Настройка».</p>
@@ -207,6 +230,9 @@ function Schedule({ user }) {
 
   return (
     <div className="page schedule-page">
+      <div className="page-header">
+        <h1>График смен</h1>
+      </div>
       {data.days.length === 0 ? (
         <div className="empty-state">
           <p>Тайм-блоков пока нет.</p>
@@ -220,12 +246,12 @@ function Schedule({ user }) {
                 {week.days.map((day) => (
                   <div
                     key={day.date}
-                    className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''}`}
+                    className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''} ${day.date === currentDay ? 'today' : ''}`}
                   >
                     <span className="day-header-left">
                       <span>{day.label}</span>
                       {day.blocks.some((block) => block.label === 'EXAM') ? (
-                        <span className="day-header-badge">EXAM</span>
+                        <span className="day-header-badge">Экзамен</span>
                       ) : null}
                     </span>
                     <span>{formatDay(day.date)}</span>
@@ -238,12 +264,13 @@ function Schedule({ user }) {
                   {week.days.map((day) => {
                     const block = day.blocks[rowIndex];
                     return (
-                      <div key={`${day.date}-${rowIndex}`} className="week-cell">
+                      <div key={`${day.date}-${rowIndex}`} className={`week-cell ${day.date === currentDay ? 'today' : ''}`}>
                         {block ? (
                           <BlockCard
                             block={block}
                             user={user}
                             isStaff={isStaff}
+                            isToday={day.date === currentDay}
                             isMine={isMine}
                             onToggleSignup={toggleSignup}
                             onRemoveVolunteer={removeVolunteer}
@@ -282,6 +309,7 @@ function BlockCard({
   block,
   user,
   isStaff,
+  isToday,
   isMine,
   onToggleSignup,
   onRemoveVolunteer,
@@ -297,7 +325,7 @@ function BlockCard({
   const availableVolunteers = (volunteers || []).filter((v) => !assignedIds.has(v.id));
 
   return (
-    <div className={`block-card ${block.label === 'EXAM' ? 'exam' : ''}`}>
+    <div className={`block-card ${block.label === 'EXAM' ? 'exam' : ''} ${isToday ? 'today' : ''}`}>
       <div className="block-time">
         <span>{block.time_start}–{block.time_end}</span>
         {block.label && block.label !== 'EXAM' ? <span className="block-label">{block.label}</span> : null}
@@ -360,7 +388,7 @@ function BlockCard({
       )}
 
       <button
-        className={`block-signup ${mine ? 'leave' : ''}`}
+        className={`btn-secondary block-signup ${mine ? 'leave' : ''}`}
         onClick={() => onToggleSignup(block)}
         disabled={!mine && full}
       >

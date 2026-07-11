@@ -3,6 +3,7 @@ import { CalendarPlus, ChevronDown, Link as LinkIcon, Plus, Trash2, Trophy } fro
 import { api } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
+import '../styles/Pages.css';
 import '../styles/MyTribe.css';
 
 function todayIso() {
@@ -13,16 +14,18 @@ function MyTribe({ user }) {
   const [data, setData] = useState(null);
   const [selectedTribe, setSelectedTribe] = useState(user?.tribe || '');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const load = async (tribe = selectedTribe) => {
     setLoading(true);
+    setError('');
     try {
       const query = tribe ? `?tribe=${encodeURIComponent(tribe)}` : '';
       const payload = await api.get(`/api/my-tribe${query}`);
       setData(payload);
       setSelectedTribe(payload.tribe);
     } catch (error) {
-      alert('Ошибка: ' + error.message);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -109,6 +112,17 @@ function MyTribe({ user }) {
         ) : null}
       </div>
 
+      {error && (
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => load(selectedTribe)}>
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {!error && (
+        <>
       <section className="tribe-panel">
         <h2><Trophy size={18} /> Рейтинг трайбов</h2>
         {(data?.rankings || []).length === 0 ? (
@@ -216,6 +230,8 @@ function MyTribe({ user }) {
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }
@@ -232,6 +248,15 @@ function formatMeetingWeekday(value) {
   if (!value) return '';
   return new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU', {
     weekday: 'short',
+  });
+}
+
+function formatLongDate(value) {
+  if (!value) return '';
+  return new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   });
 }
 
@@ -422,6 +447,7 @@ function StudentEventForm({ students, onSuccess }) {
         <label>
           Дата
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
+          {form.event_date && <span className="date-hint">{formatLongDate(form.event_date)}</span>}
         </label>
         <label>
           Ссылка на пост
@@ -470,6 +496,7 @@ function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard }) {
         <label>
           Дата
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
+          {form.event_date && <span className="date-hint">{formatLongDate(form.event_date)}</span>}
         </label>
         <label>
           Время

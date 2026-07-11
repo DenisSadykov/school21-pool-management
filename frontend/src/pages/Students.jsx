@@ -4,6 +4,7 @@ import { Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { api, API_URL, getToken } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
+import '../styles/Pages.css';
 import '../styles/Students.css';
 
 const HEADER_MAP = {
@@ -100,6 +101,7 @@ function Students({ user }) {
   const [tribeFilter, setTribeFilter] = useState('all');
   const [workoffFilter, setWorkoffFilter] = useState('all');
   const [definedTribes, setDefinedTribes] = useState([]);
+  const [error, setError] = useState('');
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
 
   useEffect(() => {
@@ -108,13 +110,14 @@ function Students({ user }) {
   }, []);
 
   const fetchStudents = async () => {
+    setError('');
     try {
       const data = await api.get('/api/students');
       // Сортировать по количеству штрафов (спереди те с больше штрафами)
       data.sort((a, b) => b.total_penalty_hours - a.total_penalty_hours);
       setStudents(data);
     } catch (error) {
-      console.error('Ошибка загрузки учеников:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -168,6 +171,15 @@ function Students({ user }) {
         )}
       </div>
 
+      {error ? (
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={fetchStudents}>
+            Повторить
+          </button>
+        </div>
+      ) : (
+        <>
       {showImport && (
         <StudentsImport
           tribes={definedTribes}
@@ -265,6 +277,8 @@ function Students({ user }) {
           </table>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

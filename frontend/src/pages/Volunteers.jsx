@@ -43,9 +43,7 @@ function PersonIdentity({ person }) {
       </span>
       <div className="person-identity-text">
         <strong className="volunteer-nick">@{person.nick}</strong>
-        {person.name && <div className="person-fullname">{person.name}</div>}
         <div className="person-meta">
-          <span>{person.role === 'tribe_master' ? 'Трайб-мастер' : 'Волонтёр'}</span>
           <TelegramButton telegram={person.telegram} nick={person.nick} />
         </div>
       </div>
@@ -58,6 +56,7 @@ function Volunteers({ user }) {
   const [allVols, setAllVols] = useState([]);
   const [tribes, setTribes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
   const loadVolunteers = useCallback(async (poolId) => {
@@ -75,6 +74,7 @@ function Volunteers({ user }) {
 
   const loadPage = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const pool = await api.get('/api/pools/active');
       setActivePool(pool);
@@ -89,6 +89,8 @@ function Volunteers({ user }) {
         loadVolunteers(pool.id),
       ]);
       setTribes(tribeList || []);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -114,8 +116,10 @@ function Volunteers({ user }) {
 
   if (!activePool) {
     return (
-      <div className="page">
-        <h1>Волонтёры</h1>
+      <div className="page volunteers-page">
+        <div className="page-header">
+          <h1>Волонтёры</h1>
+        </div>
         <div className="empty-state">
           <p>Нет активного бассейна.</p>
           {isStaff && <Link to="/settings" className="btn-primary" style={{ display: 'inline-block', marginTop: 8 }}>Перейти в Настройки</Link>}
@@ -130,8 +134,20 @@ function Volunteers({ user }) {
 
   return (
     <div className="page volunteers-page">
+      <div className="page-header">
+        <h1>Волонтёры</h1>
+      </div>
 
-      {allVols.length === 0 && (
+      {error && (
+        <div className="page-error">
+          <p>{error}</p>
+          <button type="button" className="btn-secondary" onClick={loadPage}>
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {!error && allVols.length === 0 && (
         <div className="empty-state">
           <p>На бассейн ещё не назначено волонтёров.</p>
           {isStaff && <Link to="/manage">Настройки бассейна →</Link>}
@@ -139,7 +155,7 @@ function Volunteers({ user }) {
       )}
 
       {/* Трайб-мастера */}
-      {(tribeMasters.length > 0 || (isStaff && volunteers.length > 0)) && (
+      {!error && (tribeMasters.length > 0 || (isStaff && volunteers.length > 0)) && (
         <section className="volunteer-group volunteer-group-masters">
           <div className="group-title-row">
             <span className="group-title-label">Трайб-мастера</span>
@@ -175,7 +191,7 @@ function Volunteers({ user }) {
       )}
 
       {/* Волонтёры */}
-      {volunteers.length > 0 && (
+      {!error && volunteers.length > 0 && (
         <section className="volunteer-group">
           <div className="group-title-row">
             <span className="group-title-label">Волонтёры</span>

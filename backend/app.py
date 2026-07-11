@@ -137,6 +137,11 @@ INTERNAL_API_SECRET = os.getenv('INTERNAL_API_SECRET', '').strip()
 SCHOOL_RULES_URL = os.getenv('SCHOOL_RULES_URL', 'https://applicant.21-school.ru/rules')
 EXAM_BRIEF_URL = os.getenv('EXAM_BRIEF_URL', '')
 MOSCOW_OFFSET = timedelta(hours=3)
+_telegram_bot_avatar_cache = {
+    'expires_at': None,
+    'bytes': None,
+    'content_type': None,
+}
 
 # ==================== Модели ====================
 
@@ -729,7 +734,52 @@ def _telegram_link_status(user):
         'photo_url': account.photo_url if account else None,
         'needs_username': not username,
         'bot_username': f'@{TELEGRAM_BOT_USERNAME}' if TELEGRAM_BOT_USERNAME else '',
+        'bot_avatar_url': '/api/telegram/bot-avatar' if _telegram_is_configured() and TELEGRAM_BOT_USERNAME else '',
     }
+
+
+def _telegram_bot_avatar_payload():
+    now = _utcnow()
+    expires_at = _telegram_bot_avatar_cache.get('expires_at')
+    if (
+        _telegram_bot_avatar_cache.get('bytes')
+        and expires_at
+        and expires_at > now
+    ):
+        return _telegram_bot_avatar_cache.get('bytes'), _telegram_bot_avatar_cache.get('content_type') or 'image/jpeg'
+
+    if not _telegram_is_configured():
+        return None, None
+
+    bot_info = telegram_get('getMe')
+    bot_id = bot_info.get('id') if isinstance(bot_info, dict) else None
+    if not bot_id:
+        return None, None
+
+    photos = telegram_get('getUserProfilePhotos', {'user_id': bot_id, 'limit': 1})
+    total = photos.get('total_count', 0) if isinstance(photos, dict) else 0
+    if not total or not photos.get('photos'):
+        return None, None
+
+    best = photos['photos'][0][-1]
+    file_id = best.get('file_id')
+    if not file_id:
+        return None, None
+
+    file_info = telegram_get('getFile', {'file_id': file_id})
+    file_path = file_info.get('file_path') if isinstance(file_info, dict) else None
+    download_url = _telegram_file_download_url(file_path)
+    if not download_url:
+        return None, None
+
+    response = requests.get(download_url, timeout=30)
+    response.raise_for_status()
+    payload = response.content
+    content_type = response.headers.get('Content-Type') or 'image/jpeg'
+    _telegram_bot_avatar_cache['bytes'] = payload
+    _telegram_bot_avatar_cache['content_type'] = content_type
+    _telegram_bot_avatar_cache['expires_at'] = now + timedelta(hours=1)
+    return payload, content_type
 
 
 def _dashboard_note_to_dict(note):
@@ -906,6 +956,7 @@ def telegram_send_message(chat_id, text, disable_notification=False, reply_marku
 def telegram_sync_commands():
     commands = [
         {'command': 'start', 'description': 'Привязать бота к платформе'},
+        {'command': 'myshifts', 'description': 'Посмотреть свои смены'},
         {'command': 'rules', 'description': 'Правила школы'},
         {'command': 'penalties', 'description': 'Ученики с нарушениями'},
         {'command': 'responsibles', 'description': 'Ответственные за бассейн'},
@@ -959,6 +1010,27 @@ def _tg_link(user):
 def _tg_url(value):
     username = _clean_telegram_username(value)
     return f'https://t.me/{username}' if username else ''
+
+
+def _telegram_main_keyboard(user):
+    if not user or user.role == 'admin':
+        return {'remove_keyboard': True}
+    return {
+        'keyboard': [
+            [{'text': 'Мои смены'}],
+        ],
+        'resize_keyboard': True,
+        'persistent': True,
+    }
+
+
+def _format_telegram_shift_day(date_value, today):
+    label = date_value.strftime('%A %d.%m.%Y').capitalize()
+    if date_value == today:
+        return f'{label} · сегодня'
+    if date_value == today + timedelta(days=1):
+        return f'{label} · завтра'
+    return label
 
 
 def _format_shift(block):
@@ -1193,15 +1265,17 @@ def telegram_link_account(chat_id, tg_user):
         f'Теперь я буду присылать уведомления для @{user.nick}.',
         '',
         'Команды:',
+        '/myshifts — мои смены',
         '/rules — правила школы',
         '/responsibles — ответственные за бассейн',
         '/help — помощь',
     ]
-    telegram_send_message(chat_id, '\n'.join(greeting))
+    telegram_send_message(chat_id, '\n'.join(greeting), reply_markup=_telegram_main_keyboard(user))
     return {'linked': True, 'user_id': user.id, 'telegram_username': f'@{account.telegram_username}'}
 
 
-def telegram_handle_help(chat_id):
+def telegram_handle_help(chat_id, tg_user=None):
+    user = _telegram_user_from_tg(tg_user) if tg_user else None
     pool_id = active_pool_id()
     responsibles = _pool_responsibles(pool_id)
     lines = [
@@ -1225,6 +1299,7 @@ def telegram_handle_help(chat_id):
         '',
         'Команды:',
         '/start — привязать бота к платформе',
+        '/myshifts — показать мои смены',
         '/rules — открыть правила школы',
         '/penalties — ученики с нарушениями по статусам',
         '/responsibles — ответственные за бассейн',
@@ -1233,6 +1308,7 @@ def telegram_handle_help(chat_id):
     telegram_send_message(
         chat_id,
         '\n'.join(lines),
+        reply_markup=_telegram_main_keyboard(user),
     )
     return {'ok': True}
 
@@ -1295,6 +1371,64 @@ def telegram_handle_penalties(chat_id, tg_user):
     return {'ok': True, 'action': 'penalties'}
 
 
+def telegram_handle_my_shifts(chat_id, tg_user):
+    user = _telegram_user_from_tg(tg_user)
+    if not user:
+        telegram_send_message(chat_id, 'Сначала привяжи бота командой /start.')
+        return {'ok': False, 'reason': 'not_linked'}
+    if user.role == 'admin':
+        telegram_send_message(
+            chat_id,
+            'Для админа кнопка «Мои смены» не нужна.',
+            reply_markup=_telegram_main_keyboard(user),
+        )
+        return {'ok': False, 'reason': 'admin_not_supported'}
+
+    today = _moscow_now().date()
+    rows = (
+        db.session.query(ShiftBlock, Pool)
+        .join(Signup, Signup.block_id == ShiftBlock.id)
+        .join(Pool, Pool.id == ShiftBlock.pool_id)
+        .filter(
+            Signup.user_id == user.id,
+            ShiftBlock.date >= today,
+            Pool.archived.is_(False),
+        )
+        .order_by(ShiftBlock.date, ShiftBlock.time_start)
+        .all()
+    )
+
+    if not rows:
+        telegram_send_message(
+            chat_id,
+            'У тебя пока нет записей на будущие смены.',
+            reply_markup=_telegram_main_keyboard(user),
+        )
+        return {'ok': True, 'count': 0, 'action': 'my_shifts'}
+
+    grouped = {}
+    for block, pool in rows[:20]:
+        grouped.setdefault(block.date, []).append((block, pool))
+
+    lines = ['Твои ближайшие смены:']
+    for shift_date, day_rows in grouped.items():
+        lines.append('')
+        lines.append(_format_telegram_shift_day(shift_date, today))
+        for block, pool in day_rows:
+            label = f' · {block.label}' if block.label else ''
+            pool_name = f' · {pool.name}' if pool and pool.name else ''
+            lines.append(f'• {block.time_start}-{block.time_end}{label}{pool_name}')
+    if len(rows) > 20:
+        lines.append(f'...и ещё {len(rows) - 20}')
+
+    telegram_send_message(
+        chat_id,
+        '\n'.join(lines),
+        reply_markup=_telegram_main_keyboard(user),
+    )
+    return {'ok': True, 'count': len(rows), 'action': 'my_shifts'}
+
+
 def telegram_handle_message(message):
     chat = message.get('chat') or {}
     chat_id = chat.get('id')
@@ -1302,9 +1436,12 @@ def telegram_handle_message(message):
     text = (message.get('text') or '').strip()
     if not chat_id or not text:
         return {'ok': False, 'reason': 'empty_message'}
+    normalized_text = text.lower()
 
     if text.startswith('/start'):
         return telegram_link_account(chat_id, tg_user)
+    if text.startswith('/myshifts') or normalized_text == 'мои смены':
+        return telegram_handle_my_shifts(chat_id, tg_user)
     if text.startswith('/rules'):
         telegram_send_message(chat_id, f'Правила школы: {SCHOOL_RULES_URL}')
         return {'ok': True, 'action': 'rules'}
@@ -1313,9 +1450,9 @@ def telegram_handle_message(message):
     if text.startswith('/responsibles'):
         return telegram_handle_responsibles(chat_id)
     if text.startswith('/help'):
-        return telegram_handle_help(chat_id)
+        return telegram_handle_help(chat_id, tg_user)
 
-    telegram_send_message(chat_id, 'Я понимаю команды /start, /rules, /penalties, /responsibles и /help.')
+    telegram_send_message(chat_id, 'Я понимаю команды /start, /myshifts, /rules, /penalties, /responsibles и /help.')
     return {'ok': True, 'action': 'unknown_command'}
 
 
@@ -4269,6 +4406,25 @@ def list_dashboard_notes():
 @require_auth
 def telegram_status():
     return jsonify(_telegram_link_status(g.user))
+
+
+@app.route('/api/telegram/bot-avatar', methods=['GET'])
+def telegram_bot_avatar():
+    if not _telegram_is_configured():
+        return jsonify({'error': 'Telegram бот не настроен'}), 503
+    try:
+        payload, content_type = _telegram_bot_avatar_payload()
+    except Exception:
+        return jsonify({'error': 'Не удалось загрузить аватар бота'}), 502
+    if not payload:
+        return jsonify({'error': 'Аватар бота не найден'}), 404
+    return send_file(
+        BytesIO(payload),
+        mimetype=content_type,
+        max_age=3600,
+        conditional=True,
+        download_name='telegram-bot-avatar.jpg',
+    )
 
 
 @app.route('/api/telegram/unlinked-users', methods=['GET'])

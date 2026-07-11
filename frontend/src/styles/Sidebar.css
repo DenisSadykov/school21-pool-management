@@ -1,11 +1,16 @@
 .sidebar {
   width: 210px;
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  transition: width var(--transition);
+  transition: none;
   position: relative;
+}
+
+.sidebar.animated {
+  transition: width var(--transition);
 }
 
 .sidebar.closed {

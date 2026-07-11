@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Users, AlertCircle, BookOpen, Trophy, ClipboardCheck, SlidersHorizontal, Bell } from 'lucide-react';
+import { Home, Calendar, Users, AlertCircle, BookOpen, Trophy, ClipboardCheck, SlidersHorizontal, Bell, Menu } from 'lucide-react';
 import { api, POOLS_CHANGED_EVENT } from '../api';
 import '../styles/Sidebar.css';
 import TribeLabel from './TribeLabel';
@@ -11,6 +11,7 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
   const [isMobile, setIsMobile] = React.useState(() => (
     typeof window !== 'undefined' && window.innerWidth <= 768
   ));
+  const [mounted, setMounted] = useState(false);
   const [activePool, setActivePool] = useState(null);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
   const canUseTribe = user?.role === 'tribe_master' || isStaff;
@@ -26,6 +27,10 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
     loadActivePool();
     window.addEventListener(POOLS_CHANGED_EVENT, loadActivePool);
     return () => window.removeEventListener(POOLS_CHANGED_EVENT, loadActivePool);
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -63,13 +68,13 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
   const isOpen = isMobile ? mobileOpen : isDesktopOpen;
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+    <aside className={`sidebar ${isOpen ? 'open' : 'closed'} ${mounted ? 'animated' : ''}`}>
       <button
         className="sidebar-toggle"
         onClick={() => setIsDesktopOpen((prev) => !prev)}
-        aria-label="Toggle sidebar"
+        aria-label="Переключить сайдбар"
       >
-        ☰
+        <Menu size={20} />
       </button>
 
       <nav className="sidebar-nav">

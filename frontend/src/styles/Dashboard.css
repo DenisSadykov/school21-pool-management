@@ -125,6 +125,30 @@
   gap: 14px;
 }
 
+.telegram-connect-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.telegram-connect-botmark {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(9, 105, 218, 0.2);
+  box-shadow: 0 6px 16px rgba(9, 105, 218, 0.12);
+  animation: telegramBotSpin 9s linear infinite;
+  flex-shrink: 0;
+}
+
+.telegram-connect-botmark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .telegram-connect-copy {
   min-width: 0;
 }
@@ -140,6 +164,15 @@
 .telegram-connect-action {
   margin-top: 0;
   flex-shrink: 0;
+}
+
+@keyframes telegramBotSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .info-section.wide {
@@ -437,9 +470,9 @@
   margin-top: 6px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(26, 127, 55, 0.1);
   color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.26);
+  border: 1px solid rgba(26, 127, 55, 0.26);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -453,15 +486,15 @@
 }
 
 .tribe-pill-ribbons {
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(207, 34, 46, 0.08);
   color: #cf222e;
-  border-color: rgba(239, 68, 68, 0.24);
+  border-color: rgba(207, 34, 46, 0.24);
 }
 
 .tribe-pill-crowns {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(154, 103, 0, 0.12);
   color: #b7791f;
-  border-color: rgba(245, 158, 11, 0.28);
+  border-color: rgba(154, 103, 0, 0.28);
 }
 
 .tribe-pill-deer {
@@ -638,6 +671,10 @@
     gap: 10px;
   }
 
+  .telegram-connect-title {
+    align-items: center;
+  }
+
   .telegram-connect-copy p {
     line-height: 1.35;
   }
@@ -685,5 +722,11 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .telegram-connect-botmark {
+    animation: none;
   }
 }
