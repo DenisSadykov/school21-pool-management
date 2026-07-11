@@ -46,12 +46,12 @@ function getTelegramBotLink(botUsername) {
 function TelegramConnectTitle({ telegram }) {
   return (
     <span className="telegram-connect-title">
+      <span>Подключи Telegram-бота</span>
       {telegram?.bot_avatar_url ? (
-        <span className="telegram-connect-botmark">
-          <img src={telegram.bot_avatar_url} alt="Логотип Telegram-бота" />
+        <span className="telegram-connect-botmark" aria-hidden="true">
+          <img src={telegram.bot_avatar_url} alt="" />
         </span>
       ) : null}
-      <span>Подключи Telegram-бота</span>
     </span>
   );
 }
