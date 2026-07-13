@@ -35,32 +35,6 @@
   padding: 10px 8px;
 }
 
-.sidebar-pool-name {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 10px 10px;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
-}
-
-.sidebar.closed .sidebar-pool-name span:last-child { display: none; }
-
-.sidebar-pool-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--success);
-  flex-shrink: 0;
-  box-shadow: none;
-}
-
 .sidebar-section-label {
   padding: 0 8px 6px;
   color: var(--text-muted);
@@ -111,6 +85,8 @@
   width: 14px;
   height: 14px;
   stroke-width: 1.75;
+  color: currentColor;
+  transition: color var(--transition), transform var(--transition);
 }
 
 .nav-label {
@@ -146,6 +122,55 @@
 .sidebar.closed .nav-icon-slot {
   width: auto;
   min-width: 0;
+}
+
+.nav-item:hover svg {
+  transform: translateY(-1px);
+}
+
+.nav-item.tone-home:hover svg,
+.nav-item.tone-home.active svg {
+  color: var(--accent);
+}
+
+.nav-item.tone-schedule:hover svg,
+.nav-item.tone-schedule.active svg {
+  color: var(--info);
+}
+
+.nav-item.tone-penalties:hover svg,
+.nav-item.tone-penalties.active svg {
+  color: var(--danger);
+}
+
+.nav-item.tone-students:hover svg,
+.nav-item.tone-students.active svg {
+  color: #b7791f;
+}
+
+.nav-item.tone-tribe:hover svg,
+.nav-item.tone-tribe.active svg {
+  color: #7c3aed;
+}
+
+.nav-item.tone-reviews:hover svg,
+.nav-item.tone-reviews.active svg {
+  color: #0f766e;
+}
+
+.nav-item.tone-volunteers:hover svg,
+.nav-item.tone-volunteers.active svg {
+  color: var(--success);
+}
+
+.nav-item.tone-notifications:hover svg,
+.nav-item.tone-notifications.active svg {
+  color: #ea580c;
+}
+
+.nav-item.tone-manage:hover svg,
+.nav-item.tone-manage.active svg {
+  color: #475569;
 }
 
 .sidebar-duck-link {
@@ -233,9 +258,8 @@
   pointer-events: none;
 }
 
-  .sidebar.open .sidebar-nav,
-  .sidebar.open .nav-label,
-  .sidebar.open .sidebar-pool-name span:last-child {
+.sidebar.open .sidebar-nav,
+  .sidebar.open .nav-label {
     visibility: visible;
     display: block;
   }

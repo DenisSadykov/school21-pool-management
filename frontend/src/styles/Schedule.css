@@ -403,3 +403,154 @@
     margin-left: 0;
   }
 }
+
+@media (max-width: 768px) {
+  .schedule-weeks {
+    display: none;
+  }
+
+  .schedule-day-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .day-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .day-section.week-break {
+    margin-top: 14px;
+  }
+
+  .day-section-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 0.875rem;
+  }
+
+  .day-section-header.today {
+    background: var(--accent-muted);
+    color: var(--accent);
+  }
+
+  .day-section-header.exam-day {
+    background: rgba(154, 103, 0, 0.12);
+    border-bottom-color: rgba(154, 103, 0, 0.18);
+  }
+
+  .day-section-title {
+    min-width: 0;
+  }
+
+  .day-today-label {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .day-fill {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .day-section .block-card {
+    border: 0;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 0;
+    padding: 10px 12px;
+  }
+
+  .day-section .block-card:last-of-type {
+    border-bottom: 0;
+  }
+
+  .day-section .block-time {
+    font-size: 1rem;
+    margin-bottom: 8px;
+  }
+
+  .day-section .block-time-right {
+    margin-left: auto;
+  }
+
+  .day-section .block-capacity {
+    font-size: 0.82rem;
+    padding: 2px 8px;
+  }
+
+  .day-section .block-vols {
+    gap: 6px;
+    margin-top: 8px;
+    margin-bottom: 12px;
+  }
+
+  .day-section .vol-chip {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+
+  .day-section .assign-volunteer {
+    grid-template-columns: 1fr 44px;
+    margin-bottom: 12px;
+  }
+
+  .day-section .assign-volunteer select,
+  .day-section .assign-volunteer button {
+    min-height: 44px;
+  }
+
+  .day-section .block-signup {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .day-section-add {
+    padding: 0 12px 12px;
+  }
+
+  .past-days {
+    margin-top: 6px;
+  }
+
+  .past-days summary {
+    padding: 12px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-align: center;
+    list-style: none;
+  }
+
+  .past-days summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .past-days summary::before {
+    content: '▸ ';
+  }
+
+  .past-days[open] summary::before {
+    content: '▾ ';
+  }
+
+  .past-days-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+}

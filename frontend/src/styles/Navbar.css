@@ -1,4 +1,10 @@
 .navbar {
+  --navbar-chip-height: 35px;
+  --navbar-icon-button-size: 35px;
+  --navbar-pill-padding-x: 12px;
+}
+
+.navbar {
   background: var(--bg-sidebar);
   border-bottom: 1px solid var(--border);
   height: 48px;
@@ -33,10 +39,50 @@
 
 .brand-pool {
   color: var(--text-primary);
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(42vw, 260px);
+  min-height: var(--navbar-chip-height);
+  padding: 0 var(--navbar-pill-padding-x);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 1px rgba(16, 185, 129, 0.05);
+}
+
+.brand-pool::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.06);
+  animation: brandPoolPulse 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes brandPoolPulse {
+  0%,
+  100% {
+    border-color: rgba(16, 185, 129, 0.14);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.05);
+    opacity: 0.9;
+  }
+
+  50% {
+    border-color: rgba(16, 185, 129, 0.24);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.03);
+    opacity: 1;
+  }
 }
 
 .navbar-actions {
@@ -47,8 +93,8 @@
 
 .navbar-mobile-menu {
   display: none;
-  width: 34px;
-  height: 34px;
+  width: var(--navbar-icon-button-size);
+  height: var(--navbar-icon-button-size);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -111,7 +157,8 @@
   flex-direction: row;
   align-items: center;
   gap: 7px;
-  min-height: var(--control-height);
+  min-height: var(--navbar-chip-height);
+  height: var(--navbar-chip-height);
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -168,13 +215,16 @@
 
 .user-avatar {
   width: 24px;
+  min-width: 24px;
   height: 24px;
+  min-height: 24px;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 24px;
   font-size: 0.625rem;
   font-weight: 900;
   overflow: hidden;
@@ -257,7 +307,9 @@
   }
 
   .brand-pool {
-    font-size: 0.9rem;
+    font-size: 0.82rem;
+    max-width: min(46vw, 180px);
+    --navbar-pill-padding-x: 14px;
   }
 
   .user-role,
@@ -273,17 +325,22 @@
 
   .navbar-mobile-menu {
     display: inline-flex;
-    width: 44px;
-    height: 44px;
   }
 
   .navbar-user {
-    min-height: 44px;
-    height: 44px;
+    width: var(--navbar-icon-button-size);
     padding: 0 8px;
+    justify-content: center;
+    border-radius: 10px;
   }
 
   .user-name {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-pool::after {
+    animation: none;
   }
 }

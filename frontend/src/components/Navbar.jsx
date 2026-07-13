@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu, UserCircle2 } from 'lucide-react';
-import { buildAuthenticatedAssetUrl, clearSession } from '../api';
+import { api, buildAuthenticatedAssetUrl, clearSession, POOLS_CHANGED_EVENT } from '../api';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = {
@@ -14,6 +14,7 @@ const ROLE_LABELS = {
 function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(user);
+  const [activePool, setActivePool] = useState(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
@@ -32,6 +33,18 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  useEffect(() => {
+    const loadActivePool = () => {
+      api.get('/api/pools/active').then((pool) => {
+        setActivePool(pool || null);
+      }).catch(() => {});
+    };
+
+    loadActivePool();
+    window.addEventListener(POOLS_CHANGED_EVENT, loadActivePool);
+    return () => window.removeEventListener(POOLS_CHANGED_EVENT, loadActivePool);
+  }, []);
+
   const go = (path) => { setOpen(false); navigate(path); };
   const handleLogout = () => { clearSession(); setUser(null); };
 
@@ -40,7 +53,7 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
       <div className="navbar-container">
         <div className="navbar-brand">
           <img className="brand-logo" src="/school21-logo.webp" alt="School 21 logo" />
-          <span className="brand-pool">School21 Pool</span>
+          <span className="brand-pool">{activePool?.name || 'School21 Pool'}</span>
         </div>
 
         <div className="navbar-actions">

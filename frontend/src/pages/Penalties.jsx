@@ -246,6 +246,8 @@ function Penalties() {
         </>
       )}
 
+      {!error && (
+        <>
       <div className="penalties-grid">
         <div
           className={`penalties-section ${highlightedStatus === 'all' || highlightedStatus === 'pending' ? 'is-highlighted' : ''}`}
@@ -382,6 +384,8 @@ function Penalties() {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
