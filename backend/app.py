@@ -509,7 +509,9 @@ class SyncOutbox(db.Model):
 
 def enqueue_sync(entity, action, payload):
     """Положить изменение в outbox. Реальный пуш в таблицу — воркером (День 2)."""
-    item = SyncOutbox(entity=entity, action=action, payload=json.dumps(payload, ensure_ascii=False))
+    contextual_payload = dict(payload or {})
+    contextual_payload.setdefault('pool_id', active_pool_id())
+    item = SyncOutbox(entity=entity, action=action, payload=json.dumps(contextual_payload, ensure_ascii=False))
     db.session.add(item)
     # commit делает вызывающий код вместе со своей транзакцией
 
@@ -523,6 +525,8 @@ def _actor_snapshot(user):
 def log_action(action, entity, entity_id=None, description='', payload=None, actor=None):
     actor = actor or getattr(g, 'user', None)
     actor_id, actor_nick, actor_name = _actor_snapshot(actor)
+    contextual_payload = dict(payload or {})
+    contextual_payload.setdefault('pool_id', active_pool_id())
     db.session.add(ActionLog(
         actor_id=actor_id,
         actor_nick=actor_nick,
@@ -531,7 +535,7 @@ def log_action(action, entity, entity_id=None, description='', payload=None, act
         entity=entity,
         entity_id=entity_id,
         description=description,
-        payload=json.dumps(payload or {}, ensure_ascii=False),
+        payload=json.dumps(contextual_payload, ensure_ascii=False),
     ))
 
 
@@ -841,10 +845,7 @@ def _unlinked_users_for_pool(pool_id):
     volunteer_ids = {
         row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
     } if pool_id else set()
-    staff_ids = {
-        row.id for row in User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead'])).with_entities(User.id).all()
-    }
-    candidate_ids = volunteer_ids | staff_ids
+    candidate_ids = volunteer_ids
     if not candidate_ids:
         return []
     users = User.query.filter(User.id.in_(candidate_ids)).order_by(User.role, User.nick).all()
@@ -857,7 +858,7 @@ def _unlinked_users_for_pool(pool_id):
             'id': user.id,
             'nick': user.nick,
             'name': user.name or user.nick,
-            'role': user.role,
+            'role': _effective_access_role(user, pool_id),
             'telegram': f'@{username}' if username else '',
             'needs_username': not bool(username),
             'avatar_url': _avatar_url_for_user(user),
@@ -869,10 +870,7 @@ def _linked_users_for_pool(pool_id):
     volunteer_ids = {
         row.user_id for row in PoolVolunteer.query.filter_by(pool_id=pool_id).with_entities(PoolVolunteer.user_id).all()
     } if pool_id else set()
-    staff_ids = {
-        row.id for row in User.query.filter(User.active.is_(True), User.role.in_(['admin', 'team_lead'])).with_entities(User.id).all()
-    }
-    candidate_ids = volunteer_ids | staff_ids
+    candidate_ids = volunteer_ids
     if not candidate_ids:
         return []
     rows = (
@@ -889,7 +887,7 @@ def _linked_users_for_pool(pool_id):
         'id': user.id,
         'nick': user.nick,
         'name': user.name or user.nick,
-        'role': user.role,
+        'role': _effective_access_role(user, pool_id),
         'telegram': f'@{account.telegram_username}' if account.telegram_username else (user.telegram or ''),
         'linked_at': account.linked_at.isoformat() if account.linked_at else None,
         'delivery_enabled': bool(account.delivery_enabled),
@@ -1130,7 +1128,6 @@ def _tribe_masters_for_pool(pool_id, tribe):
         .join(PoolVolunteer, PoolVolunteer.user_id == User.id)
         .filter(
             User.active.is_(True),
-            User.role == 'tribe_master',
             PoolVolunteer.pool_id == pool_id,
             PoolVolunteer.pool_role == 'tribe_master',
             PoolVolunteer.tribe == normalized_tribe,
@@ -1138,14 +1135,7 @@ def _tribe_masters_for_pool(pool_id, tribe):
         .order_by(User.nick)
         .all()
     )
-    if rows:
-        return rows
-    return (
-        User.query
-        .filter_by(active=True, role='tribe_master', tribe=normalized_tribe)
-        .order_by(User.nick)
-        .all()
-    )
+    return rows
 
 
 def _queue_notification(user, event_type, text, dedupe_key, pool_id=None, priority='normal',
@@ -1376,7 +1366,14 @@ def telegram_handle_my_shifts(chat_id, tg_user):
     if not user:
         telegram_send_message(chat_id, 'Сначала привяжи бота командой /start.')
         return {'ok': False, 'reason': 'not_linked'}
-    if user.role == 'admin':
+    pool_id = active_pool_id()
+    if not pool_id:
+        telegram_send_message(chat_id, 'Сейчас нет активного бассейна.')
+        return {'ok': False, 'reason': 'no_active_pool'}
+    if not _can_access_pool_id(user, pool_id):
+        telegram_send_message(chat_id, 'У тебя нет доступа к активному бассейну.')
+        return {'ok': False, 'reason': 'no_pool_access'}
+    if _effective_access_role(user, pool_id) == 'admin':
         telegram_send_message(
             chat_id,
             'Для админа кнопка «Мои смены» не нужна.',
@@ -1391,8 +1388,9 @@ def telegram_handle_my_shifts(chat_id, tg_user):
         .join(Pool, Pool.id == ShiftBlock.pool_id)
         .filter(
             Signup.user_id == user.id,
+            ShiftBlock.pool_id == pool_id,
             ShiftBlock.date >= today,
-            Pool.archived.is_(False),
+            Pool.active.is_(True),
         )
         .order_by(ShiftBlock.date, ShiftBlock.time_start)
         .all()
@@ -1659,6 +1657,18 @@ def telegram_handle_callback(callback):
         if callback_id:
             telegram_answer_callback(callback_id, 'Пенальти уже не найдено')
         return {'ok': False, 'reason': 'penalty_not_found'}
+    event = db.session.get(NotificationEvent, event_id)
+    current_pool_id = active_pool_id()
+    if (
+        not actor
+        or not event
+        or event.recipient_user_id != actor.id
+        or penalty.pool_id != current_pool_id
+        or event.pool_id != current_pool_id
+    ):
+        if callback_id:
+            telegram_answer_callback(callback_id, 'Действие уже не относится к активному бассейну')
+        return {'ok': False, 'reason': 'inactive_pool_context'}
 
     if question == 'm':
         event_type = 'penalty_method_question'
@@ -1854,7 +1864,11 @@ def _schedule_tribe_notifications():
 
 def _schedule_penalty_checks():
     now = _utcnow()
+    pool_id = active_pool_id()
+    if not pool_id:
+        return
     penalties = StudentPenalty.query.filter(
+        StudentPenalty.pool_id == pool_id,
         StudentPenalty.workoff_status == 'in_workoff',
         StudentPenalty.date_worked_off.isnot(None),
     ).all()
@@ -1888,8 +1902,14 @@ def process_pending_notifications(limit=20):
     sent = 0
     failed = 0
     skipped = 0
+    current_pool_id = active_pool_id()
 
     for event in events:
+        if event.pool_id is not None and event.pool_id != current_pool_id:
+            event.status = 'cancelled'
+            event.cancelled_at = _utcnow()
+            skipped += 1
+            continue
         user = db.session.get(User, event.recipient_user_id) if event.recipient_user_id else None
         account = TelegramAccount.query.filter_by(user_id=user.id, is_linked=True).first() if user else None
         delivery = NotificationDelivery.query.filter_by(notification_id=event.id).order_by(NotificationDelivery.id.desc()).first()
@@ -2549,6 +2569,14 @@ def activate_pool(pool_id):
     Pool.query.update({Pool.active: False})
     pool.active = True
     pool.archived = False
+    NotificationEvent.query.filter(
+        NotificationEvent.pool_id.isnot(None),
+        NotificationEvent.pool_id != pool.id,
+        NotificationEvent.status.in_(['queued', 'pending']),
+    ).update({
+        NotificationEvent.status: 'cancelled',
+        NotificationEvent.cancelled_at: _utcnow(),
+    }, synchronize_session=False)
     db.session.commit()
     return jsonify(pool.to_dict())
 
@@ -2626,6 +2654,8 @@ def list_pool_volunteers(pool_id):
             if pv.pool_role in ('responsible_admin', 'responsible_team_lead'):
                 continue
             d = user.to_dict()
+            d['role'] = pv.pool_role or 'volunteer'
+            d['tribe'] = pv.tribe
             d['pool_tribe'] = pv.tribe
             d['assigned_at'] = pv.assigned_at.isoformat() if pv.assigned_at else None
             result.append(d)
@@ -3002,15 +3032,28 @@ def block_to_dict(block, signups_by_block):
 def _signups_index(pool_id):
     """Вернуть {block_id: [(user_id, nick, name, telegram, role), ...]} для бассейна."""
     rows = (
-        db.session.query(Signup.block_id, User.id, User.nick, User.name, User.telegram, User.role)
+        db.session.query(
+            Signup.block_id,
+            User.id,
+            User.nick,
+            User.name,
+            User.telegram,
+            User.role,
+            PoolVolunteer.pool_role,
+        )
         .join(User, User.id == Signup.user_id)
         .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+        .outerjoin(
+            PoolVolunteer,
+            db.and_(PoolVolunteer.user_id == User.id, PoolVolunteer.pool_id == pool_id),
+        )
         .filter(ShiftBlock.pool_id == pool_id)
         .order_by(Signup.created_at)
         .all()
     )
     index = {}
-    for block_id, uid, nick, name, telegram, role in rows:
+    for block_id, uid, nick, name, telegram, global_role, pool_role in rows:
+        role = global_role if global_role in ('team_lead', 'admin') else (pool_role or 'volunteer')
         index.setdefault(block_id, []).append((uid, nick, name, telegram, role))
     return index
 
@@ -3019,21 +3062,9 @@ def _signups_index(pool_id):
 @require_auth
 def schedule():
     """Сетка графика: дни -> тайм-блоки -> волонтёры."""
-    pool_id = request.args.get('pool_id', type=int)
-    if not pool_id:
-        if g.user.role in ('team_lead', 'admin'):
-            pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
-        else:
-            # Волонтёр видит активный бассейн на который назначен, затем последний завершённый
-            pv = (db.session.query(PoolVolunteer)
-                  .join(Pool, Pool.id == PoolVolunteer.pool_id)
-                  .filter(PoolVolunteer.user_id == g.user.id, Pool.archived.is_(False))
-                  .order_by(Pool.active.desc(), Pool.created_at.desc())
-                  .first())
-            pool = db.session.get(Pool, pv.pool_id) if pv else None
-        if not pool:
-            return jsonify({'pool': None, 'days': [], 'not_assigned': True})
-        pool_id = pool.id
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     pool = get_model_or_404(Pool, pool_id)
     if not can_access_pool(g.user, pool):
         return jsonify({'error': 'Ты не добавлен на этот бассейн. Обратись к тимлиду.'}), 403
@@ -3056,12 +3087,9 @@ def schedule():
 @require_role('team_lead', 'admin')
 def create_block():
     data = request.json or {}
-    pool_id = data.get('pool_id')
-    if not pool_id:
-        pool = Pool.query.filter_by(active=True).first()
-        pool_id = pool.id if pool else None
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     try:
         d = datetime.fromisoformat(data['date']).date()
     except (KeyError, ValueError):
@@ -3083,6 +3111,9 @@ def create_block():
 @require_role('team_lead', 'admin')
 def delete_block(block_id):
     block = get_model_or_404(ShiftBlock, block_id)
+    error = _active_entity_error(block.pool_id)
+    if error:
+        return error
     Signup.query.filter_by(block_id=block.id).delete()
     db.session.delete(block)
     db.session.commit()
@@ -3093,6 +3124,9 @@ def delete_block(block_id):
 @require_role('team_lead', 'admin')
 def patch_block_capacity(block_id):
     block = get_model_or_404(ShiftBlock, block_id)
+    error = _active_entity_error(block.pool_id)
+    if error:
+        return error
     data = request.json or {}
     if 'capacity' in data:
         val = data['capacity']
@@ -3144,6 +3178,9 @@ def _schedule_template_for_day(day_index):
 @require_role('team_lead', 'admin')
 def generate_schedule(pool_id):
     pool = get_model_or_404(Pool, pool_id)
+    error = _active_entity_error(pool.id)
+    if error:
+        return error
     if not pool.start_date:
         return jsonify({'error': 'У бассейна не задана дата начала'}), 400
     data = request.json or {}
@@ -3207,6 +3244,9 @@ def generate_schedule(pool_id):
 @app.route('/api/pools/<int:pool_id>/generate-schedule/undo', methods=['POST'])
 @require_role('team_lead', 'admin')
 def undo_generate_schedule(pool_id):
+    error = _active_entity_error(pool_id)
+    if error:
+        return error
     generation = (
         ScheduleGeneration.query
         .filter_by(pool_id=pool_id)
@@ -3229,6 +3269,9 @@ def undo_generate_schedule(pool_id):
 @require_auth
 def signup_block(block_id):
     block = get_model_or_404(ShiftBlock, block_id)
+    error = _active_entity_error(block.pool_id)
+    if error:
+        return error
     user = g.user
     # Проверка доступа к бассейну
     pool = db.session.get(Pool, block.pool_id)
@@ -3242,6 +3285,9 @@ def signup_block(block_id):
         return jsonify({'error': 'Назначать других людей может только тимлид или админ'}), 403
     else:
         target_user = user
+
+    if not PoolVolunteer.query.filter_by(pool_id=block.pool_id, user_id=target_user.id).first():
+        return jsonify({'error': 'Пользователь не назначен на активный бассейн'}), 409
 
     existing = Signup.query.filter_by(block_id=block.id, user_id=target_user.id).first()
     if existing:
@@ -3283,6 +3329,9 @@ def signup_block(block_id):
 def unsignup_block(block_id):
     user = g.user
     block = get_model_or_404(ShiftBlock, block_id)
+    error = _active_entity_error(block.pool_id)
+    if error:
+        return error
     # волонтёр снимает себя; тимлид/админ может снять любого через ?user_id=
     target_id = request.args.get('user_id', type=int)
     if target_id and user.role in ('team_lead', 'admin'):
@@ -3324,10 +3373,13 @@ def unsignup_block(block_id):
 @app.route('/api/me/shifts', methods=['GET'])
 @require_auth
 def my_shifts():
+    pool_id = active_pool_id()
+    if not pool_id:
+        return jsonify([])
     rows = (
         db.session.query(ShiftBlock)
         .join(Signup, Signup.block_id == ShiftBlock.id)
-        .filter(Signup.user_id == g.user.id)
+        .filter(Signup.user_id == g.user.id, ShiftBlock.pool_id == pool_id)
         .order_by(ShiftBlock.date, ShiftBlock.time_start)
         .all()
     )
@@ -3349,12 +3401,18 @@ def stats():
     pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
     pool_id = pool.id if pool else None
     total_blocks = ShiftBlock.query.filter_by(pool_id=pool_id).count() if pool_id else 0
-    volunteers = User.query.filter_by(role='volunteer').count()
+    volunteers = PoolVolunteer.query.filter_by(pool_id=pool_id).count() if pool_id else 0
     total_signups = (
         db.session.query(Signup).join(ShiftBlock, ShiftBlock.id == Signup.block_id)
         .filter(ShiftBlock.pool_id == pool_id).count() if pool_id else 0
     )
-    my = Signup.query.filter_by(user_id=g.user.id).count()
+    my = (
+        db.session.query(Signup)
+        .join(ShiftBlock, ShiftBlock.id == Signup.block_id)
+        .filter(Signup.user_id == g.user.id, ShiftBlock.pool_id == pool_id)
+        .count()
+        if pool_id else 0
+    )
     return jsonify({
         'pool': pool.to_dict() if pool else None,
         'totalBlocks': total_blocks,
@@ -3367,9 +3425,9 @@ def stats():
 @app.route('/api/tribes', methods=['GET'])
 @require_auth
 def list_tribes():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     tribes = Tribe.query.filter_by(pool_id=pool_id).order_by(Tribe.name).all()
     return jsonify([{'id': t.id, 'name': t.name} for t in tribes])
 
@@ -3378,9 +3436,9 @@ def list_tribes():
 @require_role('team_lead', 'admin')
 def create_tribe():
     data = request.json or {}
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Укажите название трайба'}), 400
@@ -3396,6 +3454,9 @@ def create_tribe():
 @require_role('team_lead', 'admin')
 def delete_tribe(tribe_id):
     tribe = get_model_or_404(Tribe, tribe_id)
+    error = _active_entity_error(tribe.pool_id)
+    if error:
+        return error
     db.session.delete(tribe)
     db.session.commit()
     return jsonify({'message': f'Трайб «{tribe.name}» удалён'})
@@ -3420,7 +3481,9 @@ def load_standard_tribes():
 @require_auth
 def get_volunteers():
     """Список людей, участвующих в волонтёрской сетке, со статусами и коинами."""
-    pool_id = request.args.get('pool_id', type=int)
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
 
     if pool_id:
         pvs = PoolVolunteer.query.filter_by(pool_id=pool_id).all()
@@ -3908,12 +3971,18 @@ def import_volunteer_profiles_file():
 def create_volunteer_reward_event(user_id):
     user = get_model_or_404(User, user_id)
     data = request.json or {}
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
+    membership = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user.id).first()
+    if not membership:
+        return jsonify({'error': 'Пользователь не назначен на активный бассейн'}), 409
     event_type = data.get('event_type') or 'confession'
     if event_type not in REWARD_EVENT_TYPES:
         return jsonify({'error': 'Неизвестный тип активности'}), 400
     if event_type == 'confession':
-        user.has_confession = True
-        RewardEvent.query.filter_by(user_id=user.id, event_type='confession').delete()
+        membership.has_confession = True
+        RewardEvent.query.filter_by(user_id=user.id, pool_id=pool_id, event_type='confession').delete()
         db.session.commit()
         return jsonify({
             'message': f'{REWARD_EVENT_TYPES[event_type]["label"]}: +{REWARD_RATES["confession"]} коинов для @{user.nick}',
@@ -3934,6 +4003,7 @@ def create_volunteer_reward_event(user_id):
     coins = quantity * REWARD_EVENT_TYPES[event_type]['coins']
     event = RewardEvent(
         user_id=user.id,
+        pool_id=pool_id,
         event_type=event_type,
         event_date=event_date,
         quantity=quantity,
@@ -3956,10 +4026,17 @@ def update_volunteer_profile(user_id):
     data = request.json or {}
     changes = {}
 
-    pool_id = data.get('pool_id')
+    pool_scoped_fields = {'role', 'has_confession', 'tribe', 'coins_adjustment'}
+    needs_pool_context = bool(pool_scoped_fields.intersection(data)) or data.get('pool_id') is not None
+    pool_id = None
     pv = None
-    if pool_id:
+    if needs_pool_context:
+        pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+        if error:
+            return error
         pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).first()
+        if not pv:
+            return jsonify({'error': 'Пользователь не назначен на активный бассейн'}), 409
 
     if 'role' in data:
         new_role = data.get('role')
@@ -3967,15 +4044,10 @@ def update_volunteer_profile(user_id):
             return jsonify({'error': 'На этой странице можно выбрать только волонтёра или трайб-мастера'}), 400
         if user.role in ROLES_WITH_PASSWORD:
             return jsonify({'error': 'Тимлида или админа нельзя сделать трайб-мастером здесь'}), 403
-        if pv:
-            old = pv.pool_role or 'volunteer'
-            if old != new_role:
-                changes['role'] = {'from': old, 'to': new_role}
-            pv.pool_role = new_role
-        else:
-            if user.role != new_role:
-                changes['role'] = {'from': user.role, 'to': new_role}
-            user.role = new_role
+        old = pv.pool_role or 'volunteer'
+        if old != new_role:
+            changes['role'] = {'from': old, 'to': new_role}
+        pv.pool_role = new_role
 
     if 'name' in data:
         new_name = (data.get('name') or '').strip() or user.nick
@@ -4081,9 +4153,9 @@ def _group_review_to_dict(review):
 @app.route('/api/group-reviews', methods=['GET'])
 @require_auth
 def list_group_reviews():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     reviews = (
         GroupReview.query
         .filter_by(pool_id=pool_id)
@@ -4107,9 +4179,11 @@ def create_group_review():
         quantity = max(1, int(data.get('quantity') or 1))
     except (TypeError, ValueError):
         return jsonify({'error': 'Количество проверок должно быть числом'}), 400
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
+    if not PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=reviewer.id).first():
+        return jsonify({'error': 'Проверяющий не назначен на активный бассейн'}), 409
     review = GroupReview(
         pool_id=pool_id,
         review_date=review_date,
@@ -4128,6 +4202,9 @@ def create_group_review():
 @require_role('team_lead', 'admin')
 def delete_group_review(review_id):
     review = get_model_or_404(GroupReview, review_id)
+    error = _active_entity_error(review.pool_id)
+    if error:
+        return error
     db.session.delete(review)
     db.session.commit()
     return jsonify({'message': 'Групповая проверка удалена'})
@@ -4139,6 +4216,28 @@ def delete_group_review(review_id):
 def active_pool_id():
     pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
     return pool.id if pool else None
+
+
+def _active_pool_id_for_request(requested_pool_id=None):
+    """Resolve all operational requests to the single system-wide active pool."""
+    pool_id = active_pool_id()
+    if not pool_id:
+        return None, (jsonify({'error': 'Нет активного бассейна'}), 400)
+    if requested_pool_id is not None and int(requested_pool_id) != pool_id:
+        return None, (jsonify({'error': 'Данные можно изменять только в активном бассейне'}), 409)
+    request_user = getattr(g, 'user', None)
+    if request_user and not _can_access_pool_id(request_user, pool_id):
+        return None, (jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403)
+    return pool_id, None
+
+
+def _active_entity_error(entity_pool_id):
+    pool_id = active_pool_id()
+    if not pool_id:
+        return jsonify({'error': 'Нет активного бассейна'}), 400
+    if entity_pool_id != pool_id:
+        return jsonify({'error': 'Эта запись относится не к активному бассейну'}), 409
+    return None
 
 
 def _status_counts(pool_id):
@@ -4153,14 +4252,15 @@ def _status_counts(pool_id):
     }
 
 
-def _user_public_dict(user):
+def _user_public_dict(user, pool_id=None):
+    target_pool_id = pool_id or active_pool_id()
     return {
         'id': user.id,
         'nick': user.nick,
         'name': user.name or user.nick,
         'telegram': user.telegram,
-        'role': user.role,
-        'tribe': user.tribe,
+        'role': _effective_access_role(user, target_pool_id),
+        'tribe': _effective_access_tribe(user, target_pool_id),
         'avatar_url': _avatar_url_for_user(user),
     }
 
@@ -4212,12 +4312,12 @@ def _tomorrow_blocks(pool_id):
     return [_block_with_people_from_rows(block, signups_by_block.get(block.id, [])) for block in blocks]
 
 
-def _future_my_shifts(user_id, limit=5):
+def _future_my_shifts(user_id, pool_id, limit=5):
     today = date.today()
     rows = (
         db.session.query(ShiftBlock)
         .join(Signup, Signup.block_id == ShiftBlock.id)
-        .filter(Signup.user_id == user_id, ShiftBlock.date >= today)
+        .filter(Signup.user_id == user_id, ShiftBlock.pool_id == pool_id, ShiftBlock.date >= today)
         .order_by(ShiftBlock.date, ShiftBlock.time_start)
         .limit(limit)
         .all()
@@ -4345,6 +4445,8 @@ def _tribe_event_to_dict(event):
 def dashboard_summary():
     pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
     pool_id = pool.id if pool else None
+    if pool_id and not _can_access_pool_id(g.user, pool_id):
+        return jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403
     tomorrow = date.today() + timedelta(days=1)
     counts = _status_counts(pool_id)
     tomorrow_tribe_events = (
@@ -4358,7 +4460,7 @@ def dashboard_summary():
         'tomorrow_blocks': _tomorrow_blocks(pool_id) if pool_id else [],
         'penalties': counts,
         'tomorrow_tribe_events': [_tribe_event_to_dict(event) for event in tomorrow_tribe_events],
-        'my_shifts': _future_my_shifts(g.user.id),
+        'my_shifts': _future_my_shifts(g.user.id, pool_id) if pool_id else [],
         'telegram': _telegram_link_status(g.user),
         'pool_responsibles': _pool_responsibles(pool_id),
         'dashboard_notes': [
@@ -4393,9 +4495,9 @@ def dashboard_summary():
 @app.route('/api/dashboard-notes', methods=['GET'])
 @require_auth
 def list_dashboard_notes():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     notes = (
         DashboardNote.query.filter_by(pool_id=pool_id, is_active=True)
         .order_by(DashboardNote.is_pinned.desc(), DashboardNote.updated_at.desc(), DashboardNote.id.desc())
@@ -4432,7 +4534,9 @@ def telegram_bot_avatar():
 @app.route('/api/telegram/unlinked-users', methods=['GET'])
 @require_role('team_lead', 'admin')
 def telegram_unlinked_users():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     return jsonify(_unlinked_users_for_pool(pool_id))
 
 
@@ -4550,7 +4654,15 @@ def _broadcast_recipient_query(pool_id, filters):
     usernames = [normalize_tg_username(item) for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
     usernames = [item for item in usernames if item]
     if role:
-        query = query.filter_by(role=role)
+        if role in ('volunteer', 'tribe_master') and pool_id:
+            role_user_ids = {
+                row.user_id
+                for row in PoolVolunteer.query.filter_by(pool_id=pool_id, pool_role=role)
+                .with_entities(PoolVolunteer.user_id).all()
+            }
+            query = query.filter(User.id.in_(role_user_ids)) if role_user_ids else query.filter(db.text('0=1'))
+        else:
+            query = query.filter_by(role=role)
     if duty_window in {'today', 'tomorrow'} and pool_id:
         target_date = _moscow_now().date() + (timedelta(days=1) if duty_window == 'tomorrow' else timedelta())
         signed_user_ids = {
@@ -4582,8 +4694,8 @@ def _broadcast_recipient_query(pool_id, filters):
 @app.route('/api/notifications/overview', methods=['GET'])
 @require_role('team_lead', 'admin')
 def notifications_overview():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error and active_pool_id() is None:
         settings = get_telegram_settings()
         return jsonify({
             'telegram_settings': settings,
@@ -4595,6 +4707,8 @@ def notifications_overview():
             'unlinked_users': [],
             'linked_users_count': 0,
         })
+    if error:
+        return error
     linked_users = _linked_users_for_pool(pool_id)
     recent_notes = (
         DashboardNote.query.filter_by(pool_id=pool_id)
@@ -4660,9 +4774,9 @@ def update_notifications_settings():
 @app.route('/api/notifications/history', methods=['GET'])
 @require_role('team_lead', 'admin')
 def notifications_history():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     limit = min(request.args.get('limit', default=80, type=int) or 80, 200)
     events = (
         NotificationEvent.query
@@ -4967,9 +5081,9 @@ def _student_list_payload(pool_id):
 @app.route('/api/students', methods=['GET'])
 @require_auth
 def get_students():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     return jsonify(_student_list_payload(pool_id))
 
 
@@ -4980,9 +5094,9 @@ def create_student():
     nick = (data.get('nick') or '').strip()
     if not nick:
         return jsonify({'error': 'Нужен ник'}), 400
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     student = Student(
         nick=nick,
         name=nick,
@@ -5020,13 +5134,23 @@ def save_student_rows(rows, pool_id=None):
             skipped.append({'row': index, 'reason': 'Нужен nick'})
             continue
 
-        student = Student.query.filter(db.func.lower(Student.nick) == nick.lower()).first()
+        student = Student.query.filter(
+            db.func.lower(Student.nick) == nick.lower(),
+            Student.pool_id == pool_id,
+        ).first()
         if student:
             student.name = name
             student.tribe = tribe
-            student.pool_id = pool_id
             updated += 1
         else:
+            other_pool_student = Student.query.filter(db.func.lower(Student.nick) == nick.lower()).first()
+            if other_pool_student:
+                skipped.append({
+                    'row': index,
+                    'nick': nick,
+                    'reason': 'Ученик уже относится к другому бассейну',
+                })
+                continue
             db.session.add(Student(nick=nick, name=name, tribe=tribe, pool_id=pool_id))
             created += 1
 
@@ -5047,9 +5171,9 @@ def import_students():
     if not isinstance(rows, list) or not rows:
         return jsonify({'error': 'Передайте students: [{nick, tribe?}]'}), 400
 
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     return jsonify(save_student_rows(rows, pool_id=pool_id))
 
 
@@ -5109,9 +5233,9 @@ def import_students_file():
         students = rows_to_dicts(rows, ['nick', 'tribe'])
     except Exception as e:
         return jsonify({'error': f'Не удалось прочитать .xlsx: {e}'}), 400
-    pool_id = request.form.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(request.form.get('pool_id', type=int))
+    if error:
+        return error
     return jsonify(save_student_rows(students, pool_id=pool_id))
 
 
@@ -5182,7 +5306,10 @@ def _students_export_payload(pool_id):
 @app.route('/api/students/export-penalties.xlsx', methods=['GET'])
 @require_role('admin', 'team_lead')
 def export_students_penalties():
-    students = _students_export_payload(request.args.get('pool_id', type=int) or active_pool_id())
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
+    students = _students_export_payload(pool_id)
     wb = _build_student_penalties_export(students)
     output = BytesIO()
     wb.save(output)
@@ -5198,7 +5325,10 @@ def export_students_penalties():
 @app.route('/api/students/export-events.xlsx', methods=['GET'])
 @require_role('admin', 'team_lead')
 def export_students_events():
-    students = _students_export_payload(request.args.get('pool_id', type=int) or active_pool_id())
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
+    students = _students_export_payload(pool_id)
     wb = _build_student_events_export(students)
     output = BytesIO()
     wb.save(output)
@@ -5215,6 +5345,9 @@ def export_students_events():
 @require_role('tribe_master', 'admin')
 def create_student_event(student_id):
     student = get_model_or_404(Student, student_id)
+    error = _active_entity_error(student.pool_id)
+    if error:
+        return error
     data = request.json or {}
     if (
         g.current_role == 'tribe_master'
@@ -5256,6 +5389,9 @@ def create_student_event(student_id):
 def update_student_event(event_id):
     event = get_model_or_404(StudentEvent, event_id)
     student = db.session.get(Student, event.student_id)
+    error = _active_entity_error(student.pool_id if student else None)
+    if error:
+        return error
     if (
         g.current_role == 'tribe_master'
         and student
@@ -5277,6 +5413,9 @@ def update_student_event(event_id):
 def delete_student_event(event_id):
     event = get_model_or_404(StudentEvent, event_id)
     student = db.session.get(Student, event.student_id)
+    error = _active_entity_error(student.pool_id if student else None)
+    if error:
+        return error
     if g.current_role == 'tribe_master' and student and g.current_tribe and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно удалять мероприятия только своего трайба'}), 403
     db.session.delete(event)
@@ -5287,7 +5426,9 @@ def delete_student_event(event_id):
 @app.route('/api/my-tribe', methods=['GET'])
 @require_role('tribe_master', 'team_lead', 'admin')
 def my_tribe():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     available_tribes = _tribes_for_pool(pool_id)
     tribe = normalize_tribe(request.args.get('tribe')) or _resolve_user_tribe(g.user, pool_id)
     if g.current_role in ('team_lead', 'admin') and not tribe:
@@ -5349,9 +5490,9 @@ def my_tribe():
 @app.route('/api/tribe-events', methods=['GET'])
 @require_auth
 def list_tribe_events():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     start = request.args.get('start')
     query = TribeEvent.query.filter_by(pool_id=pool_id)
     if start:
@@ -5364,9 +5505,9 @@ def list_tribe_events():
 @require_role('tribe_master', 'team_lead', 'admin')
 def create_tribe_event():
     data = request.json or {}
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     tribe = normalize_tribe(data.get('tribe') or g.current_tribe)
     if g.current_role == 'tribe_master' and tribe != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно создавать встречи только своего трайба'}), 403
@@ -5396,6 +5537,9 @@ def create_tribe_event():
 @require_role('tribe_master', 'team_lead', 'admin')
 def delete_tribe_event(event_id):
     event = get_model_or_404(TribeEvent, event_id)
+    error = _active_entity_error(event.pool_id)
+    if error:
+        return error
     if g.current_role == 'tribe_master' and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
     _cancel_pending_notifications('tribe_event', event.id, ['tribe_event_tomorrow', 'tribe_event_first_day_shift'])
@@ -5492,6 +5636,9 @@ def generate_standard_tribe_events():
 @require_role('admin', 'team_lead')
 def delete_student(student_id):
     student = get_model_or_404(Student, student_id)
+    error = _active_entity_error(student.pool_id)
+    if error:
+        return error
     StudentEvent.query.filter_by(student_id=student.id).delete()
     db.session.delete(student)
     db.session.commit()
@@ -5502,6 +5649,9 @@ def delete_student(student_id):
 @require_role('admin', 'team_lead')
 def update_student(student_id):
     student = get_model_or_404(Student, student_id)
+    error = _active_entity_error(student.pool_id)
+    if error:
+        return error
     data = request.json or {}
 
     if 'tribe' in data:
@@ -5517,11 +5667,9 @@ def update_student(student_id):
 @app.route('/api/penalties', methods=['GET'])
 @require_auth
 def get_penalties():
-    pool_id = request.args.get('pool_id', type=int) or active_pool_id()
-    if not pool_id:
-        return jsonify([])
-    if not _can_access_pool_id(g.user, pool_id):
-        return jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
     penalties = StudentPenalty.query.filter_by(pool_id=pool_id).order_by(StudentPenalty.date_issued.desc()).all()
     penalty_ids = [p.id for p in penalties]
     histories = {}
@@ -5559,11 +5707,9 @@ def get_penalties():
 def create_penalty():
     data = request.json or {}
     user = g.user
-    pool_id = data.get('pool_id') or active_pool_id()
-    if not pool_id:
-        return jsonify({'error': 'Нет активного бассейна'}), 400
-    if not _can_access_pool_id(user, pool_id):
-        return jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403
+    pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
+    if error:
+        return error
     penalty = StudentPenalty(
         student_name=data['student_name'],
         volunteer_id=user.id,
@@ -5609,6 +5755,9 @@ def create_penalty():
 def update_penalty_status(penalty_id):
     data = request.json or {}
     penalty = get_model_or_404(StudentPenalty, penalty_id)
+    error = _active_entity_error(penalty.pool_id)
+    if error:
+        return error
     if not _can_access_pool_id(g.user, penalty.pool_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
     old_status = penalty.workoff_status
@@ -5660,6 +5809,9 @@ def update_penalty_status(penalty_id):
 @require_auth
 def delete_penalty(penalty_id):
     penalty = get_model_or_404(StudentPenalty, penalty_id)
+    error = _active_entity_error(penalty.pool_id)
+    if error:
+        return error
     if not _can_access_pool_id(g.user, penalty.pool_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
     student_name = penalty.student_name

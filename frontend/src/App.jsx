@@ -32,6 +32,7 @@ function App() {
   const [user, setUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
+  const [poolContextVersion, setPoolContextVersion] = React.useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -69,11 +70,16 @@ function App() {
       }
     };
 
+    const handlePoolsChanged = async () => {
+      await syncUser();
+      if (alive) setPoolContextVersion((version) => version + 1);
+    };
+
     syncUser();
-    window.addEventListener(POOLS_CHANGED_EVENT, syncUser);
+    window.addEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
     return () => {
       alive = false;
-      window.removeEventListener(POOLS_CHANGED_EVENT, syncUser);
+      window.removeEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
     };
   }, []);
 
@@ -85,13 +91,14 @@ function App() {
         loading={loading}
         mobileSidebarOpen={mobileSidebarOpen}
         setMobileSidebarOpen={setMobileSidebarOpen}
+        poolContextVersion={poolContextVersion}
       />
       <ToastContainer position="bottom-right" autoClose={3000} theme="light" />
     </BrowserRouter>
   );
 }
 
-function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebarOpen }) {
+function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebarOpen, poolContextVersion }) {
   if (loading) {
     return <Loader text="Загрузка..." fullscreen />;
   }
@@ -138,7 +145,7 @@ function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebar
                   onClick={() => setMobileSidebarOpen(false)}
                 />
               )}
-              <main className="main-content">
+              <main className="main-content" key={poolContextVersion}>
                 <Routes>
                   <Route path="/" element={<Dashboard user={user} />} />
                   <Route path="/schedule" element={<Schedule user={user} />} />

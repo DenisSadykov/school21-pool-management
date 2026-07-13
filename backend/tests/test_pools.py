@@ -21,6 +21,111 @@ def test_volunteer_sees_only_assigned_non_archived_pools(client, factories, auth
     assert 'Archived pool' not in names
 
 
+def test_schedule_uses_same_active_pool_for_volunteer_and_admin(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('volunteer1', role='volunteer')
+    old_pool = factories.pool('Old pool', active=False, archived=False)
+    active_pool = factories.pool('Active pool', active=True, archived=False)
+
+    factories.assign(volunteer, old_pool, pool_role='volunteer')
+    factories.assign(volunteer, active_pool, pool_role='volunteer')
+    factories.shift_block(old_pool, date.today() + timedelta(days=1), start='09:00', end='19:00')
+    factories.shift_block(active_pool, date.today() + timedelta(days=2), start='10:00', end='14:00')
+
+    admin_response = client.get('/api/schedule', headers=auth_headers(admin))
+    volunteer_response = client.get('/api/schedule', headers=auth_headers(volunteer))
+
+    assert admin_response.status_code == 200
+    assert volunteer_response.status_code == 200
+    assert admin_response.get_json()['pool']['id'] == active_pool.id
+    assert volunteer_response.get_json()['pool']['id'] == active_pool.id
+    assert admin_response.get_json()['days'] == volunteer_response.get_json()['days']
+
+
+def test_active_pool_switch_changes_volunteer_role_and_tribe(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('role_switcher', role='volunteer')
+    first_pool = factories.pool('First pool', active=True)
+    second_pool = factories.pool('Second pool', active=False)
+    factories.assign(volunteer, first_pool, pool_role='tribe_master', tribe='Короны')
+    factories.assign(volunteer, second_pool, pool_role='volunteer', tribe=None)
+
+    before = client.get('/api/auth/me', headers=auth_headers(volunteer))
+    activate = client.post(f'/api/pools/{second_pool.id}/activate', headers=auth_headers(admin))
+    after = client.get('/api/auth/me', headers=auth_headers(volunteer))
+
+    assert before.status_code == 200
+    assert before.get_json()['role'] == 'tribe_master'
+    assert before.get_json()['tribe'] == 'Короны'
+    assert activate.status_code == 200
+    assert after.status_code == 200
+    assert after.get_json()['role'] == 'volunteer'
+    assert after.get_json()['tribe'] is None
+
+
+def test_old_pool_schedule_and_actions_are_rejected(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('active_only', role='volunteer')
+    old_pool = factories.pool('Old pool', active=False)
+    active_pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, old_pool)
+    factories.assign(volunteer, active_pool)
+    old_block = factories.shift_block(old_pool, date.today() + timedelta(days=1))
+
+    schedule_response = client.get(
+        f'/api/schedule?pool_id={old_pool.id}',
+        headers=auth_headers(admin),
+    )
+    signup_response = client.post(
+        f'/api/blocks/{old_block.id}/signup',
+        headers=auth_headers(volunteer),
+    )
+
+    assert schedule_response.status_code == 409
+    assert signup_response.status_code == 409
+
+
+def test_my_shifts_contains_only_active_pool(client, factories, auth_headers, db_session):
+    volunteer = factories.user('shift_owner', role='volunteer')
+    old_pool = factories.pool('Old pool', active=False)
+    active_pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, old_pool)
+    factories.assign(volunteer, active_pool)
+    old_block = factories.shift_block(old_pool, date.today() + timedelta(days=1))
+    active_block = factories.shift_block(active_pool, date.today() + timedelta(days=2))
+    db_session.add_all([
+        app_module.Signup(block_id=old_block.id, user_id=volunteer.id),
+        app_module.Signup(block_id=active_block.id, user_id=volunteer.id),
+    ])
+    db_session.commit()
+
+    response = client.get('/api/me/shifts', headers=auth_headers(volunteer))
+
+    assert response.status_code == 200
+    assert [item['id'] for item in response.get_json()] == [active_block.id]
+
+
+def test_switching_pool_cancels_old_pool_notifications(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    old_pool = factories.pool('Old pool', active=True)
+    next_pool = factories.pool('Next pool', active=False)
+    event = app_module.NotificationEvent(
+        type='shift_reminder_volunteer',
+        pool_id=old_pool.id,
+        status='queued',
+        dedupe_key='old-pool-event',
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    response = client.post(f'/api/pools/{next_pool.id}/activate', headers=auth_headers(admin))
+    db_session.refresh(event)
+
+    assert response.status_code == 200
+    assert event.status == 'cancelled'
+    assert event.cancelled_at is not None
+
+
 def test_team_lead_can_be_added_as_pool_responsible(client, factories, auth_headers):
     admin = factories.user('admin', role='admin', password='secret123')
     team_lead = factories.user('lead', role='team_lead', password='lead1234', telegram='@lead_tg')
