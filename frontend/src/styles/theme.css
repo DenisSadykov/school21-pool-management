@@ -240,6 +240,12 @@ select:focus-visible,
   }
 }
 
+@media (max-width: 768px) {
+  :root {
+    --control-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { UserPlus, UserMinus, Trash2, Plus } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
+import useIsMobile from '../useIsMobile';
 import '../styles/Pages.css';
 import '../styles/Schedule.css';
 
@@ -53,6 +54,28 @@ function groupWeeks(days) {
   });
 }
 
+function groupDaysMobile(days, currentDay, isStaff) {
+  const sorted = [...days]
+    .map((day) => ({
+      ...day,
+      blocks: [...day.blocks].sort((a, b) => a.time_start.localeCompare(b.time_start)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const upcoming = sorted.filter((day) => (
+    day.date >= currentDay && (day.blocks.length > 0 || isStaff)
+  ));
+  const past = sorted.filter((day) => day.date < currentDay && day.blocks.length > 0);
+
+  return { upcoming, past };
+}
+
+function formatWeekday(iso) {
+  return new Date(`${iso}T00:00:00`)
+    .toLocaleDateString('ru-RU', { weekday: 'short' })
+    .toUpperCase();
+}
+
 function Schedule({ user }) {
   const [data, setData] = useState({ pool: null, days: [] });
   const [volunteers, setVolunteers] = useState([]);
@@ -60,6 +83,7 @@ function Schedule({ user }) {
   const [error, setError] = useState('');
   const currentDay = todayIso();
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
+  const isMobile = useIsMobile();
 
   const loadSchedule = useCallback(async ({ showLoading = false, includeVolunteers = false } = {}) => {
     if (showLoading) {
@@ -228,6 +252,9 @@ function Schedule({ user }) {
     );
   }
 
+  const weeks = groupWeeks(data.days);
+  const mobile = groupDaysMobile(data.days, currentDay, isStaff);
+
   return (
     <div className="page schedule-page">
       <div className="page-header">
@@ -239,38 +266,90 @@ function Schedule({ user }) {
           {isStaff && <p>Добавь их в разделе «Настройка».</p>}
         </div>
       ) : (
-        <div className="schedule-weeks">
-          {groupWeeks(data.days).map((week) => (
-            <div key={week.start} className="week-table">
-              <div className="week-header-row">
-                {week.days.map((day) => (
-                  <div
-                    key={day.date}
-                    className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''} ${day.date === currentDay ? 'today' : ''}`}
-                  >
-                    <span className="day-header-left">
-                      <span>{day.label}</span>
-                      {day.blocks.some((block) => block.label === 'EXAM') ? (
-                        <span className="day-header-badge">Экзамен</span>
-                      ) : null}
-                    </span>
-                    <span>{formatDay(day.date)}</span>
-                  </div>
-                ))}
-              </div>
+        isMobile ? (
+          <div className="schedule-day-list">
+            {mobile.upcoming.map((day) => {
+              const isToday = day.date === currentDay;
+              const isExam = day.blocks.some((block) => block.label === 'EXAM');
+              const weekdayIndex = new Date(`${day.date}T00:00:00`).getDay();
+              const isMonday = weekdayIndex === 1;
+              const dayAssigned = day.blocks.reduce((sum, block) => sum + (block.count || 0), 0);
+              const dayCapacity = day.blocks.reduce((sum, block) => sum + (block.capacity || 0), 0);
 
-              {Array.from({ length: week.maxRows }).map((_, rowIndex) => (
-                <div key={rowIndex} className="week-block-row">
-                  {week.days.map((day) => {
-                    const block = day.blocks[rowIndex];
+              return (
+                <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''}`}>
+                  <header className={`day-section-header ${isExam ? 'exam-day' : ''} ${isToday ? 'today' : ''}`}>
+                    <span className="day-section-title">
+                      {isToday && <span className="day-today-label">Сегодня · </span>}
+                      {formatWeekday(day.date)} {formatDay(day.date)}
+                    </span>
+                    {isExam && <span className="day-header-badge">Экзамен</span>}
+                    {isStaff && (
+                      <span className="day-fill">
+                        {dayAssigned}/{dayCapacity}
+                      </span>
+                    )}
+                  </header>
+
+                  {day.blocks.map((block) => (
+                    <BlockCard
+                      key={block.id}
+                      block={block}
+                      user={user}
+                      isStaff={isStaff}
+                      isToday={isToday}
+                      isMine={isMine}
+                      onToggleSignup={toggleSignup}
+                      onRemoveVolunteer={removeVolunteer}
+                      onDeleteBlock={deleteBlock}
+                      onChangeCapacity={changeCapacity}
+                      volunteers={volunteers}
+                      onAssignVolunteer={assignVolunteer}
+                    />
+                  ))}
+
+                  {isStaff && (
+                    <div className="day-section-add">
+                      <AddBlock date={day.date} poolId={data.pool.id} onAdded={() => loadSchedule()} />
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {mobile.past.length > 0 && (
+              <details className="past-days">
+                <summary>Прошедшие смены ({mobile.past.reduce((sum, day) => sum + day.blocks.length, 0)})</summary>
+                <div className="past-days-list">
+                  {mobile.past.map((day) => {
+                    const isToday = day.date === currentDay;
+                    const isExam = day.blocks.some((block) => block.label === 'EXAM');
+                    const weekdayIndex = new Date(`${day.date}T00:00:00`).getDay();
+                    const isMonday = weekdayIndex === 1;
+                    const dayAssigned = day.blocks.reduce((sum, block) => sum + (block.count || 0), 0);
+                    const dayCapacity = day.blocks.reduce((sum, block) => sum + (block.capacity || 0), 0);
+
                     return (
-                      <div key={`${day.date}-${rowIndex}`} className={`week-cell ${day.date === currentDay ? 'today' : ''}`}>
-                        {block ? (
+                      <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''}`}>
+                        <header className={`day-section-header ${isExam ? 'exam-day' : ''} ${isToday ? 'today' : ''}`}>
+                          <span className="day-section-title">
+                            {formatWeekday(day.date)} {formatDay(day.date)}
+                          </span>
+                          {isExam && <span className="day-header-badge">Экзамен</span>}
+                          {isStaff && (
+                            <span className="day-fill">
+                              {dayAssigned}/{dayCapacity}
+                            </span>
+                          )}
+                        </header>
+
+                        {day.blocks.map((block) => (
                           <BlockCard
+                            key={block.id}
                             block={block}
                             user={user}
                             isStaff={isStaff}
-                            isToday={day.date === currentDay}
+                            isToday={isToday}
                             isMine={isMine}
                             onToggleSignup={toggleSignup}
                             onRemoveVolunteer={removeVolunteer}
@@ -279,27 +358,77 @@ function Schedule({ user }) {
                             volunteers={volunteers}
                             onAssignVolunteer={assignVolunteer}
                           />
-                        ) : (
-                          <div className="empty-block">—</div>
-                        )}
-                      </div>
+                        ))}
+                      </section>
                     );
                   })}
                 </div>
-              ))}
-
-              {isStaff && (
-                <div className="week-add-row">
+              </details>
+            )}
+          </div>
+        ) : (
+          <div className="schedule-weeks">
+            {weeks.map((week) => (
+              <div key={week.start} className="week-table">
+                <div className="week-header-row">
                   {week.days.map((day) => (
-                    <div key={day.date} className="week-cell">
-                      <AddBlock date={day.date} poolId={data.pool.id} onAdded={() => loadSchedule()} />
+                    <div
+                      key={day.date}
+                      className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''} ${day.date === currentDay ? 'today' : ''}`}
+                    >
+                      <span className="day-header-left">
+                        <span>{day.label}</span>
+                        {day.blocks.some((block) => block.label === 'EXAM') ? (
+                          <span className="day-header-badge">Экзамен</span>
+                        ) : null}
+                      </span>
+                      <span>{formatDay(day.date)}</span>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+
+                {Array.from({ length: week.maxRows }).map((_, rowIndex) => (
+                  <div key={rowIndex} className="week-block-row">
+                    {week.days.map((day) => {
+                      const block = day.blocks[rowIndex];
+                      return (
+                        <div key={`${day.date}-${rowIndex}`} className={`week-cell ${day.date === currentDay ? 'today' : ''}`}>
+                          {block ? (
+                            <BlockCard
+                              block={block}
+                              user={user}
+                              isStaff={isStaff}
+                              isToday={day.date === currentDay}
+                              isMine={isMine}
+                              onToggleSignup={toggleSignup}
+                              onRemoveVolunteer={removeVolunteer}
+                              onDeleteBlock={deleteBlock}
+                              onChangeCapacity={changeCapacity}
+                              volunteers={volunteers}
+                              onAssignVolunteer={assignVolunteer}
+                            />
+                          ) : (
+                            <div className="empty-block">—</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {isStaff && (
+                  <div className="week-add-row">
+                    {week.days.map((day) => (
+                      <div key={day.date} className="week-cell">
+                        <AddBlock date={day.date} poolId={data.pool.id} onAdded={() => loadSchedule()} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
