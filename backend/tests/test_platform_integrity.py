@@ -304,3 +304,17 @@ def test_duplicate_telegram_username_is_rejected(client, factories, auth_headers
     )
 
     assert response.status_code == 409
+
+
+def test_internal_sync_requires_secret(client, monkeypatch):
+    monkeypatch.setattr(app_module, 'process_outbox_once', lambda: {'processed': 2, 'sent': 2, 'errors': 0})
+
+    forbidden = client.post('/api/internal/sync')
+    allowed = client.post(
+        '/api/internal/sync',
+        headers={'Authorization': f'Bearer {app_module.INTERNAL_API_SECRET}'},
+    )
+
+    assert forbidden.status_code == 403
+    assert allowed.status_code == 200
+    assert allowed.get_json()['sent'] == 2

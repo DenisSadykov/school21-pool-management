@@ -6593,6 +6593,17 @@ def sync_now():
     return jsonify(result)
 
 
+@app.route('/api/internal/sync', methods=['POST'])
+def internal_sync_now():
+    if not verify_internal_api_secret():
+        return jsonify({'error': 'Недостаточно прав для sync'}), 403
+    try:
+        return jsonify({'ok': True, **process_outbox_once()})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
 @app.route('/api/admin/reset', methods=['POST'])
 @require_role('admin')
 def reset_database():

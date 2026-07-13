@@ -12,5 +12,5 @@ jobs:
       - name: Trigger notification dispatch
         run: |
           curl -fsS -X POST \
-            -H "Authorization: Bearer ${{ secrets.INTERNAL_API_SECRET }}" \
+            -H "Authorization: Bearer ${{ secrets.NOTIFICATIONS_DISPATCH_SECRET }}" \
             "https://school21-pool-management-api.vercel.app/api/notifications/dispatch?limit=50"
