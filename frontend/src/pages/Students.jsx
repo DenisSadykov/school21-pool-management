@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
-import { api, API_URL, getToken } from '../api';
+import { api, downloadFile } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
@@ -149,18 +149,20 @@ function Students({ user }) {
         </div>
         {isStaff && (
           <div className="page-actions">
-            <a
+            <button
+              type="button"
               className="btn-secondary"
-              href={`${API_URL}/api/students/export-penalties.xlsx?token=${encodeURIComponent(getToken() || '')}`}
+              onClick={() => downloadFile('/api/students/export-penalties.xlsx', 'student-penalties.xlsx')}
             >
               <Download size={16} /> Скачать штрафы
-            </a>
-            <a
+            </button>
+            <button
+              type="button"
               className="btn-secondary"
-              href={`${API_URL}/api/students/export-events.xlsx?token=${encodeURIComponent(getToken() || '')}`}
+              onClick={() => downloadFile('/api/students/export-events.xlsx', 'student-events.xlsx')}
             >
               <Download size={16} /> Скачать мероприятия
-            </a>
+            </button>
             <button className="btn-secondary" onClick={() => setShowImport(!showImport)}>
               <FileUp size={20} /> Загрузить файлом
             </button>
@@ -340,13 +342,13 @@ function StudentsImport({ tribes, onClose, onSuccess }) {
       <div className="import-help">
         <strong>Формат:</strong> лучше скачать XLSX-шаблон. Также поддерживается CSV/TXT: <code>nick,tribe</code>.
         {tribes.length > 0 && <span> В шаблоне трайб выбирается из списка: {tribes.join(', ')}.</span>}
-        <a
+        <button
+          type="button"
           className="btn-secondary template-button inline-template-button"
-          href={`${API_URL}/api/students/template?token=${encodeURIComponent(getToken() || '')}`}
-          download="students-template.xlsx"
+          onClick={() => downloadFile('/api/students/template', 'students-template.xlsx')}
         >
           <Download size={16} /> Скачать шаблон
-        </a>
+        </button>
       </div>
 
       <div className="import-toolbar">

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, buildAuthenticatedAssetUrl, getToken, setSession } from '../api';
+import { api, getToken, setSession } from '../api';
+import AuthenticatedImage from '../components/AuthenticatedImage';
 import '../styles/Pages.css';
 import '../styles/Profile.css';
 
@@ -66,7 +67,7 @@ function Profile({ user, setUser }) {
         <div className="profile-header">
           <span className="profile-avatar-large">
             {user?.avatar_url ? (
-              <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user?.name || user?.nick} />
+              <AuthenticatedImage src={user.avatar_url} alt={user?.name || user?.nick} />
             ) : (
               (user?.nick || '??').slice(0, 2).toUpperCase()
             )}

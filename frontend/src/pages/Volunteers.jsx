@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Plus } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl } from '../api';
+import { api } from '../api';
+import AuthenticatedImage from '../components/AuthenticatedImage';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
@@ -36,7 +37,7 @@ function PersonIdentity({ person }) {
     <div className="person-identity">
       <span className="person-avatar">
         {person.avatar_url ? (
-          <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+          <AuthenticatedImage src={person.avatar_url} alt={person.name || person.nick} />
         ) : (
           (person.nick || '??').slice(0, 2).toUpperCase()
         )}

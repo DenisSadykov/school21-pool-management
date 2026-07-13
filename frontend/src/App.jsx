@@ -21,7 +21,7 @@ import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
-import { api, getToken, getUser, POOLS_CHANGED_EVENT, setSession } from './api';
+import { api, getToken, getUser, isPoolsChangedStorageEvent, POOLS_CHANGED_EVENT, setSession } from './api';
 
 import './styles/App.css';
 import './styles/theme.css';
@@ -58,10 +58,15 @@ function App() {
         return;
       }
       try {
+        const previousUser = getUser();
         const freshUser = await api.get('/api/auth/me');
         if (!alive) return;
         setSession(getToken(), freshUser);
         setUser(freshUser);
+        return !previousUser
+          || previousUser.active_pool_id !== freshUser.active_pool_id
+          || previousUser.role !== freshUser.role
+          || previousUser.tribe !== freshUser.tribe;
       } catch (error) {
         if (!alive) return;
         setUser(getUser());
@@ -75,11 +80,24 @@ function App() {
       if (alive) setPoolContextVersion((version) => version + 1);
     };
 
+    const handleStorage = (event) => {
+      if (isPoolsChangedStorageEvent(event)) handlePoolsChanged();
+    };
+
+    const pollContext = async () => {
+      const changed = await syncUser();
+      if (alive && changed) setPoolContextVersion((version) => version + 1);
+    };
+
     syncUser();
+    const pollTimer = window.setInterval(pollContext, 30000);
     window.addEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
+    window.addEventListener('storage', handleStorage);
     return () => {
       alive = false;
+      window.clearInterval(pollTimer);
       window.removeEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 

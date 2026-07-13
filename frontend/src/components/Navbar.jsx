@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu, UserCircle2 } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl, clearSession, POOLS_CHANGED_EVENT } from '../api';
+import { api, clearSession, POOLS_CHANGED_EVENT } from '../api';
+import AuthenticatedImage from './AuthenticatedImage';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = {
@@ -43,7 +44,7 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
     loadActivePool();
     window.addEventListener(POOLS_CHANGED_EVENT, loadActivePool);
     return () => window.removeEventListener(POOLS_CHANGED_EVENT, loadActivePool);
-  }, []);
+  }, [user?.active_pool_id]);
 
   const go = (path) => { setOpen(false); navigate(path); };
   const handleLogout = () => { clearSession(); setUser(null); };
@@ -64,8 +65,8 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
             >
               <span className="user-avatar">
                 {profile?.avatar_url && !avatarFailed ? (
-                  <img
-                    src={buildAuthenticatedAssetUrl(profile.avatar_url)}
+                  <AuthenticatedImage
+                    src={profile.avatar_url}
                     alt={profile?.name || profile?.nick || 'avatar'}
                     onError={() => setAvatarFailed(true)}
                   />

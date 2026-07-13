@@ -3,9 +3,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import '../styles/GroupReviews.css';
+import { moscowTodayIso } from '../utils/date';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return moscowTodayIso();
 }
 
 function GroupReviews({ user }) {

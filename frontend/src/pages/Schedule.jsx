@@ -3,6 +3,7 @@ import { UserPlus, UserMinus, Trash2, Plus } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import useIsMobile from '../useIsMobile';
+import { moscowTodayIso } from '../utils/date';
 import '../styles/Pages.css';
 import '../styles/Schedule.css';
 
@@ -27,8 +28,7 @@ function addDays(date, days) {
 }
 
 function todayIso() {
-  const now = new Date();
-  return toIso(now);
+  return moscowTodayIso();
 }
 
 function getMonday(iso) {

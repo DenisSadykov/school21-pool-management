@@ -61,7 +61,7 @@ function Penalties() {
   useEffect(() => {
     fetchPenalties();
     api.get('/api/students')
-      .then((data) => setStudents(data.map((s) => s.nick)))
+      .then((data) => setStudents(data.map((s) => ({ id: s.id, nick: s.nick }))))
       .catch(() => setStudents([]));
 
     return () => {
@@ -577,28 +577,29 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue, isI
 
 function PenaltyForm({ students, onClose, onSuccess }) {
   const [form, setForm] = useState({
+    student_id: null,
     student_name: '',
     description: ''
   });
   const [filteredStudents, setFilteredStudents] = useState(students);
 
   const handleStudentSearch = (value) => {
-    setForm({ ...form, student_name: value });
+    setForm({ ...form, student_id: null, student_name: value });
     setFilteredStudents(
-      students.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+      students.filter(s => s.nick.toLowerCase().includes(value.toLowerCase()))
     );
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.student_name.trim()) {
-      alert('Введите имя студента');
+    if (!form.student_id) {
+      alert('Выберите ученика из списка активного бассейна');
       return;
     }
 
     try {
       await api.post('/api/penalties', {
-        student_name: form.student_name,
+        student_id: form.student_id,
         description: form.description,
       });
       onSuccess();
@@ -625,14 +626,14 @@ function PenaltyForm({ students, onClose, onSuccess }) {
             <div className="suggestions">
               {filteredStudents.map((student) => (
                 <div
-                  key={student}
+                  key={student.id}
                   className="suggestion"
                   onClick={() => {
-                    setForm({ ...form, student_name: student });
+                    setForm({ ...form, student_id: student.id, student_name: student.nick });
                     setFilteredStudents([]);
                   }}
                 >
-                  {student}
+                  {student.nick}
                 </div>
               ))}
             </div>

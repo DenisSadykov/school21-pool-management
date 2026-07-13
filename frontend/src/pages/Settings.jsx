@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { api, getToken, API_URL, emitPoolsChanged, buildAuthenticatedAssetUrl } from '../api';
+import { api, downloadFile, emitPoolsChanged } from '../api';
+import AuthenticatedImage from '../components/AuthenticatedImage';
 import '../styles/Manage.css';
 import '../styles/Settings.css';
 
@@ -107,7 +108,7 @@ function Settings({ user }) {
                     Активировать
                   </button>
                 )}
-                {!p.archived && (
+                {!p.archived && !p.active && (
                   <button className="btn-mini danger-outline"
                     onClick={async () => {
                       if (!window.confirm(`Архивировать «${p.name}»? Волонтёры потеряют доступ.`)) return;
@@ -269,8 +270,7 @@ function UserForm({ onDone }) {
 
 function GlobalVolunteerUpload({ onDone }) {
   const downloadTemplate = () => {
-    const token = getToken();
-    window.open(`${API_URL}/api/volunteers/template?token=${token}`, '_blank');
+    downloadFile('/api/volunteers/template', 'volunteers-template.xlsx');
   };
   const importFile = async (e) => {
     const file = e.target.files[0];
@@ -378,7 +378,7 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
         <>
           <div className="u-profile">
             <span className="u-avatar">
-              {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
+              {user.avatar_url ? <AuthenticatedImage src={user.avatar_url} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
             </span>
             <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
           </div>
@@ -401,7 +401,7 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
         <>
           <div className="u-profile">
             <span className="u-avatar">
-              {user.avatar_url ? <img src={buildAuthenticatedAssetUrl(user.avatar_url)} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
+              {user.avatar_url ? <AuthenticatedImage src={user.avatar_url} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
             </span>
             <span className="u-nick">@{user.nick}</span>
           </div>
@@ -523,7 +523,7 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
         ) : (
           <div className="sys-vol-person">
             <span className="u-avatar">
-              {volunteer.avatar_url ? <img src={buildAuthenticatedAssetUrl(volunteer.avatar_url)} alt={volunteer.name || volunteer.nick} /> : (volunteer.nick || '??').slice(0, 2).toUpperCase()}
+              {volunteer.avatar_url ? <AuthenticatedImage src={volunteer.avatar_url} alt={volunteer.name || volunteer.nick} /> : (volunteer.nick || '??').slice(0, 2).toUpperCase()}
             </span>
             <span>{volunteer.name}</span>
           </div>

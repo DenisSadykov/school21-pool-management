@@ -19,6 +19,7 @@ import Loader from '../components/Loader';
 import '../styles/Pages.css';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Dashboard.css';
+import { moscowTodayIso } from '../utils/date';
 
 function formatDate(value) {
   if (!value) return '';
@@ -57,7 +58,7 @@ function TelegramConnectTitle({ telegram }) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return moscowTodayIso();
 }
 
 function isPastDate(value) {

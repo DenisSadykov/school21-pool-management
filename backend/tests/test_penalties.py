@@ -17,18 +17,21 @@ def test_volunteer_can_create_penalty_in_accessible_active_pool(client, factorie
     pool = factories.pool('Active pool', active=True)
     factories.assign(volunteer, pool)
     factories.assign(admin, pool, pool_role='responsible_admin')
+    student = app_module.Student(nick='ivan', name='Ivan Student', pool_id=pool.id)
+    db_session.add(student)
+    db_session.commit()
 
     response = client.post(
         '/api/penalties',
         headers=auth_headers(volunteer),
-        json={'student_name': 'Ivan Student', 'description': 'Late'},
+        json={'student_id': student.id, 'description': 'Late'},
     )
 
     assert response.status_code == 201
     payload = response.get_json()
     assert payload['message'] == 'Штраф добавлен'
 
-    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_name='Ivan Student').one()
+    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_id=student.id).one()
     assert penalty.pool_id == pool.id
 
     notifications = db_session.query(app_module.NotificationEvent).filter_by(source_entity='penalty', source_entity_id=penalty.id).all()
@@ -161,16 +164,19 @@ def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, a
     factories.assign(volunteer, pool)
     factories.assign(responsible_admin, pool, pool_role='responsible_admin')
     factories.assign(responsible_lead, pool, pool_role='responsible_team_lead')
+    student = app_module.Student(nick='responsible_student', name='Only Responsibles', pool_id=pool.id)
+    db_session.add(student)
+    db_session.commit()
 
     response = client.post(
         '/api/penalties',
         headers=auth_headers(volunteer),
-        json={'student_name': 'Only Responsibles', 'description': 'Late'},
+        json={'student_id': student.id, 'description': 'Late'},
     )
 
     assert response.status_code == 201
 
-    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_name='Only Responsibles').one()
+    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_id=student.id).one()
     notifications = db_session.query(app_module.NotificationEvent).filter_by(
         type='penalty_admin_block',
         source_entity='penalty',

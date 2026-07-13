@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl } from '../api';
+import { api } from '../api';
+import AuthenticatedImage from '../components/AuthenticatedImage';
 import Loader from '../components/Loader';
 import '../styles/Pages.css';
 import '../styles/Notifications.css';
@@ -596,7 +597,7 @@ function PersonTelegramCell({ person }) {
     <div className="notifications-person-cell">
       <span className="notifications-person-avatar">
         {person.avatar_url ? (
-          <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+          <AuthenticatedImage src={person.avatar_url} alt={person.name || person.nick} />
         ) : (
           (person.nick || '??').slice(0, 2).toUpperCase()
         )}

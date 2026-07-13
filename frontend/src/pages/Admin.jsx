@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
-import { API_URL, api, getToken } from '../api';
+import { api, downloadFile } from '../api';
+import { moscowTodayIso } from '../utils/date';
 import '../styles/Pages.css';
 import '../styles/Admin.css';
 
@@ -50,7 +51,6 @@ function Admin({ user }) {
   const [backup, setBackup] = useState(null);
   const [actions, setActions] = useState([]);
   const [message, setMessage] = useState('');
-  const [downloadLink, setDownloadLink] = useState(null);
   const [showFullLog, setShowFullLog] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const isAdmin = user?.role === 'admin';
@@ -68,11 +68,9 @@ function Admin({ user }) {
 
   const downloadExcel = async () => {
     try {
-      const filename = `pool-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      const url = `${API_URL}/api/admin/export.xlsx?token=${encodeURIComponent(getToken())}`;
-      setDownloadLink({ url, filename });
-      window.location.assign(url);
-      setMessage('✅ Если скачивание не началось, нажми ссылку ниже.');
+      const filename = `pool-export-${moscowTodayIso()}.xlsx`;
+      await downloadFile('/api/admin/export.xlsx', filename);
+      setMessage('✅ Excel-экспорт скачан.');
       loadActions();
     } catch (e) {
       setMessage('❌ ' + e.message);
@@ -180,11 +178,6 @@ function Admin({ user }) {
             <button className="btn-secondary" type="button" onClick={exportGoogleSheets}>Выгрузить в Google Sheets</button>
             <button className="btn-secondary" type="button" onClick={createBackup}>Создать резерв сейчас</button>
           </div>
-          {downloadLink && (
-            <a className="download-ready-link" href={downloadLink.url} download={downloadLink.filename}>
-              Скачать готовый файл: {downloadLink.filename}
-            </a>
-          )}
           <div className="info-list">
             <div className="info-item"><span>Ежедневный резерв:</span>
               <strong>{backup?.today_exists ? 'создан сегодня' : 'ещё не создан сегодня'}</strong></div>
