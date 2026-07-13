@@ -3,6 +3,7 @@ import json
 import time
 import threading
 import secrets
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -13,12 +14,17 @@ from datetime import datetime, date, timedelta, timezone
 from flask import Flask, jsonify, request, g, send_file, abort
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 def _env_flag(name, default='false'):
     return os.getenv(name, default).lower() == 'true'
+
+
+def _is_production_runtime():
+    return _env_flag('VERCEL') or os.getenv('FLASK_ENV', '').lower() == 'production'
 
 
 load_dotenv()
@@ -101,6 +107,8 @@ STUDENT_EVENT_POINTS = {
     'education': 4,
 }
 STUDENT_EVENT_STATUSES = {'pending', 'confirmed', 'rejected'}
+PENALTY_STATUSES = {'pending', 'in_workoff', 'overdue', 'awaiting_unlock', 'unlocked', 'done'}
+TIME_VALUE_RE = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$')
 REWARD_RATES = {
     'first_day_hour': 15,
     'exam_hour': 15,
@@ -142,6 +150,10 @@ _telegram_bot_avatar_cache = {
     'bytes': None,
     'content_type': None,
 }
+
+
+def _moscow_today():
+    return (datetime.now(timezone.utc) + MOSCOW_OFFSET).date()
 
 # ==================== Модели ====================
 
@@ -186,6 +198,15 @@ class Pool(db.Model):
     active = db.Column(db.Boolean, default=True)
     archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
+    __table_args__ = (
+        db.Index(
+            'uq_single_active_pool',
+            'active',
+            unique=True,
+            postgresql_where=db.text('active = true'),
+            sqlite_where=db.text('active = 1'),
+        ),
+    )
 
     def to_dict(self):
         if self.archived:
@@ -316,7 +337,7 @@ STANDARD_TRIBES_NNV = ['Ленты', 'Короны', 'Олени']
 class GroupReview(db.Model):
     __tablename__ = 'group_reviews'
     id = db.Column(db.Integer, primary_key=True)
-    pool_id = db.Column(db.Integer)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
     review_date = db.Column(db.Date, nullable=False)
     time_start = db.Column(db.String(5), nullable=False)
     flow = db.Column(db.String(50), nullable=False)
@@ -329,12 +350,13 @@ class GroupReview(db.Model):
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
-    nick = db.Column(db.String(100), unique=True, nullable=False)
+    nick = db.Column(db.String(100), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     tribe = db.Column(db.String(50))
-    pool_id = db.Column(db.Integer)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
     total_penalty_hours = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
+    __table_args__ = (db.UniqueConstraint('pool_id', 'nick', name='uq_student_pool_nick'),)
 
 
 class StudentEvent(db.Model):
@@ -355,7 +377,7 @@ class StudentEvent(db.Model):
 class TribeEvent(db.Model):
     __tablename__ = 'tribe_events'
     id = db.Column(db.Integer, primary_key=True)
-    pool_id = db.Column(db.Integer)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
     tribe = db.Column(db.String(50), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     event_date = db.Column(db.Date, nullable=False)
@@ -369,6 +391,7 @@ class TribeEvent(db.Model):
 class StudentPenalty(db.Model):
     __tablename__ = 'student_penalties'
     id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     student_name = db.Column(db.String(100), nullable=False)
     volunteer_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     volunteer_name = db.Column(db.String(100))
@@ -378,13 +401,13 @@ class StudentPenalty(db.Model):
     description = db.Column(db.Text)
     date_issued = db.Column(db.DateTime, default=_naive_utcnow)
     date_worked_off = db.Column(db.DateTime)
-    pool_id = db.Column(db.Integer)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
 
 
 class PenaltyHistory(db.Model):
     __tablename__ = 'penalty_history'
     id = db.Column(db.Integer, primary_key=True)
-    penalty_id = db.Column(db.Integer, nullable=False)
+    penalty_id = db.Column(db.Integer, db.ForeignKey('student_penalties.id', ondelete='CASCADE'), nullable=False)
     old_status = db.Column(db.String(20))
     new_status = db.Column(db.String(20), nullable=False)
     old_hours = db.Column(db.Integer)
@@ -415,6 +438,7 @@ class TelegramAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
     telegram_username = db.Column(db.String(100), nullable=False)
+    telegram_user_id = db.Column(db.String(100), unique=True)
     telegram_chat_id = db.Column(db.String(100))
     is_linked = db.Column(db.Boolean, default=False)
     linked_at = db.Column(db.DateTime)
@@ -436,6 +460,7 @@ class NotificationEvent(db.Model):
     scheduled_for = db.Column(db.DateTime)
     sent_at = db.Column(db.DateTime)
     cancelled_at = db.Column(db.DateTime)
+    processing_started_at = db.Column(db.DateTime)
     recipient_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'))
     payload = db.Column(db.Text)
@@ -671,7 +696,8 @@ def _avatar_url_for_user(user):
     account = _telegram_account_any(user.id)
     if not account or not (account.photo_file_id or account.photo_url):
         return None
-    return f'/api/users/{user.id}/avatar'
+    version = int(account.last_photo_sync_at.timestamp()) if account.last_photo_sync_at else 0
+    return f'/api/users/{user.id}/avatar?v={version}'
 
 
 def _telegram_is_configured():
@@ -1143,6 +1169,8 @@ def _queue_notification(user, event_type, text, dedupe_key, pool_id=None, priori
                         created_by=None, action_buttons=None):
     if not user or not dedupe_key:
         return None
+    if pool_id is not None and not dedupe_key.startswith(f'pool:{pool_id}:'):
+        dedupe_key = f'pool:{pool_id}:{dedupe_key}'
     existing = NotificationEvent.query.filter_by(dedupe_key=dedupe_key).first()
     if existing:
         return existing
@@ -1171,7 +1199,7 @@ def _cancel_pending_notifications(source_entity, source_entity_id, event_types=N
     query = NotificationEvent.query.filter(
         NotificationEvent.source_entity == source_entity,
         NotificationEvent.source_entity_id == source_entity_id,
-        NotificationEvent.status.in_(['queued', 'pending']),
+        NotificationEvent.status.in_(['queued', 'pending', 'processing']),
     )
     if event_types:
         query = query.filter(NotificationEvent.type.in_(event_types))
@@ -1199,22 +1227,43 @@ def normalize_tg_username(value):
     return _clean_telegram_username(value).lower()
 
 
+def telegram_username_conflict(value, exclude_user_id=None):
+    normalized = normalize_tg_username(value)
+    if not normalized:
+        return None
+    variants = [normalized, f'@{normalized}']
+    query = User.query.filter(db.func.lower(User.telegram).in_(variants))
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+    return query.first()
+
+
 def find_platform_user_by_username(username):
     normalized = normalize_tg_username(username)
     if not normalized:
         return None
     variants = [normalized, f'@{normalized}']
-    return User.query.filter(
+    matches = User.query.filter(
         db.func.lower(User.telegram).in_(variants)
-    ).first()
+    ).limit(2).all()
+    return matches[0] if len(matches) == 1 else None
 
 
 def upsert_telegram_account(user, tg_user, chat_id):
+    telegram_user_id = str(tg_user.get('id') or '') or None
+    if telegram_user_id:
+        conflict = TelegramAccount.query.filter(
+            TelegramAccount.telegram_user_id == telegram_user_id,
+            TelegramAccount.user_id != user.id,
+        ).first()
+        if conflict:
+            raise ValueError('Этот Telegram аккаунт уже привязан к другому пользователю')
     account = TelegramAccount.query.filter_by(user_id=user.id).first()
     if not account:
         account = TelegramAccount(user_id=user.id)
         db.session.add(account)
     account.telegram_username = normalize_tg_username(tg_user.get('username'))
+    account.telegram_user_id = telegram_user_id
     account.telegram_chat_id = str(chat_id)
     account.is_linked = True
     account.linked_at = account.linked_at or _utcnow()
@@ -1648,9 +1697,14 @@ def telegram_handle_callback(callback):
         return {'ok': False, 'reason': 'bad_callback'}
 
     account = TelegramAccount.query.filter_by(
-        telegram_username=normalize_tg_username(tg_user.get('username')),
+        telegram_user_id=str(tg_user.get('id') or ''),
         is_linked=True,
     ).first()
+    if not account:
+        account = TelegramAccount.query.filter_by(
+            telegram_username=normalize_tg_username(tg_user.get('username')),
+            is_linked=True,
+        ).first()
     actor = db.session.get(User, account.user_id) if account else None
     penalty = db.session.get(StudentPenalty, penalty_id)
     if not penalty:
@@ -1891,27 +1945,53 @@ def enqueue_scheduled_notifications():
 def process_pending_notifications(limit=20):
     enqueue_scheduled_notifications()
     now = _utcnow()
-    events = (
+    stale_before = now - timedelta(minutes=10)
+    NotificationEvent.query.filter(
+        NotificationEvent.status == 'processing',
+        NotificationEvent.processing_started_at < stale_before,
+    ).update({
+        NotificationEvent.status: 'queued',
+        NotificationEvent.processing_started_at: None,
+    }, synchronize_session=False)
+    candidate_ids = [row.id for row in (
         NotificationEvent.query
+        .with_entities(NotificationEvent.id)
         .filter(NotificationEvent.status.in_(['queued', 'pending']))
         .filter(db.or_(NotificationEvent.scheduled_for.is_(None), NotificationEvent.scheduled_for <= now))
         .order_by(NotificationEvent.created_at.asc(), NotificationEvent.id.asc())
         .limit(limit)
         .all()
-    )
+    )]
     sent = 0
     failed = 0
     skipped = 0
-    current_pool_id = active_pool_id()
-
-    for event in events:
-        if event.pool_id is not None and event.pool_id != current_pool_id:
+    processed = 0
+    for event_id in candidate_ids:
+        claimed = NotificationEvent.query.filter(
+            NotificationEvent.id == event_id,
+            NotificationEvent.status.in_(['queued', 'pending']),
+        ).update({
+            NotificationEvent.status: 'processing',
+            NotificationEvent.processing_started_at: _utcnow(),
+        }, synchronize_session=False)
+        db.session.commit()
+        if not claimed:
+            continue
+        processed += 1
+        event = db.session.get(NotificationEvent, event_id)
+        if event.pool_id is not None and event.pool_id != active_pool_id():
             event.status = 'cancelled'
             event.cancelled_at = _utcnow()
+            event.processing_started_at = None
             skipped += 1
+            db.session.commit()
             continue
         user = db.session.get(User, event.recipient_user_id) if event.recipient_user_id else None
-        account = TelegramAccount.query.filter_by(user_id=user.id, is_linked=True).first() if user else None
+        account = TelegramAccount.query.filter_by(
+            user_id=user.id,
+            is_linked=True,
+            delivery_enabled=True,
+        ).first() if user and user.active else None
         delivery = NotificationDelivery.query.filter_by(notification_id=event.id).order_by(NotificationDelivery.id.desc()).first()
 
         if not delivery:
@@ -1924,8 +2004,12 @@ def process_pending_notifications(limit=20):
             db.session.add(delivery)
 
         if not user or not account or not account.telegram_chat_id:
-            mark_delivery_failed(event, delivery, 'Нет привязанного Telegram аккаунта')
+            delivery.delivery_status = 'skipped'
+            delivery.error = 'Доставка Telegram отключена или аккаунт не привязан'
+            event.status = 'skipped'
+            event.processing_started_at = None
             skipped += 1
+            db.session.commit()
             continue
 
         try:
@@ -1941,6 +2025,7 @@ def process_pending_notifications(limit=20):
             delivery.error = None
             event.status = 'sent'
             event.sent_at = _utcnow()
+            event.processing_started_at = None
             account.last_delivery_at = _utcnow()
             log_action(
                 'send',
@@ -1957,6 +2042,7 @@ def process_pending_notifications(limit=20):
             sent += 1
         except Exception as exc:
             mark_delivery_failed(event, delivery, str(exc))
+            event.processing_started_at = None
             log_action(
                 'delivery_error',
                 'notification_event',
@@ -1970,8 +2056,10 @@ def process_pending_notifications(limit=20):
             )
             failed += 1
 
+        db.session.commit()
+
     return {
-        'processed': len(events),
+        'processed': processed,
         'sent': sent,
         'failed': failed,
         'skipped': skipped,
@@ -2108,9 +2196,11 @@ def _effective_access_tribe(user, pool_id=None):
 
 
 def _session_user_dict(user, pool_id=None):
+    pool_id = pool_id or active_pool_id()
     payload = user.to_dict()
     payload['role'] = _effective_access_role(user, pool_id)
     payload['tribe'] = _effective_access_tribe(user, pool_id)
+    payload['active_pool_id'] = pool_id
     return payload
 
 
@@ -2167,7 +2257,8 @@ def load_user_from_request():
         data = serializer.loads(token, max_age=60 * 60 * 24 * 30)  # 30 дней
     except BadSignature:
         return None
-    return db.session.get(User, data.get('id'))
+    user = db.session.get(User, data.get('id'))
+    return user if user and user.active else None
 
 
 def require_auth(fn):
@@ -2255,6 +2346,8 @@ def update_me():
     if 'telegram' in data:
         raw_telegram = (data.get('telegram') or '').strip()
         new_telegram = raw_telegram if not raw_telegram or raw_telegram.startswith('@') else f'@{raw_telegram}'
+        if telegram_username_conflict(new_telegram, user.id):
+            return jsonify({'error': 'Этот Telegram username уже используется'}), 409
         old_telegram = user.telegram or ''
         if old_telegram != (new_telegram or ''):
             changes['telegram'] = {'from': old_telegram or None, 'to': new_telegram or None}
@@ -2372,11 +2465,14 @@ def create_user():
             return jsonify(existing.to_dict()), 200
         return jsonify({'error': 'Такой ник уже есть'}), 409
 
+    telegram = _normalize_telegram_value(data.get('telegram'))
+    if telegram_username_conflict(telegram):
+        return jsonify({'error': 'Этот Telegram username уже используется'}), 409
     user = User(
         nick=nick,
         name=data.get('name') or nick,
         role=role,
-        telegram=_normalize_telegram_value(data.get('telegram')),
+        telegram=telegram,
         tribe=normalize_tribe(data.get('tribe')),
     )
     if role in ROLES_WITH_PASSWORD:
@@ -2418,6 +2514,8 @@ def update_user(user_id):
 
     if 'telegram' in data:
         new_telegram = _normalize_telegram_value(data.get('telegram'))
+        if telegram_username_conflict(new_telegram, user.id):
+            return jsonify({'error': 'Этот Telegram username уже используется'}), 409
         old_telegram = user.telegram or ''
         if old_telegram != (new_telegram or ''):
             changes['telegram'] = {'from': old_telegram or None, 'to': new_telegram or None}
@@ -2565,14 +2663,16 @@ def update_pool(pool_id):
 @app.route('/api/pools/<int:pool_id>/activate', methods=['POST'])
 @require_role('team_lead', 'admin')
 def activate_pool(pool_id):
+    Pool.query.with_for_update().all()
     pool = get_model_or_404(Pool, pool_id)
     Pool.query.update({Pool.active: False})
+    db.session.flush()
     pool.active = True
     pool.archived = False
     NotificationEvent.query.filter(
         NotificationEvent.pool_id.isnot(None),
         NotificationEvent.pool_id != pool.id,
-        NotificationEvent.status.in_(['queued', 'pending']),
+        NotificationEvent.status.in_(['queued', 'pending', 'processing']),
     ).update({
         NotificationEvent.status: 'cancelled',
         NotificationEvent.cancelled_at: _utcnow(),
@@ -2585,8 +2685,9 @@ def activate_pool(pool_id):
 @require_role('team_lead', 'admin')
 def archive_pool(pool_id):
     pool = get_model_or_404(Pool, pool_id)
+    if pool.active:
+        return jsonify({'error': 'Сначала активируйте другой бассейн'}), 409
     pool.archived = True
-    pool.active = False
     db.session.commit()
     return jsonify(pool.to_dict())
 
@@ -2623,6 +2724,7 @@ def delete_pool(pool_id):
 
         ShiftBlock.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
         ScheduleGeneration.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
+        PoolInviteLink.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
         PoolVolunteer.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
         Tribe.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
         Broadcast.query.filter_by(pool_id=pool_id).delete(synchronize_session=False)
@@ -2956,7 +3058,7 @@ def save_pool_volunteer_rows(rows, pool_id):
             continue
         nick = (row.get('nick') or '').strip()
         name = (row.get('name') or '').strip() or nick
-        telegram = (row.get('telegram') or '').strip()
+        telegram = _normalize_telegram_value(row.get('telegram'))
         if not nick:
             skipped.append({'row': index, 'reason': 'Нет ника'})
             continue
@@ -2965,7 +3067,20 @@ def save_pool_volunteer_rows(rows, pool_id):
         except ValueError as e:
             skipped.append({'row': index, 'nick': nick, 'reason': str(e)})
             continue
+        tribe = normalize_tribe(row.get('tribe'))
         user = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
+        if telegram and telegram_username_conflict(telegram, user.id if user else None):
+            skipped.append({'row': index, 'nick': nick, 'reason': 'Telegram username уже используется'})
+            continue
+        conflict = validate_tribe_master_assignment(
+            pool_id,
+            role,
+            tribe,
+            exclude_user_id=user.id if user else None,
+        )
+        if conflict:
+            skipped.append({'row': index, 'nick': nick, 'reason': conflict})
+            continue
         if user:
             if user.role in ROLES_WITH_PASSWORD:
                 skipped.append({'row': index, 'nick': nick, 'reason': 'Ник занят тимлидом/админом'})
@@ -2976,13 +3091,22 @@ def save_pool_volunteer_rows(rows, pool_id):
                 user.telegram = telegram
             updated += 1
         else:
-            user = User(nick=nick, name=name, role=role, telegram=telegram or None)
+            user = User(nick=nick, name=name, role='volunteer', telegram=telegram or None)
             db.session.add(user)
             db.session.flush()
             created += 1
-        if not PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user.id).first():
-            db.session.add(PoolVolunteer(pool_id=pool_id, user_id=user.id))
+        membership = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user.id).first()
+        if not membership:
+            db.session.add(PoolVolunteer(
+                pool_id=pool_id,
+                user_id=user.id,
+                pool_role=role,
+                tribe=tribe if role == 'tribe_master' else None,
+            ))
             assigned += 1
+        else:
+            membership.pool_role = role
+            membership.tribe = tribe if role == 'tribe_master' else None
     db.session.commit()
     return {
         'created': created, 'updated': updated, 'assigned': assigned, 'skipped': skipped,
@@ -3094,13 +3218,35 @@ def create_block():
         d = datetime.fromisoformat(data['date']).date()
     except (KeyError, ValueError):
         return jsonify({'error': 'Некорректная дата'}), 400
+    time_start = (data.get('time_start') or '10:00').strip()
+    time_end = (data.get('time_end') or '14:00').strip()
+    if not TIME_VALUE_RE.fullmatch(time_start) or not TIME_VALUE_RE.fullmatch(time_end):
+        return jsonify({'error': 'Время должно быть в формате HH:MM'}), 400
+    if time_start >= time_end:
+        return jsonify({'error': 'Время окончания должно быть позже времени начала'}), 400
+    capacity = data.get('capacity')
+    if capacity is not None:
+        try:
+            capacity = int(capacity)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Вместимость должна быть целым числом'}), 400
+        if capacity < 1:
+            return jsonify({'error': 'Вместимость должна быть больше нуля'}), 400
+    overlapping = ShiftBlock.query.filter(
+        ShiftBlock.pool_id == pool_id,
+        ShiftBlock.date == d,
+        ShiftBlock.time_start < time_end,
+        ShiftBlock.time_end > time_start,
+    ).first()
+    if overlapping:
+        return jsonify({'error': 'Этот интервал пересекается с существующим тайм-блоком'}), 409
     block = ShiftBlock(
         pool_id=pool_id,
         date=d,
-        time_start=data.get('time_start', '10:00'),
-        time_end=data.get('time_end', '14:00'),
+        time_start=time_start,
+        time_end=time_end,
         label=data.get('label', ''),
-        capacity=data.get('capacity'),
+        capacity=capacity,
     )
     db.session.add(block)
     db.session.commit()
@@ -3130,7 +3276,14 @@ def patch_block_capacity(block_id):
     data = request.json or {}
     if 'capacity' in data:
         val = data['capacity']
-        block.capacity = int(val) if val is not None else None
+        try:
+            next_capacity = int(val) if val is not None else None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Вместимость должна быть целым числом'}), 400
+        current_count = Signup.query.filter_by(block_id=block.id).count()
+        if next_capacity is not None and next_capacity < max(1, current_count):
+            return jsonify({'error': 'Вместимость не может быть меньше числа записанных'}), 409
+        block.capacity = next_capacity
     else:
         delta = int(data.get('delta', 1))
         base = block.capacity if block.capacity is not None else Signup.query.filter_by(block_id=block.id).count()
@@ -3268,7 +3421,9 @@ def undo_generate_schedule(pool_id):
 @app.route('/api/blocks/<int:block_id>/signup', methods=['POST'])
 @require_auth
 def signup_block(block_id):
-    block = get_model_or_404(ShiftBlock, block_id)
+    block = ShiftBlock.query.filter_by(id=block_id).with_for_update().first()
+    if not block:
+        abort(404)
     error = _active_entity_error(block.pool_id)
     if error:
         return error
@@ -3289,6 +3444,12 @@ def signup_block(block_id):
     if not PoolVolunteer.query.filter_by(pool_id=block.pool_id, user_id=target_user.id).first():
         return jsonify({'error': 'Пользователь не назначен на активный бассейн'}), 409
 
+    now_moscow = _moscow_now()
+    if block.date < now_moscow.date() or (
+        block.date == now_moscow.date() and block.time_end <= now_moscow.strftime('%H:%M')
+    ):
+        return jsonify({'error': 'Нельзя записаться на завершённую смену'}), 409
+
     existing = Signup.query.filter_by(block_id=block.id, user_id=target_user.id).first()
     if existing:
         return jsonify({'message': 'Уже записан'}), 200
@@ -3296,8 +3457,27 @@ def signup_block(block_id):
         current = Signup.query.filter_by(block_id=block.id).count()
         if current >= block.capacity:
             return jsonify({'error': 'Мест больше нет'}), 409
+    overlap = (
+        Signup.query.join(ShiftBlock, Signup.block_id == ShiftBlock.id)
+        .filter(
+            Signup.user_id == target_user.id,
+            ShiftBlock.pool_id == block.pool_id,
+            ShiftBlock.date == block.date,
+            ShiftBlock.id != block.id,
+            ShiftBlock.time_start < block.time_end,
+            ShiftBlock.time_end > block.time_start,
+        )
+        .first()
+    )
+    if overlap:
+        return jsonify({'error': 'У пользователя уже есть пересекающаяся смена'}), 409
     signup = Signup(block_id=block.id, user_id=target_user.id)
     db.session.add(signup)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'message': 'Уже записан'}), 200
     log_action(
         'create',
         'signup',
@@ -3398,8 +3578,10 @@ def my_shifts():
 @app.route('/api/stats', methods=['GET'])
 @require_auth
 def stats():
-    pool = Pool.query.filter_by(active=True).order_by(Pool.created_at.desc()).first()
-    pool_id = pool.id if pool else None
+    pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
+    if error:
+        return error
+    pool = db.session.get(Pool, pool_id)
     total_blocks = ShiftBlock.query.filter_by(pool_id=pool_id).count() if pool_id else 0
     volunteers = PoolVolunteer.query.filter_by(pool_id=pool_id).count() if pool_id else 0
     total_signups = (
@@ -3829,21 +4011,26 @@ def normalize_tribe(value):
     return TRIBE_ALIASES.get(raw.lower(), raw)
 
 
-def tribe_master_for_tribe(tribe, exclude_user_id=None):
-    if not tribe:
+def tribe_master_for_tribe(pool_id, tribe, exclude_user_id=None):
+    if not pool_id or not tribe:
         return None
-    query = User.query.filter_by(role='tribe_master', tribe=tribe)
+    query = PoolVolunteer.query.filter_by(
+        pool_id=pool_id,
+        pool_role='tribe_master',
+        tribe=tribe,
+    )
     if exclude_user_id:
-        query = query.filter(User.id != exclude_user_id)
+        query = query.filter(PoolVolunteer.user_id != exclude_user_id)
     return query.first()
 
 
-def validate_tribe_master_assignment(role, tribe, exclude_user_id=None):
+def validate_tribe_master_assignment(pool_id, role, tribe, exclude_user_id=None):
     if role != 'tribe_master' or not tribe:
         return None
-    owner = tribe_master_for_tribe(tribe, exclude_user_id)
+    owner = tribe_master_for_tribe(pool_id, tribe, exclude_user_id)
     if owner:
-        return f'Трайб "{tribe}" уже назначен @{owner.nick}'
+        user = db.session.get(User, owner.user_id)
+        return f'Трайб "{tribe}" уже назначен @{user.nick if user else owner.user_id}'
     return None
 
 
@@ -3865,6 +4052,9 @@ def save_volunteer_rows(rows):
             continue
 
         user = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
+        if telegram and telegram_username_conflict(telegram, user.id if user else None):
+            skipped.append({'row': index, 'nick': nick, 'reason': 'Telegram username уже используется'})
+            continue
         if user:
             if user.role in ROLES_WITH_PASSWORD:
                 skipped.append({'row': index, 'nick': nick, 'reason': 'Ник уже занят тимлидом или админом'})
@@ -3910,6 +4100,8 @@ def create_volunteer_profile():
         role = _volunteer_role_from_payload(data)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    if role != 'volunteer':
+        return jsonify({'error': 'Роль назначается отдельно внутри активного бассейна'}), 400
 
     existing = User.query.filter(db.func.lower(User.nick) == nick.lower()).first()
     if existing:
@@ -3917,17 +4109,15 @@ def create_volunteer_profile():
             return jsonify({'error': 'Такой ник уже есть как тимлид или админ'}), 409
         return jsonify({'error': 'Такой ник уже есть'}), 409
 
-    tribe = normalize_tribe(data.get('tribe'))
-    conflict = validate_tribe_master_assignment(role, tribe)
-    if conflict:
-        return jsonify({'error': conflict}), 409
-
+    telegram = _normalize_telegram_value(data.get('telegram'))
+    if telegram_username_conflict(telegram):
+        return jsonify({'error': 'Этот Telegram username уже используется'}), 409
     user = User(
         nick=nick,
         name=name,
         role=role,
-        telegram=_normalize_telegram_value(data.get('telegram')),
-        tribe=tribe,
+        telegram=telegram,
+        tribe=None,
     )
     db.session.add(user)
     db.session.flush()
@@ -3936,7 +4126,7 @@ def create_volunteer_profile():
         'volunteer',
         user.id,
         f'Добавлен @{user.nick} как {role}',
-        {'target_nick': user.nick, 'role': role, 'tribe': tribe},
+        {'target_nick': user.nick, 'role': role},
     )
     db.session.commit()
     return jsonify(user.to_dict()), 201
@@ -4072,6 +4262,8 @@ def update_volunteer_profile(user_id):
 
     if 'telegram' in data:
         new_telegram = _normalize_telegram_value(data.get('telegram')) or ''
+        if telegram_username_conflict(new_telegram, user.id):
+            return jsonify({'error': 'Этот Telegram username уже используется'}), 409
         old = user.telegram or ''
         if old != new_telegram:
             changes['telegram'] = {'from': old or None, 'to': new_telegram or None}
@@ -4120,6 +4312,17 @@ def update_volunteer_profile(user_id):
             if old != new_adjustment:
                 changes['coins_adjustment'] = {'from': old, 'to': new_adjustment}
             user.coins_adjustment = new_adjustment
+
+    if pv:
+        conflict = validate_tribe_master_assignment(
+            pool_id,
+            pv.pool_role or 'volunteer',
+            pv.tribe,
+            exclude_user_id=user.id,
+        )
+        if conflict:
+            db.session.rollback()
+            return jsonify({'error': conflict}), 409
 
     if changes:
         log_action(
@@ -4306,14 +4509,14 @@ def _signups_index_for_blocks(block_ids):
 
 
 def _tomorrow_blocks(pool_id):
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = _moscow_today() + timedelta(days=1)
     blocks = ShiftBlock.query.filter_by(pool_id=pool_id, date=tomorrow).order_by(ShiftBlock.time_start).all()
     signups_by_block = _signups_index_for_blocks([block.id for block in blocks])
     return [_block_with_people_from_rows(block, signups_by_block.get(block.id, [])) for block in blocks]
 
 
 def _future_my_shifts(user_id, pool_id, limit=5):
-    today = date.today()
+    today = _moscow_today()
     rows = (
         db.session.query(ShiftBlock)
         .join(Signup, Signup.block_id == ShiftBlock.id)
@@ -4447,7 +4650,7 @@ def dashboard_summary():
     pool_id = pool.id if pool else None
     if pool_id and not _can_access_pool_id(g.user, pool_id):
         return jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = _moscow_today() + timedelta(days=1)
     counts = _status_counts(pool_id)
     tomorrow_tribe_events = (
         TribeEvent.query.filter_by(pool_id=pool_id, event_date=tomorrow).order_by(TribeEvent.time_start).all()
@@ -4477,7 +4680,7 @@ def dashboard_summary():
         own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
         next_events = (
             TribeEvent.query
-            .filter(TribeEvent.pool_id == pool_id, TribeEvent.tribe == tribe, TribeEvent.event_date >= date.today())
+            .filter(TribeEvent.pool_id == pool_id, TribeEvent.tribe == tribe, TribeEvent.event_date >= _moscow_today())
             .order_by(TribeEvent.event_date, TribeEvent.time_start)
             .limit(5)
             .all()
@@ -4544,6 +4747,8 @@ def telegram_unlinked_users():
 def telegram_webhook():
     if not _telegram_is_configured():
         return jsonify({'error': 'Telegram бот не настроен'}), 503
+    if _is_production_runtime() and not TELEGRAM_WEBHOOK_SECRET:
+        return jsonify({'error': 'TELEGRAM_WEBHOOK_SECRET обязателен в production'}), 503
     if TELEGRAM_WEBHOOK_SECRET:
         incoming_secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         if incoming_secret != TELEGRAM_WEBHOOK_SECRET:
@@ -4889,6 +5094,9 @@ def create_broadcast():
 @require_role('team_lead', 'admin')
 def update_broadcast(broadcast_id):
     broadcast = get_model_or_404(Broadcast, broadcast_id)
+    error = _active_entity_error(broadcast.pool_id)
+    if error:
+        return error
     data = request.json or {}
     changes = {}
     if 'text' in data:
@@ -4914,6 +5122,16 @@ def update_broadcast(broadcast_id):
         new_value = bool(data.get('is_anonymous'))
         changes['is_anonymous'] = {'from': bool(broadcast.is_anonymous), 'to': new_value}
         broadcast.is_anonymous = new_value
+    queued_events = NotificationEvent.query.filter_by(
+        source_entity='broadcast',
+        source_entity_id=broadcast.id,
+    ).filter(NotificationEvent.status.in_(['queued', 'pending'])).all()
+    for event in queued_events:
+        payload = json.loads(event.payload or '{}')
+        payload['text'] = broadcast.text
+        payload['filters'] = json.loads(broadcast.filters or '{}')
+        event.payload = json.dumps(payload, ensure_ascii=False)
+        event.priority = broadcast.priority
     log_action('update', 'broadcast', broadcast.id, 'Обновлена рассылка', {'changes': changes})
     db.session.commit()
     return jsonify(_broadcast_to_dict(broadcast))
@@ -4923,6 +5141,9 @@ def update_broadcast(broadcast_id):
 @require_role('team_lead', 'admin')
 def delete_broadcast(broadcast_id):
     broadcast = get_model_or_404(Broadcast, broadcast_id)
+    error = _active_entity_error(broadcast.pool_id)
+    if error:
+        return error
     event_ids = [
         row.id for row in NotificationEvent.query.with_entities(NotificationEvent.id)
         .filter_by(source_entity='broadcast', source_entity_id=broadcast.id)
@@ -4972,6 +5193,9 @@ def create_notification_note():
 @require_role('team_lead', 'admin')
 def update_notification_note(note_id):
     note = get_model_or_404(DashboardNote, note_id)
+    error = _active_entity_error(note.pool_id)
+    if error:
+        return error
     data = request.json or {}
     changes = {}
     for field in ('text', 'is_pinned', 'is_highlighted', 'is_active', 'is_anonymous'):
@@ -4995,6 +5219,9 @@ def update_notification_note(note_id):
 @require_role('team_lead', 'admin')
 def delete_notification_note(note_id):
     note = get_model_or_404(DashboardNote, note_id)
+    error = _active_entity_error(note.pool_id)
+    if error:
+        return error
     db.session.delete(note)
     log_action('delete', 'dashboard_note', note_id, 'Удалена заметка для дашборда')
     db.session.commit()
@@ -5009,15 +5236,18 @@ def _student_list_payload(pool_id):
     if students:
         student_ids = [student.id for student in students]
         student_nicks = [student.nick for student in students]
-        penalties = StudentPenalty.query.filter(
-            StudentPenalty.pool_id == pool_id,
-            StudentPenalty.student_name.in_(student_nicks),
+        penalties = StudentPenalty.query.filter(StudentPenalty.pool_id == pool_id).filter(
+            db.or_(
+                StudentPenalty.student_id.in_(student_ids),
+                db.and_(StudentPenalty.student_id.is_(None), StudentPenalty.student_name.in_(student_nicks)),
+            )
         ).all()
         nick_to_ids = defaultdict(list)
         for student in students:
             nick_to_ids[student.nick].append(student.id)
         for penalty in penalties:
-            for student_id in nick_to_ids.get(penalty.student_name, []):
+            matched_ids = [penalty.student_id] if penalty.student_id else nick_to_ids.get(penalty.student_name, [])
+            for student_id in matched_ids:
                 penalties_by_student[student_id].append(penalty)
 
         all_events = StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).all()
@@ -5097,6 +5327,12 @@ def create_student():
     pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
     if error:
         return error
+    existing = Student.query.filter(
+        Student.pool_id == pool_id,
+        db.func.lower(Student.nick) == nick.lower(),
+    ).first()
+    if existing:
+        return jsonify({'error': 'Ученик с таким ником уже есть в активном бассейне'}), 409
     student = Student(
         nick=nick,
         name=nick,
@@ -5143,14 +5379,6 @@ def save_student_rows(rows, pool_id=None):
             student.tribe = tribe
             updated += 1
         else:
-            other_pool_student = Student.query.filter(db.func.lower(Student.nick) == nick.lower()).first()
-            if other_pool_student:
-                skipped.append({
-                    'row': index,
-                    'nick': nick,
-                    'reason': 'Ученик уже относится к другому бассейну',
-                })
-                continue
             db.session.add(Student(nick=nick, name=name, tribe=tribe, pool_id=pool_id))
             created += 1
 
@@ -5342,7 +5570,7 @@ def export_students_events():
 
 
 @app.route('/api/students/<int:student_id>/events', methods=['POST'])
-@require_role('tribe_master', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def create_student_event(student_id):
     student = get_model_or_404(Student, student_id)
     error = _active_entity_error(student.pool_id)
@@ -5385,19 +5613,13 @@ def create_student_event(student_id):
 
 
 @app.route('/api/student-events/<int:event_id>', methods=['PATCH'])
-@require_role('tribe_master', 'admin')
+@require_role('team_lead', 'admin')
 def update_student_event(event_id):
     event = get_model_or_404(StudentEvent, event_id)
     student = db.session.get(Student, event.student_id)
     error = _active_entity_error(student.pool_id if student else None)
     if error:
         return error
-    if (
-        g.current_role == 'tribe_master'
-        and student
-        and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe)
-    ):
-        return jsonify({'error': 'Можно менять статус только мероприятий своего трайба'}), 403
     data = request.json or {}
     status = data.get('status')
     if status not in STUDENT_EVENT_STATUSES:
@@ -5409,7 +5631,7 @@ def update_student_event(event_id):
 
 
 @app.route('/api/student-events/<int:event_id>', methods=['DELETE'])
-@require_role('tribe_master', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def delete_student_event(event_id):
     event = get_model_or_404(StudentEvent, event_id)
     student = db.session.get(Student, event.student_id)
@@ -5438,7 +5660,7 @@ def my_tribe():
     own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
     next_events = (
         TribeEvent.query
-        .filter(TribeEvent.pool_id == pool_id, TribeEvent.tribe == tribe, TribeEvent.event_date >= date.today())
+        .filter(TribeEvent.pool_id == pool_id, TribeEvent.tribe == tribe, TribeEvent.event_date >= _moscow_today())
         .order_by(TribeEvent.event_date, TribeEvent.time_start)
         .all()
     )
@@ -5453,7 +5675,7 @@ def my_tribe():
     )
     all_tribe_events = (
         TribeEvent.query
-        .filter(TribeEvent.pool_id == pool_id, TribeEvent.event_date >= date.today())
+        .filter(TribeEvent.pool_id == pool_id, TribeEvent.event_date >= _moscow_today())
         .order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe)
         .all()
         if g.current_role in ('team_lead', 'admin') else []
@@ -5639,6 +5861,8 @@ def delete_student(student_id):
     error = _active_entity_error(student.pool_id)
     if error:
         return error
+    if StudentPenalty.query.filter_by(student_id=student.id).first():
+        return jsonify({'error': 'Сначала удалите связанные штрафы ученика'}), 409
     StudentEvent.query.filter_by(student_id=student.id).delete()
     db.session.delete(student)
     db.session.commit()
@@ -5688,6 +5912,7 @@ def get_penalties():
             })
     return jsonify([{
         'id': p.id,
+        'student_id': p.student_id,
         'student_name': p.student_name,
         'volunteer_name': p.volunteer_name,
         'hours': p.hours,
@@ -5710,8 +5935,24 @@ def create_penalty():
     pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
     if error:
         return error
+    student = None
+    if data.get('student_id') is not None:
+        try:
+            student = db.session.get(Student, int(data['student_id']))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Некорректный student_id'}), 400
+    else:
+        student_name = (data.get('student_name') or '').strip()
+        if student_name:
+            student = Student.query.filter(
+                Student.pool_id == pool_id,
+                db.func.lower(Student.nick) == student_name.lower(),
+            ).first()
+    if not student or student.pool_id != pool_id:
+        return jsonify({'error': 'Ученик не найден в активном бассейне'}), 404
     penalty = StudentPenalty(
-        student_name=data['student_name'],
+        student_id=student.id,
+        student_name=student.nick,
         volunteer_id=user.id,
         volunteer_name=user.name or user.nick,
         hours=2,
@@ -5763,8 +6004,10 @@ def update_penalty_status(penalty_id):
     old_status = penalty.workoff_status
     old_hours = penalty.hours * penalty.multiplier
     new_status = data.get('workoff_status', penalty.workoff_status)
+    if new_status not in PENALTY_STATUSES:
+        return jsonify({'error': 'Некорректный статус штрафа'}), 400
     penalty.workoff_status = new_status
-    if new_status == 'overdue' and old_status in ('pending', 'overdue'):
+    if new_status == 'overdue' and old_status == 'pending':
         penalty.multiplier *= 2
     if new_status == 'in_workoff':
         penalty.date_worked_off = _utcnow()
@@ -5815,6 +6058,8 @@ def delete_penalty(penalty_id):
     if not _can_access_pool_id(g.user, penalty.pool_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
     student_name = penalty.student_name
+    _cancel_pending_notifications('penalty', penalty.id)
+    PenaltyHistory.query.filter_by(penalty_id=penalty.id).delete(synchronize_session=False)
     log_action(
         'delete',
         'penalty',
@@ -6191,7 +6436,7 @@ def latest_backup_file():
 
 
 def backup_filename_for_today():
-    return os.path.join(BACKUP_DIR, f'pool-backup-{date.today().isoformat()}.xlsx')
+    return os.path.join(BACKUP_DIR, f'pool-backup-{_moscow_today().isoformat()}.xlsx')
 
 
 def create_daily_backup(force=False):
@@ -6286,6 +6531,7 @@ def export_google_sheets():
 def backup_status():
     latest = latest_backup_file()
     return jsonify({
+        'persistent': not _is_production_runtime(),
         'backup_dir': BACKUP_DIR,
         'latest_file': latest,
         'latest_at': datetime.fromtimestamp(os.path.getmtime(latest)).isoformat() if latest else None,
@@ -6296,6 +6542,10 @@ def backup_status():
 @app.route('/api/admin/backup-now', methods=['POST'])
 @require_role('team_lead', 'admin')
 def backup_now():
+    if _is_production_runtime():
+        return jsonify({
+            'error': 'Локальные резервные копии недоступны в serverless. Используйте Excel-экспорт или внешнее хранилище.'
+        }), 409
     path = create_daily_backup(force=True)
     log_action('backup', 'workbook', None, 'Создан ручной резерв Excel', {'path': path})
     db.session.commit()
@@ -6373,7 +6623,11 @@ def seed_database_endpoint():
 def seed_admin():
     """Создать стартового админа, если его нет."""
     admin_nick = os.getenv('ADMIN_NICK', 'admin')
-    admin_pass = os.getenv('ADMIN_PASSWORD', 'admin123')
+    admin_pass = os.getenv('ADMIN_PASSWORD')
+    if not admin_pass:
+        if _is_production_runtime():
+            raise RuntimeError('ADMIN_PASSWORD обязателен для первичного production seed')
+        admin_pass = 'admin123'
     if not User.query.filter(db.func.lower(User.nick) == admin_nick.lower()).first():
         admin = User(
             nick=admin_nick,
@@ -6572,6 +6826,7 @@ def ensure_user_profile_columns():
                     id INTEGER NOT NULL,
                     user_id INTEGER NOT NULL UNIQUE,
                     telegram_username VARCHAR(100) NOT NULL,
+                    telegram_user_id VARCHAR(100) UNIQUE,
                     telegram_chat_id VARCHAR(100),
                     is_linked BOOLEAN DEFAULT 0,
                     linked_at DATETIME,
@@ -6596,6 +6851,7 @@ def ensure_user_profile_columns():
                     scheduled_for DATETIME,
                     sent_at DATETIME,
                     cancelled_at DATETIME,
+                    processing_started_at DATETIME,
                     recipient_user_id INTEGER,
                     pool_id INTEGER,
                     payload TEXT,
@@ -6610,6 +6866,10 @@ def ensure_user_profile_columns():
                     FOREIGN KEY(created_by) REFERENCES users (id)
                 )
             """)
+        else:
+            notification_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(notification_events)').fetchall()}
+            if 'processing_started_at' not in notification_cols:
+                conn.exec_driver_sql('ALTER TABLE notification_events ADD COLUMN processing_started_at DATETIME')
         if 'notification_deliveries' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE notification_deliveries (
@@ -6737,6 +6997,28 @@ def ensure_user_profile_columns():
                 conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN max_uses INTEGER')
             if 'expires_at' not in pool_invite_cols:
                 conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN expires_at DATETIME')
+        if 'telegram_accounts' in tables:
+            telegram_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(telegram_accounts)').fetchall()}
+            if 'telegram_user_id' not in telegram_cols:
+                conn.exec_driver_sql('ALTER TABLE telegram_accounts ADD COLUMN telegram_user_id VARCHAR(100)')
+            conn.exec_driver_sql(
+                'CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_account_user_id '
+                'ON telegram_accounts (telegram_user_id) WHERE telegram_user_id IS NOT NULL'
+            )
+        if 'student_penalties' in tables:
+            penalty_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(student_penalties)').fetchall()}
+            if 'student_id' not in penalty_cols:
+                conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN student_id INTEGER')
+            conn.exec_driver_sql("""
+                UPDATE student_penalties
+                SET student_id = (
+                    SELECT students.id FROM students
+                    WHERE students.pool_id = student_penalties.pool_id
+                      AND lower(students.nick) = lower(student_penalties.student_name)
+                    LIMIT 1
+                )
+                WHERE student_id IS NULL
+            """)
         # RewardEvent.pool_id
         if 'reward_events' in tables:
             re_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(reward_events)').fetchall()}
@@ -6844,12 +7126,37 @@ def ensure_postgres_profile_columns():
 
         conn.exec_driver_sql('ALTER TABLE reward_events ADD COLUMN IF NOT EXISTS pool_id INTEGER')
         conn.exec_driver_sql('ALTER TABLE telegram_accounts ALTER COLUMN photo_url TYPE TEXT')
+        conn.exec_driver_sql('ALTER TABLE telegram_accounts ADD COLUMN IF NOT EXISTS telegram_user_id VARCHAR(100)')
+        conn.exec_driver_sql('ALTER TABLE notification_events ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP')
+        conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN IF NOT EXISTS student_id INTEGER')
+
+        conn.exec_driver_sql("""
+            UPDATE student_penalties sp
+            SET student_id = s.id
+            FROM students s
+            WHERE sp.student_id IS NULL
+              AND s.pool_id = sp.pool_id
+              AND lower(s.nick) = lower(sp.student_name)
+        """)
+        conn.exec_driver_sql('ALTER TABLE students DROP CONSTRAINT IF EXISTS students_nick_key')
+        conn.exec_driver_sql(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_student_pool_nick_ci '
+            'ON students (pool_id, lower(nick))'
+        )
+        conn.exec_driver_sql(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_account_user_id '
+            'ON telegram_accounts (telegram_user_id) WHERE telegram_user_id IS NOT NULL'
+        )
 
         active_pool = conn.exec_driver_sql(
             'SELECT id FROM pools WHERE active = TRUE ORDER BY created_at DESC LIMIT 1'
         ).fetchone()
         active_pool_id_value = active_pool[0] if active_pool else None
         if active_pool_id_value is not None:
+            conn.exec_driver_sql(
+                'UPDATE pools SET active = FALSE WHERE active = TRUE AND id != %s',
+                (active_pool_id_value,),
+            )
             conn.exec_driver_sql("""
                 UPDATE broadcasts
                 SET pool_id = COALESCE(
@@ -6869,6 +7176,44 @@ def ensure_postgres_profile_columns():
             """, (active_pool_id_value,))
             conn.exec_driver_sql('UPDATE dashboard_notes SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
             conn.exec_driver_sql('UPDATE tribes SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE students SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE group_reviews SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE tribe_events SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+            conn.exec_driver_sql('UPDATE student_penalties SET pool_id = %s WHERE pool_id IS NULL', (active_pool_id_value,))
+
+        conn.exec_driver_sql(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_single_active_pool '
+            'ON pools (active) WHERE active = TRUE'
+        )
+        conn.exec_driver_sql("""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_penalty_student') THEN
+                    ALTER TABLE student_penalties
+                    ADD CONSTRAINT fk_student_penalty_student FOREIGN KEY (student_id) REFERENCES students(id) NOT VALID;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_penalty_pool') THEN
+                    ALTER TABLE student_penalties
+                    ADD CONSTRAINT fk_student_penalty_pool FOREIGN KEY (pool_id) REFERENCES pools(id) NOT VALID;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_penalty_history_penalty') THEN
+                    ALTER TABLE penalty_history
+                    ADD CONSTRAINT fk_penalty_history_penalty FOREIGN KEY (penalty_id)
+                    REFERENCES student_penalties(id) ON DELETE CASCADE NOT VALID;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_pool') THEN
+                    ALTER TABLE students
+                    ADD CONSTRAINT fk_student_pool FOREIGN KEY (pool_id) REFERENCES pools(id) NOT VALID;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_group_review_pool') THEN
+                    ALTER TABLE group_reviews
+                    ADD CONSTRAINT fk_group_review_pool FOREIGN KEY (pool_id) REFERENCES pools(id) NOT VALID;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_tribe_event_pool') THEN
+                    ALTER TABLE tribe_events
+                    ADD CONSTRAINT fk_tribe_event_pool FOREIGN KEY (pool_id) REFERENCES pools(id) NOT VALID;
+                END IF;
+            END $$;
+        """)
 
         for table in ('users', 'students', 'tribe_events'):
             conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
@@ -6882,6 +7227,11 @@ def should_auto_init_db():
     if value is not None:
         return value.lower() == 'true'
     return os.getenv('VERCEL', '').lower() not in {'1', 'true'}
+
+
+def validate_runtime_config():
+    if _is_production_runtime() and app.config['SECRET_KEY'] == 'dev-secret-key-change-me':
+        raise RuntimeError('SECRET_KEY должен быть задан безопасным значением в production')
 
 
 def should_start_runtime_services():
@@ -6903,6 +7253,8 @@ def sync_telegram_commands_on_startup():
     except Exception as exc:
         app.logger.warning('Telegram commands sync skipped: %s', exc)
 
+
+validate_runtime_config()
 
 if should_auto_init_db():
     with app.app_context():

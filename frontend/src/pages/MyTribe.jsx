@@ -5,9 +5,10 @@ import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/MyTribe.css';
+import { moscowTodayIso } from '../utils/date';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return moscowTodayIso();
 }
 
 function MyTribe({ user }) {
@@ -217,9 +218,9 @@ function MyTribe({ user }) {
                 </div>
                 <div className="student-event-admin">
                   {event.post_url && <a href={event.post_url} target="_blank" rel="noreferrer">Пост</a>}
-                  <button type="button" onClick={() => updateStudentEventStatus(event, 'confirmed')}>Подтвердить</button>
-                  <button type="button" onClick={() => updateStudentEventStatus(event, 'pending')}>Ждет АДМ</button>
-                  <button type="button" onClick={() => updateStudentEventStatus(event, 'rejected')}>Отклонить</button>
+                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'confirmed')}>Подтвердить</button>}
+                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'pending')}>Ждет АДМ</button>}
+                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'rejected')}>Отклонить</button>}
                   <button className="btn-icon danger" type="button" onClick={() => deleteStudentEvent(event)} title="Удалить">
                     <Trash2 size={18} />
                   </button>

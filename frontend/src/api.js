@@ -21,18 +21,17 @@ export function clearSession() {
 }
 
 export const POOLS_CHANGED_EVENT = 'app:pools-changed';
+const POOLS_CHANGED_STORAGE_KEY = 'app:pools-changed-at';
 
 export function emitPoolsChanged() {
   if (typeof window !== 'undefined') {
+    localStorage.setItem(POOLS_CHANGED_STORAGE_KEY, String(Date.now()));
     window.dispatchEvent(new Event(POOLS_CHANGED_EVENT));
   }
 }
 
-export function buildAuthenticatedAssetUrl(path) {
-  if (!path) return '';
-  const token = getToken();
-  const separator = path.includes('?') ? '&' : '?';
-  return `${API_URL}${path}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
+export function isPoolsChangedStorageEvent(event) {
+  return event.key === POOLS_CHANGED_STORAGE_KEY;
 }
 
 async function request(path, { method = 'GET', body } = {}) {
@@ -115,6 +114,19 @@ async function download(path) {
     throw new Error((data && data.error) || `Ошибка ${res.status}`);
   }
   return res.blob();
+}
+
+export async function downloadFile(path, filename) {
+  const blob = await download(path);
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {

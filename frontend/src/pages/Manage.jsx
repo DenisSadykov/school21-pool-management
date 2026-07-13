@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Settings, Trash2 } from 'lucide-react';
-import { api, buildAuthenticatedAssetUrl } from '../api';
+import { api } from '../api';
+import AuthenticatedImage from '../components/AuthenticatedImage';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Manage.css';
 
@@ -102,7 +103,7 @@ function SmallAvatar({ person }) {
   return (
     <span className="manage-avatar">
       {person.avatar_url ? (
-        <img src={buildAuthenticatedAssetUrl(person.avatar_url)} alt={person.name || person.nick} />
+        <AuthenticatedImage src={person.avatar_url} alt={person.name || person.nick} />
       ) : (
         (person.nick || '??').slice(0, 2).toUpperCase()
       )}
