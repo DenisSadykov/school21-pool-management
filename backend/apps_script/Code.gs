@@ -46,7 +46,6 @@ function writeVolunteers(ss, volunteers, warnings) {
 
   sheet.getRange('A2:B59').clearContent();
   sheet.getRange('D2:D59').clearContent();
-  sheet.getRange('F2:F59').clearContent();
 
   var nameFormulas = [];
   for (var formulaRow = 2; formulaRow <= 59; formulaRow += 1) {
@@ -83,14 +82,6 @@ function writeVolunteers(ss, volunteers, warnings) {
     }
   });
 
-  var reviewers = rows.filter(function (item) {
-    return item.is_group_reviewer;
-  }).map(function (item) {
-    return [item.nick || ''];
-  });
-  if (reviewers.length) {
-    sheet.getRange(2, 6, reviewers.length, 1).setValues(reviewers);
-  }
 }
 
 function validateVolunteerNicks(ss, body, warnings) {
@@ -199,7 +190,7 @@ function looksLikeShiftLabel(value) {
 
 function writePenalties(ss, penalties) {
   var sheet = requireSheet(ss, 'penalty');
-  sheet.getRange('A2:G1000').clearContent();
+  sheet.getRange('A2:E1000').clearContent();
   if (!penalties.length) return;
   var rows = penalties.map(function (item) {
     return [
@@ -207,12 +198,10 @@ function writePenalties(ss, penalties) {
       parseIsoDateTime(item.issued_at),
       item.description || '',
       item.volunteer || '',
-      item.status || '',
-      item.entered_by || '',
-      parseIsoDateTime(item.assigned_at)
+      item.status || ''
     ];
   });
-  sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+  sheet.getRange(2, 1, rows.length, 5).setValues(rows);
 }
 
 function writeStudentEvents(ss, events) {
