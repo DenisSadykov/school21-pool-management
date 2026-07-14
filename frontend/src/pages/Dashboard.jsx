@@ -39,9 +39,45 @@ function getTelegramLink(telegram) {
   return username ? `https://t.me/${username}` : '';
 }
 
-function getTelegramBotLink(botUsername) {
-  const username = (botUsername || '').trim().replace(/^@+/, '');
-  return username ? `https://t.me/${username}` : '';
+function normalizeTelegramUsername(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const deepLinkMatch = raw.match(/(?:tg:\/\/resolve\?domain=)([^&\s/]+)/i);
+  if (deepLinkMatch) {
+    return deepLinkMatch[1].replace(/^@+/, '');
+  }
+
+  const webLinkMatch = raw.match(/(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/([^?\s/]+)/i);
+  if (webLinkMatch) {
+    return webLinkMatch[1].replace(/^@+/, '');
+  }
+
+  return raw.replace(/^@+/, '').replace(/^\/+|\/+$/g, '');
+}
+
+function getTelegramBotLinks(botUsername) {
+  const username = normalizeTelegramUsername(botUsername);
+  if (!username) return null;
+  return {
+    username,
+    web: `https://t.me/${username}`,
+    app: `tg://resolve?domain=${username}`,
+  };
+}
+
+function openTelegramBot(event, botLinks) {
+  if (!botLinks) return;
+  event.preventDefault();
+
+  const fallback = window.setTimeout(() => {
+    window.location.assign(botLinks.web);
+  }, 700);
+
+  const cancelFallback = () => window.clearTimeout(fallback);
+  window.addEventListener('pagehide', cancelFallback, { once: true });
+  window.addEventListener('blur', cancelFallback, { once: true });
+  window.location.assign(botLinks.app);
 }
 
 function TelegramConnectTitle({ telegram }) {
@@ -145,7 +181,7 @@ function OpsDashboard({ data }) {
   const notes = data?.dashboard_notes || [];
   const responsibles = data?.pool_responsibles || [];
   const tomorrowCoverageLabel = tomorrowCoverage(data?.tomorrow_blocks || []);
-  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
+  const telegramBotLinks = getTelegramBotLinks(telegram.bot_username);
   const penaltyLinks = [
     {
       icon: CalendarClock,
@@ -195,8 +231,13 @@ function OpsDashboard({ data }) {
                     : 'Сейчас username в системе не указан.'}
                 </p>
               </div>
-              {telegramBotLink && (
-                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+              {telegramBotLinks && (
+                <a
+                  className="dashboard-action telegram-connect-action"
+                  href={telegramBotLinks.web}
+                  onClick={(event) => openTelegramBot(event, telegramBotLinks)}
+                  rel="noreferrer"
+                >
                   Открыть бота <ExternalLink size={16} />
                 </a>
               )}
@@ -255,7 +296,7 @@ function TribeMasterDashboard({ data }) {
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
   const responsibles = data?.pool_responsibles || [];
-  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
+  const telegramBotLinks = getTelegramBotLinks(telegram.bot_username);
   return (
     <>
       <div className="stats-grid ops-grid">
@@ -288,8 +329,13 @@ function TribeMasterDashboard({ data }) {
                     : 'Чтобы получать уведомления о сменах и событиях трайба, привяжи Telegram-бота.'}
                 </p>
               </div>
-              {telegramBotLink && (
-                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+              {telegramBotLinks && (
+                <a
+                  className="dashboard-action telegram-connect-action"
+                  href={telegramBotLinks.web}
+                  onClick={(event) => openTelegramBot(event, telegramBotLinks)}
+                  rel="noreferrer"
+                >
                   Открыть бота <ExternalLink size={16} />
                 </a>
               )}
@@ -333,7 +379,7 @@ function VolunteerDashboard({ data, user }) {
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
   const responsibles = data?.pool_responsibles || [];
-  const telegramBotLink = getTelegramBotLink(telegram.bot_username);
+  const telegramBotLinks = getTelegramBotLinks(telegram.bot_username);
 
   return (
     <>
@@ -354,8 +400,13 @@ function VolunteerDashboard({ data, user }) {
                     : 'Сейчас username в системе не указан.'}
                 </p>
               </div>
-              {telegramBotLink && (
-                <a className="dashboard-action telegram-connect-action" href={telegramBotLink} target="_blank" rel="noreferrer">
+              {telegramBotLinks && (
+                <a
+                  className="dashboard-action telegram-connect-action"
+                  href={telegramBotLinks.web}
+                  onClick={(event) => openTelegramBot(event, telegramBotLinks)}
+                  rel="noreferrer"
+                >
                   Открыть бота <ExternalLink size={16} />
                 </a>
               )}

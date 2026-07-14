@@ -306,15 +306,145 @@ def test_duplicate_telegram_username_is_rejected(client, factories, auth_headers
     assert response.status_code == 409
 
 
-def test_internal_sync_requires_secret(client, monkeypatch):
-    monkeypatch.setattr(app_module, 'process_outbox_once', lambda: {'processed': 2, 'sent': 2, 'errors': 0})
+def test_internal_google_export_requires_secret(client, factories, monkeypatch):
+    pool = factories.pool(
+        'Active',
+        active=True,
+        google_sheet_enabled=True,
+        google_sheet_webhook_url='https://script.google.com/macros/s/test/exec',
+    )
+    monkeypatch.setattr(
+        app_module,
+        'export_pool_to_google_sheets',
+        lambda exported_pool: {'sheets': ['shifts']} if exported_pool.id == pool.id else {},
+    )
 
-    forbidden = client.post('/api/internal/sync')
+    forbidden = client.post('/api/internal/google-sheets/export')
     allowed = client.post(
-        '/api/internal/sync',
+        '/api/internal/google-sheets/export',
         headers={'Authorization': f'Bearer {app_module.INTERNAL_API_SECRET}'},
     )
 
     assert forbidden.status_code == 403
     assert allowed.status_code == 200
-    assert allowed.get_json()['sent'] == 2
+    assert allowed.get_json()['exported'] == [{'pool_id': pool.id, 'sheets': ['shifts']}]
+
+
+def test_google_sheets_payload_is_scoped_to_pool(factories, db_session):
+    first_pool = factories.pool('First', active=True, start_date=date(2026, 7, 20))
+    second_pool = factories.pool('Second', active=False, start_date=date(2026, 8, 3))
+    first_user = factories.user('first-volunteer')
+    second_user = factories.user('second-volunteer')
+    factories.assign(first_user, first_pool)
+    factories.assign(second_user, second_pool)
+    first_block = factories.shift_block(first_pool, date(2026, 7, 20), start='09:00', end='19:00')
+    second_block = factories.shift_block(second_pool, date(2026, 8, 3), start='09:00', end='19:00')
+    db_session.add_all([
+        app_module.Signup(block_id=first_block.id, user_id=first_user.id),
+        app_module.Signup(block_id=second_block.id, user_id=second_user.id),
+        app_module.StudentPenalty(student_name='first-student', pool_id=first_pool.id),
+        app_module.StudentPenalty(student_name='second-student', pool_id=second_pool.id),
+    ])
+    db_session.commit()
+
+    payload = app_module.build_google_sheets_template_payload(first_pool.id)
+
+    assert payload['pool']['id'] == first_pool.id
+    assert [item['nick'] for item in payload['volunteers']] == ['first-volunteer']
+    assert [row['id'] for row in payload['shifts']] == [first_block.id]
+    assert payload['shifts'][0]['volunteers'] == ['first-volunteer']
+    assert [row['student'] for row in payload['penalties']] == ['first-student']
+
+
+def test_pool_google_sheets_configuration_is_staff_only(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('volunteer')
+    pool = factories.pool('Active', active=True)
+
+    forbidden = client.patch(
+        f'/api/pools/{pool.id}/google-sheets',
+        headers=auth_headers(volunteer),
+        json={'enabled': False, 'sheet_url': '', 'webhook_url': ''},
+    )
+    configured = client.patch(
+        f'/api/pools/{pool.id}/google-sheets',
+        headers=auth_headers(admin),
+        json={
+            'enabled': True,
+            'sheet_url': 'https://docs.google.com/spreadsheets/d/test-sheet/edit',
+            'webhook_url': 'https://script.google.com/macros/s/test-script/exec',
+        },
+    )
+
+    assert forbidden.status_code == 403
+    assert configured.status_code == 200
+    assert configured.get_json()['enabled'] is True
+
+
+def test_google_sheets_configuration_rejects_inactive_pool(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    factories.pool('Active', active=True)
+    inactive_pool = factories.pool('Previous', active=False)
+
+    response = client.patch(
+        f'/api/pools/{inactive_pool.id}/google-sheets',
+        headers=auth_headers(admin),
+        json={'enabled': False, 'sheet_url': '', 'webhook_url': ''},
+    )
+
+    assert response.status_code == 409
+
+
+def test_manual_google_sheets_export_does_not_require_schedule_enabled(
+    client, factories, auth_headers, monkeypatch,
+):
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool(
+        'Active',
+        active=True,
+        google_sheet_enabled=False,
+        google_sheet_webhook_url='https://script.google.com/macros/s/test/exec',
+    )
+    monkeypatch.setattr(
+        app_module,
+        'export_pool_to_google_sheets',
+        lambda exported_pool: {'ok': True, 'sheets': ['volunteers', 'shifts']},
+    )
+
+    response = client.post(
+        f'/api/pools/{pool.id}/google-sheets/export',
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()['sheets'] == ['volunteers', 'shifts']
+
+
+def test_internal_google_export_skips_inactive_pools(client, factories, monkeypatch):
+    active_pool = factories.pool(
+        'Active',
+        active=True,
+        google_sheet_enabled=True,
+        google_sheet_webhook_url='https://script.google.com/macros/s/active/exec',
+    )
+    factories.pool(
+        'Inactive',
+        active=False,
+        google_sheet_enabled=True,
+        google_sheet_webhook_url='https://script.google.com/macros/s/inactive/exec',
+    )
+    exported_pool_ids = []
+
+    def fake_export(exported_pool):
+        exported_pool_ids.append(exported_pool.id)
+        return {'sheets': ['shifts']}
+
+    monkeypatch.setattr(app_module, 'export_pool_to_google_sheets', fake_export)
+
+    response = client.post(
+        '/api/internal/google-sheets/export',
+        headers={'Authorization': f'Bearer {app_module.INTERNAL_API_SECRET}'},
+    )
+
+    assert response.status_code == 200
+    assert exported_pool_ids == [active_pool.id]

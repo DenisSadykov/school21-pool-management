@@ -253,6 +253,86 @@ def test_telegram_callback_marks_penalty_awaiting_unlock(client, factories, db_s
     assert any(item.recipient_user_id == admin.id for item in admin_events)
 
 
+def test_responsible_can_confirm_penalty_unlock_from_telegram(client, factories, db_session, monkeypatch):
+    admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    student = app_module.Student(nick='unlock_student', name='Unlock Student', pool_id=pool.id)
+    penalty = app_module.StudentPenalty(
+        student_id=student.id,
+        student_name=student.nick,
+        pool_id=pool.id,
+        workoff_status='awaiting_unlock',
+    )
+    db_session.add_all([student, penalty])
+    db_session.flush()
+    events = app_module._notify_admins_penalty_awaiting_unlock(penalty)
+    event = events[0]
+    event.status = 'sent'
+    db_session.add_all([
+        app_module.TelegramAccount(
+            user_id=admin.id,
+            telegram_username='admin',
+            telegram_user_id='999',
+            telegram_chat_id='999',
+            is_linked=True,
+            delivery_enabled=True,
+        ),
+        app_module.NotificationDelivery(
+            notification_id=event.id,
+            user_id=admin.id,
+            telegram_chat_id='999',
+            delivery_status='sent',
+            message_id='555',
+        ),
+    ])
+    db_session.commit()
+
+    markup = app_module.build_notification_reply_markup(event)
+    assert markup == {
+        'inline_keyboard': [[{
+            'text': 'Разблокирован',
+            'callback_data': f'p:{penalty.id}:u:y:{event.id}',
+        }]],
+    }
+
+    monkeypatch.setattr(app_module, 'TELEGRAM_BOT_TOKEN', 'test-bot-token')
+    answered = []
+    deleted = []
+    monkeypatch.setattr(
+        app_module,
+        'telegram_answer_callback',
+        lambda callback_query_id, text='Готово': answered.append((callback_query_id, text)) or {'ok': True},
+    )
+    monkeypatch.setattr(
+        app_module,
+        'telegram_delete_message',
+        lambda chat_id, message_id: deleted.append((chat_id, message_id)) or {'ok': True},
+    )
+
+    response = client.post('/api/telegram/webhook', json={
+        'callback_query': {
+            'id': 'cb-unlock',
+            'from': {'id': 999, 'username': 'admin'},
+            'message': {'chat': {'id': 999}},
+            'data': f'p:{penalty.id}:u:y:{event.id}',
+        },
+    })
+
+    assert response.status_code == 200
+    db_session.refresh(penalty)
+    assert penalty.workoff_status == 'unlocked'
+    assert answered == [('cb-unlock', 'Статус на платформе: разблокирован')]
+    assert deleted == [('999', '555')]
+
+    history = db_session.query(app_module.PenaltyHistory).filter_by(penalty_id=penalty.id).all()
+    assert history[-1].new_status == 'unlocked'
+    assert history[-1].actor_nick == admin.nick
+    student_payload = app_module._student_list_payload(pool.id)
+    assert student_payload[0]['penalty_status'] == 'clean'
+    assert student_payload[0]['awaiting_unlock_penalties'] == 0
+
+
 def test_telegram_callback_method_no_queues_retry_without_cancelling_new_event(client, factories, db_session, monkeypatch):
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)

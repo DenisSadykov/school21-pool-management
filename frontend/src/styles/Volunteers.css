@@ -232,7 +232,7 @@
 .volunteer-table td {
   padding: var(--spacing-md);
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
   text-align: left;
 }
 
@@ -291,6 +291,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
 }
 
 .person-avatar {
@@ -316,6 +317,9 @@
 }
 
 .person-identity-text {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
   min-width: 0;
 }
 
@@ -487,6 +491,15 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-height: 38px;
+}
+
+.volunteer-table td:nth-child(2),
+.volunteer-table td:nth-child(4),
+.volunteer-table td:nth-child(5),
+.volunteer-table td:nth-child(6),
+.volunteer-table td:nth-child(7) {
+  line-height: 1.2;
 }
 
 .coins-plus {

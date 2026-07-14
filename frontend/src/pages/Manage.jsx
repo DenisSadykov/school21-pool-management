@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Settings, Trash2 } from 'lucide-react';
+import { ExternalLink, Plus, RefreshCw, Settings, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
 import TribeLabel from '../components/TribeLabel';
@@ -71,6 +71,14 @@ function Manage({ user }) {
           </section>
 
           <section className="manage-section">
+            <h2>Автовыгрузка в Google Sheets</h2>
+            <p className="muted">
+              Платформа обновляет состав volunteers, смены, пенальти и трайб-мероприятия, сохраняя оформление таблицы.
+            </p>
+            <GoogleSheetsExportSection poolId={activePool.id} />
+          </section>
+
+          <section className="manage-section">
             <h2>Волонтёры бассейна</h2>
             <p className="muted">Назначь волонтёров из системы или загрузи Excel.</p>
             <PoolVolunteersSection
@@ -95,6 +103,120 @@ function Manage({ user }) {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function GoogleSheetsExportSection({ poolId }) {
+  const [settings, setSettings] = useState(null);
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [enabled, setEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const applyConnectionState = useCallback((data) => {
+    setSettings(data);
+    setSheetUrl(data.sheet_url || '');
+    setWebhookUrl(data.webhook_url || '');
+    setEnabled(Boolean(data.enabled));
+  }, []);
+
+  const load = useCallback(async () => {
+    const data = await api.get(`/api/pools/${poolId}/google-sheets`);
+    applyConnectionState(data);
+  }, [applyConnectionState, poolId]);
+
+  useEffect(() => {
+    load().catch((error) => setMessage(error.message));
+  }, [load]);
+
+  const save = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage('');
+    try {
+      const data = await api.patch(`/api/pools/${poolId}/google-sheets`, {
+        sheet_url: sheetUrl.trim(),
+        webhook_url: webhookUrl.trim(),
+        enabled,
+      });
+      applyConnectionState(data);
+      setMessage('Настройки сохранены');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const exportNow = async () => {
+    if (!window.confirm('Полная выгрузка заменит состав volunteers, смены, пенальти и мероприятия данными активного бассейна. Продолжить?')) {
+      return;
+    }
+    setExporting(true);
+    setMessage('');
+    try {
+      const data = await api.post(`/api/pools/${poolId}/google-sheets/export`, {});
+      applyConnectionState(data);
+      const warningText = data.warnings?.length ? ` Предупреждения: ${data.warnings.join(' · ')}` : '';
+      setMessage(warningText ? `${data.message}. ${warningText.trim()}` : data.message);
+    } catch (error) {
+      setMessage(error.message);
+      await load().catch(() => {});
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  if (!settings) return <p className="pv-empty">Загрузка...</p>;
+
+  return (
+    <div className="google-sheets-export">
+      <form className="google-sheets-export-form" onSubmit={save}>
+        <label>
+          <span>Ссылка на таблицу</span>
+          <input
+            type="url"
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            value={sheetUrl}
+            onChange={(event) => setSheetUrl(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>URL Apps Script</span>
+          <input
+            type="url"
+            placeholder="https://script.google.com/macros/s/.../exec"
+            value={webhookUrl}
+            onChange={(event) => setWebhookUrl(event.target.value)}
+          />
+        </label>
+        <label className="google-sheets-toggle">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <span>Обновлять автоматически каждые 5 минут</span>
+        </label>
+        <div className="google-sheets-actions">
+          <button className="btn-primary" type="submit" disabled={saving}>
+            {saving ? 'Сохраняю...' : 'Сохранить подключение'}
+          </button>
+          <button className="btn-secondary" type="button" onClick={exportNow} disabled={!settings.webhook_url || exporting}>
+            <RefreshCw size={15} /> {exporting ? 'Обновляю...' : 'Обновить сейчас'}
+          </button>
+          {sheetUrl && (
+            <a className="btn-secondary" href={sheetUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={15} /> Открыть таблицу
+            </a>
+          )}
+        </div>
+      </form>
+      <div className="google-sheets-status">
+        <span className={settings.enabled ? 'is-enabled' : ''}>{settings.enabled ? 'Автовыгрузка включена' : 'Автовыгрузка выключена'}</span>
+        <span>Последнее обновление: {settings.last_export_at ? new Date(settings.last_export_at).toLocaleString('ru-RU') : 'ещё не выполнялось'}</span>
+        {settings.last_error && <span className="is-error">Ошибка: {settings.last_error}</span>}
+      </div>
+      {message && <div className="pv-msg">{message}</div>}
     </div>
   );
 }

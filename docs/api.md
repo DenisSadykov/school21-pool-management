@@ -156,19 +156,20 @@ GET /rewards
 
 ---
 
-### Синхронизация
+### Выгрузка в Google Sheets
 
-#### Sync with Google Sheets
+Настройки и ручная выгрузка доступны администраторам и тимлидам бассейна:
+
 ```http
-POST /sync
+GET /api/pools/{pool_id}/google-sheets
+PATCH /api/pools/{pool_id}/google-sheets
+POST /api/pools/{pool_id}/google-sheets/export
 ```
 
-**Response (200):**
-```json
-{
-  "message": "Sync started",
-  "timestamp": "2026-06-22T10:30:00"
-}
+Плановая выгрузка всех включённых бассейнов запускается внутренним endpoint:
+
+```http
+POST /api/internal/google-sheets/export
 ```
 
 ---
