@@ -1,9 +1,8 @@
-name: Sync with Google Sheets
+name: Export to Google Sheets
 
 on:
   schedule:
-    # Каждый час
-    - cron: '0 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     # Возможность запустить вручную
 
@@ -11,8 +10,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Flush sync outbox
+      - name: Export configured pool snapshots
         run: |
           curl -fsS -X POST \
             -H "Authorization: Bearer ${{ secrets.NOTIFICATIONS_DISPATCH_SECRET }}" \
-            "https://school21-pool-management-api.vercel.app/api/internal/sync"
+            "https://school21-pool-management-api.vercel.app/api/internal/google-sheets/export"

@@ -188,3 +188,52 @@ def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, a
     assert responsible_lead.id in recipients
     assert unrelated_admin.id not in recipients
     assert unrelated_lead.id not in recipients
+
+
+def test_penalty_block_notification_is_dispatched_immediately(client, factories, auth_headers, db_session, monkeypatch):
+    admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
+    volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    student = app_module.Student(nick='instant_student', name='Instant Student', pool_id=pool.id)
+    db_session.add_all([
+        student,
+        app_module.TelegramAccount(
+            user_id=admin.id,
+            telegram_username='admin',
+            telegram_chat_id='999',
+            is_linked=True,
+            delivery_enabled=True,
+        ),
+    ])
+    db_session.commit()
+
+    monkeypatch.setattr(app_module, 'TELEGRAM_BOT_TOKEN', 'test-bot-token')
+    sent_messages = []
+    monkeypatch.setattr(
+        app_module,
+        'telegram_send_message',
+        lambda chat_id, text, disable_notification=False, reply_markup=None: sent_messages.append({
+            'chat_id': chat_id,
+            'text': text,
+            'reply_markup': reply_markup,
+        }) or {'message_id': 777},
+    )
+
+    response = client.post(
+        '/api/penalties',
+        headers=auth_headers(volunteer),
+        json={'student_id': student.id, 'description': 'Late'},
+    )
+
+    assert response.status_code == 201
+    penalty = db_session.query(app_module.StudentPenalty).filter_by(student_id=student.id).one()
+    event = db_session.query(app_module.NotificationEvent).filter_by(
+        type='penalty_admin_block',
+        source_entity_id=penalty.id,
+    ).one()
+    assert event.status == 'sent'
+    assert len(sent_messages) == 1
+    assert sent_messages[0]['chat_id'] == '999'
+    assert sent_messages[0]['reply_markup'] is None

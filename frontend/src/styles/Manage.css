@@ -73,6 +73,82 @@
   justify-content: center;
 }
 
+.google-sheets-export {
+  display: grid;
+  gap: 10px;
+}
+
+.google-sheets-export-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.google-sheets-export-form > label:not(.google-sheets-toggle) {
+  display: grid;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.google-sheets-export-form input[type="url"] {
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.google-sheets-toggle,
+.google-sheets-actions,
+.google-sheets-status {
+  grid-column: 1 / -1;
+}
+
+.google-sheets-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.google-sheets-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.google-sheets-actions .btn-primary,
+.google-sheets-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.google-sheets-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.google-sheets-status .is-enabled {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.google-sheets-status .is-error {
+  color: var(--danger);
+}
+
 .inline-form input,
 .inline-form select {
   background-color: var(--bg-elevated);
@@ -588,5 +664,13 @@
 
   .schedule-generator-actions {
     grid-template-columns: 1fr;
+  }
+
+  .google-sheets-export-form {
+    grid-template-columns: 1fr;
+  }
+
+  .google-sheets-actions > * {
+    width: 100%;
   }
 }

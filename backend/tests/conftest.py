@@ -18,6 +18,7 @@ os.environ['AUTO_SYNC_TELEGRAM_COMMANDS'] = 'false'
 os.environ['DATABASE_URL'] = f'sqlite:///{TEST_DB_PATH}'
 os.environ['SECRET_KEY'] = 'test-secret-key'
 os.environ['INTERNAL_API_SECRET'] = 'test-internal-secret'
+os.environ['SYNC_SECRET'] = 'test-sheets-secret'
 os.environ['TELEGRAM_BOT_TOKEN'] = ''
 os.environ['TELEGRAM_WEBHOOK_SECRET'] = ''
 

@@ -99,3 +99,45 @@ def test_create_broadcast_creates_events_and_skips_unlinked_users(client, factor
     assert statuses_by_user[volunteer_linked.id] == 'pending'
     assert statuses_by_user[volunteer_unlinked.id] == 'skipped'
 
+
+def test_failed_immediate_delivery_returns_event_to_retry_queue(factories, db_session, monkeypatch):
+    admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
+    pool = factories.pool('Active pool', active=True)
+    event = app_module.NotificationEvent(
+        type='penalty_admin_block',
+        priority='urgent',
+        status='queued',
+        recipient_user_id=admin.id,
+        pool_id=pool.id,
+        payload='{"text":"Срочное уведомление"}',
+        dedupe_key='retry-event',
+    )
+    account = app_module.TelegramAccount(
+        user_id=admin.id,
+        telegram_username='admin',
+        telegram_chat_id='999',
+        is_linked=True,
+        delivery_enabled=True,
+    )
+    db_session.add_all([event, account])
+    db_session.commit()
+
+    monkeypatch.setattr(
+        app_module,
+        'telegram_send_message',
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('temporary Telegram error')),
+    )
+
+    result = app_module.process_pending_notifications(
+        limit=1,
+        event_ids=[event.id],
+        schedule_events=False,
+    )
+
+    db_session.refresh(event)
+    delivery = db_session.query(app_module.NotificationDelivery).filter_by(notification_id=event.id).one()
+    assert result['failed'] == 1
+    assert event.status == 'queued'
+    assert event.scheduled_for is not None
+    assert delivery.delivery_status == 'error'
+    assert delivery.error == 'temporary Telegram error'

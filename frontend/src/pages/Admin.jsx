@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { api, downloadFile } from '../api';
 import { moscowTodayIso } from '../utils/date';
 import '../styles/Pages.css';
@@ -47,7 +47,6 @@ function formatActionDetails(item) {
 }
 
 function Admin({ user }) {
-  const [status, setStatus] = useState(null);
   const [backup, setBackup] = useState(null);
   const [actions, setActions] = useState([]);
   const [message, setMessage] = useState('');
@@ -56,12 +55,10 @@ function Admin({ user }) {
   const isAdmin = user?.role === 'admin';
   const canChangePassword = ['admin', 'team_lead'].includes(user?.role);
 
-  const loadStatus = () => api.get('/api/admin/sync-status').then(setStatus).catch(() => {});
   const loadBackup = () => api.get('/api/admin/backup-status').then(setBackup).catch(() => {});
   const loadActions = () => api.get('/api/admin/action-log?limit=60').then(setActions).catch(() => []);
 
   useEffect(() => {
-    loadStatus();
     loadBackup();
     loadActions();
   }, []);
@@ -71,16 +68,6 @@ function Admin({ user }) {
       const filename = `pool-export-${moscowTodayIso()}.xlsx`;
       await downloadFile('/api/admin/export.xlsx', filename);
       setMessage('✅ Excel-экспорт скачан.');
-      loadActions();
-    } catch (e) {
-      setMessage('❌ ' + e.message);
-    }
-  };
-
-  const exportGoogleSheets = async () => {
-    try {
-      const result = await api.post('/api/admin/export/google-sheets', {});
-      setMessage(`✅ ${result.message}`);
       loadActions();
     } catch (e) {
       setMessage('❌ ' + e.message);
@@ -175,7 +162,6 @@ function Admin({ user }) {
           <h2>Экспорт и резерв</h2>
           <div className="admin-actions">
             <button className="btn-secondary" type="button" onClick={downloadExcel}>Скачать Excel</button>
-            <button className="btn-secondary" type="button" onClick={exportGoogleSheets}>Выгрузить в Google Sheets</button>
             <button className="btn-secondary" type="button" onClick={createBackup}>Создать резерв сейчас</button>
           </div>
           <div className="info-list">
@@ -186,22 +172,6 @@ function Admin({ user }) {
             <div className="info-item"><span>Папка:</span><strong>{backup?.backup_dir || '—'}</strong></div>
           </div>
           <p className="text-muted">Резерв создаётся автоматически один раз в сутки, пока запущен бэкенд.</p>
-        </section>
-
-        <section className="admin-section">
-          <h2><RefreshCw size={20} /> Синхронизация с Google Sheets</h2>
-          {status ? (
-            <div className="info-list">
-              <div className="info-item"><span>Подключение настроено:</span>
-                <strong>{status.configured ? '✅ да' : '❌ нет (нужен google_key.json)'}</strong></div>
-              <div className="info-item"><span>В очереди (ждут отправки):</span><strong>{status.pending}</strong></div>
-              <div className="info-item"><span>Отправлено:</span><strong>{status.sent}</strong></div>
-              <div className="info-item"><span>Ошибок:</span><strong>{status.errors}</strong></div>
-              <div className="info-item"><span>Последняя отправка:</span>
-                <strong>{status.last_sent_at ? new Date(status.last_sent_at).toLocaleString('ru-RU') : '—'}</strong></div>
-            </div>
-          ) : <p className="text-muted">Загрузка...</p>}
-          <p className="text-muted">Запись в таблицу идёт автоматически через очередь (День 2 — подключение).</p>
         </section>
 
         {canChangePassword && (

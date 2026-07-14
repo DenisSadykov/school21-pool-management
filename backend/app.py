@@ -123,16 +123,14 @@ REWARD_EVENT_TYPES = {
     'confession': {'label': 'Исповедь', 'coins': REWARD_RATES['confession']},
 }
 
-# Синхронизация сайт -> Google Sheets через Apps Script Web App
-SYNC_WEBHOOK_URL = os.getenv('SYNC_WEBHOOK_URL', '')
+# Односторонняя выгрузка platform -> Google Sheets через Apps Script.
 SYNC_SECRET = os.getenv('SYNC_SECRET', '')
-SYNC_INTERVAL = int(os.getenv('SYNC_INTERVAL', '15'))  # сек
 BACKUP_DIR = os.getenv('BACKUP_DIR', os.path.join(os.path.dirname(__file__), 'backups'))
 BACKUP_INTERVAL = int(os.getenv('BACKUP_INTERVAL', str(60 * 60)))  # сек
-_sync_lock = threading.Lock()
 _backup_lock = threading.Lock()
 _runtime_started = False
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+TELEGRAM_API_TIMEOUT = max(1.0, float(os.getenv('TELEGRAM_API_TIMEOUT', '8')))
 TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '').strip().lstrip('@')
 TELEGRAM_TEST_MODE = os.getenv('TELEGRAM_TEST_MODE', 'true').lower() == 'true'
 TELEGRAM_POLL_INTERVAL = float(os.getenv('TELEGRAM_POLL_INTERVAL', '2'))
@@ -197,6 +195,11 @@ class Pool(db.Model):
     start_date = db.Column(db.Date)
     active = db.Column(db.Boolean, default=True)
     archived = db.Column(db.Boolean, default=False)
+    google_sheet_url = db.Column(db.Text)
+    google_sheet_webhook_url = db.Column(db.Text)
+    google_sheet_enabled = db.Column(db.Boolean, default=False)
+    google_sheet_last_export_at = db.Column(db.DateTime)
+    google_sheet_last_error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
     __table_args__ = (
         db.Index(
@@ -518,29 +521,6 @@ class AppSetting(db.Model):
     updated_at = db.Column(db.DateTime, default=_naive_utcnow, onupdate=_naive_utcnow)
 
 
-class SyncOutbox(db.Model):
-    """Очередь на гарантированную доставку в Google Sheets (сайт -> таблица)."""
-    __tablename__ = 'sync_outbox'
-    id = db.Column(db.Integer, primary_key=True)
-    entity = db.Column(db.String(50), nullable=False)   # 'signup', 'penalty', ...
-    action = db.Column(db.String(20), nullable=False)   # 'create', 'delete', 'update'
-    payload = db.Column(db.Text)                          # JSON
-    status = db.Column(db.String(20), default='pending')  # pending, sent, error
-    attempts = db.Column(db.Integer, default=0)
-    error = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=_naive_utcnow)
-    sent_at = db.Column(db.DateTime)
-
-
-def enqueue_sync(entity, action, payload):
-    """Положить изменение в outbox. Реальный пуш в таблицу — воркером (День 2)."""
-    contextual_payload = dict(payload or {})
-    contextual_payload.setdefault('pool_id', active_pool_id())
-    item = SyncOutbox(entity=entity, action=action, payload=json.dumps(contextual_payload, ensure_ascii=False))
-    db.session.add(item)
-    # commit делает вызывающий код вместе со своей транзакцией
-
-
 def _actor_snapshot(user):
     if not user:
         return None, None, None
@@ -653,8 +633,9 @@ def update_telegram_settings(payload):
     return next_settings, changes
 
 
-def add_penalty_history(penalty, old_status, new_status, old_hours, comment=''):
-    actor_id, actor_nick, actor_name = _actor_snapshot(getattr(g, 'user', None))
+def add_penalty_history(penalty, old_status, new_status, old_hours, comment='', actor=None):
+    actor = actor or getattr(g, 'user', None)
+    actor_id, actor_nick, actor_name = _actor_snapshot(actor)
     db.session.add(PenaltyHistory(
         penalty_id=penalty.id,
         old_status=old_status,
@@ -928,7 +909,7 @@ def telegram_api(method, payload=None):
     response = requests.post(
         f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
         json=payload or {},
-        timeout=30,
+        timeout=TELEGRAM_API_TIMEOUT,
     )
     response.raise_for_status()
     data = response.json()
@@ -944,7 +925,7 @@ def telegram_get(method, params=None):
     response = requests.get(
         f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
         params=params or {},
-        timeout=30,
+        timeout=TELEGRAM_API_TIMEOUT,
     )
     response.raise_for_status()
     data = response.json()
@@ -1565,7 +1546,7 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
     if new_status == 'pending':
         penalty.date_worked_off = None
     if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:
-        add_penalty_history(penalty, old_status, new_status, old_hours, comment)
+        add_penalty_history(penalty, old_status, new_status, old_hours, comment, actor=actor)
         log_action(
             'telegram_update',
             'penalty',
@@ -1579,17 +1560,10 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
             },
             actor=actor,
         )
-    enqueue_sync('penalty', 'update', {
-        'id': penalty.id,
-        'student': penalty.student_name,
-        'status': new_status,
-        'total_hours': penalty.hours * penalty.multiplier,
-    })
-
-
 def _notify_admins_penalty_created(penalty):
+    events = []
     for user in _pool_responsible_users(penalty.pool_id):
-        _queue_notification(
+        event = _queue_notification(
             user,
             'penalty_admin_block',
             (
@@ -1603,11 +1577,15 @@ def _notify_admins_penalty_created(penalty):
             source_entity='penalty',
             source_entity_id=penalty.id,
         )
+        if event:
+            events.append(event)
+    return events
 
 
 def _notify_admins_penalty_awaiting_unlock(penalty):
+    events = []
     for user in _pool_responsible_users(penalty.pool_id):
-        _queue_notification(
+        event = _queue_notification(
             user,
             'penalty_admin_unlock',
             (
@@ -1620,6 +1598,17 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
             source_entity='penalty',
             source_entity_id=penalty.id,
         )
+        if not event:
+            continue
+        db.session.flush()
+        payload = json.loads(event.payload or '{}')
+        payload['action_buttons'] = [{
+            'text': 'Разблокирован',
+            'callback_data': f'p:{penalty.id}:u:y:{event.id}',
+        }]
+        event.payload = json.dumps(payload, ensure_ascii=False)
+        events.append(event)
+    return events
 
 
 def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'):
@@ -1724,6 +1713,23 @@ def telegram_handle_callback(callback):
             telegram_answer_callback(callback_id, 'Действие уже не относится к активному бассейну')
         return {'ok': False, 'reason': 'inactive_pool_context'}
 
+    expected_event_type = {
+        'm': 'penalty_method_question',
+        'c': 'penalty_workoff_check',
+        'u': 'penalty_admin_unlock',
+    }.get(question)
+    if (
+        not expected_event_type
+        or event.type != expected_event_type
+        or event.source_entity != 'penalty'
+        or event.source_entity_id != penalty.id
+    ):
+        if callback_id:
+            telegram_answer_callback(callback_id, 'Действие больше недоступно')
+        return {'ok': False, 'reason': 'invalid_event_context'}
+
+    immediate_events = []
+
     if question == 'm':
         event_type = 'penalty_method_question'
         if answer == 'y' and penalty.workoff_status in ('pending', 'overdue'):
@@ -1745,7 +1751,7 @@ def telegram_handle_callback(callback):
         if answer == 'y' and penalty.workoff_status == 'in_workoff':
             _set_penalty_status_from_bot(penalty, 'awaiting_unlock', actor, 'Telegram: пенальти отработан')
             _delete_related_penalty_messages(penalty.id, event_type, event_id)
-            _notify_admins_penalty_awaiting_unlock(penalty)
+            immediate_events = _notify_admins_penalty_awaiting_unlock(penalty)
             if callback_id:
                 telegram_answer_callback(callback_id, 'Статус: ожидает разблокировки')
         elif answer == 'n' and penalty.workoff_status == 'in_workoff':
@@ -1757,7 +1763,35 @@ def telegram_handle_callback(callback):
             _delete_related_penalty_messages(penalty.id, event_type, event_id)
             if callback_id:
                 telegram_answer_callback(callback_id, 'Вопрос пропущен')
+    elif question == 'u':
+        is_responsible = PoolVolunteer.query.filter(
+            PoolVolunteer.pool_id == penalty.pool_id,
+            PoolVolunteer.user_id == actor.id,
+            PoolVolunteer.pool_role.in_(['responsible_admin', 'responsible_team_lead']),
+        ).first() is not None
+        if not is_responsible:
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Только ответственный может подтвердить разблокировку')
+            return {'ok': False, 'reason': 'not_pool_responsible'}
+        if answer == 'y' and penalty.workoff_status == 'awaiting_unlock':
+            _set_penalty_status_from_bot(
+                penalty,
+                'unlocked',
+                actor,
+                'Telegram: ответственный подтвердил разблокировку',
+            )
+            _delete_related_penalty_messages(penalty.id, 'penalty_admin_unlock')
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Статус на платформе: разблокирован')
+        elif penalty.workoff_status == 'unlocked':
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Ученик уже отмечен разблокированным')
+        else:
+            if callback_id:
+                telegram_answer_callback(callback_id, 'Пенальти уже изменилось, обнови данные')
     db.session.commit()
+    if immediate_events:
+        dispatch_notifications_immediately(immediate_events)
     return {'ok': True}
 
 
@@ -1803,7 +1837,8 @@ def _queue_shift_change_notifications(block, target_user, action):
 def mark_delivery_failed(event, delivery, error_text):
     delivery.delivery_status = 'error'
     delivery.error = (error_text or '')[:500]
-    event.status = 'error'
+    event.status = 'queued'
+    event.scheduled_for = _utcnow() + timedelta(minutes=5)
 
 
 def _schedule_daily_shift_notifications():
@@ -1942,8 +1977,9 @@ def enqueue_scheduled_notifications():
     _schedule_penalty_checks()
 
 
-def process_pending_notifications(limit=20):
-    enqueue_scheduled_notifications()
+def process_pending_notifications(limit=20, event_ids=None, schedule_events=True):
+    if schedule_events:
+        enqueue_scheduled_notifications()
     now = _utcnow()
     stale_before = now - timedelta(minutes=10)
     NotificationEvent.query.filter(
@@ -1953,11 +1989,16 @@ def process_pending_notifications(limit=20):
         NotificationEvent.status: 'queued',
         NotificationEvent.processing_started_at: None,
     }, synchronize_session=False)
-    candidate_ids = [row.id for row in (
+    candidate_query = (
         NotificationEvent.query
         .with_entities(NotificationEvent.id)
         .filter(NotificationEvent.status.in_(['queued', 'pending']))
         .filter(db.or_(NotificationEvent.scheduled_for.is_(None), NotificationEvent.scheduled_for <= now))
+    )
+    if event_ids is not None:
+        candidate_query = candidate_query.filter(NotificationEvent.id.in_(event_ids))
+    candidate_ids = [row.id for row in (
+        candidate_query
         .order_by(NotificationEvent.created_at.asc(), NotificationEvent.id.asc())
         .limit(limit)
         .all()
@@ -2025,6 +2066,7 @@ def process_pending_notifications(limit=20):
             delivery.error = None
             event.status = 'sent'
             event.sent_at = _utcnow()
+            event.scheduled_for = None
             event.processing_started_at = None
             account.last_delivery_at = _utcnow()
             log_action(
@@ -2066,6 +2108,25 @@ def process_pending_notifications(limit=20):
     }
 
 
+def dispatch_notifications_immediately(events):
+    """Deliver selected committed events now; the regular queue remains the fallback."""
+    if not _telegram_is_configured():
+        return {'processed': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
+    event_ids = [event.id for event in events if event and event.id]
+    if not event_ids:
+        return {'processed': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
+    try:
+        return process_pending_notifications(
+            limit=len(event_ids),
+            event_ids=event_ids,
+            schedule_events=False,
+        )
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.exception('Immediate Telegram delivery failed: %s', exc)
+        return {'processed': 0, 'sent': 0, 'failed': len(event_ids), 'skipped': 0}
+
+
 def verify_internal_api_secret():
     if not INTERNAL_API_SECRET:
         return False
@@ -2074,91 +2135,6 @@ def verify_internal_api_secret():
     alt = request.headers.get('X-Internal-Secret', '')
     query_secret = request.args.get('secret', '')
     return INTERNAL_API_SECRET in {bearer, alt, query_secret}
-
-
-def process_outbox_once():
-    """Отправить накопленные изменения в Google Sheets (Apps Script Web App).
-
-    Гарантия доставки: пока строка не отправлена успешно, она остаётся в очереди
-    (pending/error) и будет повторяться. Блокировка не даёт двум запускам
-    отправить одно и то же дважды.
-    """
-    if not SYNC_WEBHOOK_URL:
-        return {'ok': False, 'reason': 'not_configured', 'sent': 0}
-    if not _sync_lock.acquire(blocking=False):
-        return {'ok': True, 'sent': 0, 'skipped': True}
-    try:
-        items = (SyncOutbox.query
-                 .filter(SyncOutbox.status.in_(['pending', 'error']))
-                 .order_by(SyncOutbox.id)
-                 .limit(200).all())
-        if not items:
-            return {'ok': True, 'sent': 0}
-
-        body = {
-            'secret': SYNC_SECRET,
-            'items': [{
-                'id': i.id,
-                'entity': i.entity,
-                'action': i.action,
-                'payload': json.loads(i.payload or '{}'),
-            } for i in items],
-        }
-        try:
-            import requests
-            resp = requests.post(SYNC_WEBHOOK_URL, json=body, timeout=20)
-            data = resp.json() if resp.content else {}
-        except Exception as e:  # сеть/таймаут/невалидный JSON
-            for i in items:
-                i.attempts += 1
-                i.status = 'error'
-                i.error = str(e)[:500]
-            db.session.commit()
-            return {'ok': False, 'error': str(e), 'sent': 0}
-
-        if resp.status_code == 200 and isinstance(data, dict) and data.get('ok'):
-            processed = set(data.get('processed') or [i.id for i in items])
-            now = _utcnow()
-            sent = 0
-            for i in items:
-                if i.id in processed:
-                    i.status = 'sent'
-                    i.sent_at = now
-                    i.error = None
-                    sent += 1
-                else:
-                    i.attempts += 1
-                    i.status = 'error'
-            db.session.commit()
-            return {'ok': True, 'sent': sent}
-
-        err = (data.get('error') if isinstance(data, dict) else None) or f'HTTP {resp.status_code}'
-        for i in items:
-            i.attempts += 1
-            i.status = 'error'
-            i.error = str(err)[:500]
-        db.session.commit()
-        return {'ok': False, 'error': err, 'sent': 0}
-    finally:
-        _sync_lock.release()
-
-
-def sync_worker_loop():
-    """Фоновый цикл: периодически досылает очередь в таблицу."""
-    while True:
-        try:
-            if SYNC_WEBHOOK_URL:
-                with app.app_context():
-                    process_outbox_once()
-        except Exception as e:
-            print('[sync] worker error:', e)
-        time.sleep(SYNC_INTERVAL)
-
-
-def start_sync_worker():
-    t = threading.Thread(target=sync_worker_loop, daemon=True)
-    t.start()
-    print(f'[sync] воркер запущен, интервал {SYNC_INTERVAL}s, webhook={"да" if SYNC_WEBHOOK_URL else "НЕ настроен"}')
 
 
 # ==================== Авторизация ====================
@@ -3492,13 +3468,6 @@ def signup_block(block_id):
             'label': block.label or '',
         },
     )
-    enqueue_sync('signup', 'create', {
-        'nick': target_user.nick,
-        'date': block.date.isoformat(),
-        'time': f'{block.time_start} - {block.time_end}',
-        'label': block.label or '',
-        'at': _utcnow().isoformat(),
-    })
     _queue_shift_change_notifications(block, target_user, 'create')
     db.session.commit()
     return jsonify({'message': 'Записан на смену'}), 201
@@ -3537,13 +3506,6 @@ def unsignup_block(block_id):
             'label': block.label or '',
         },
     )
-    enqueue_sync('signup', 'delete', {
-        'nick': target_user.nick if target_user else str(target),
-        'date': block.date.isoformat(),
-        'time': f'{block.time_start} - {block.time_end}',
-        'label': block.label or '',
-        'at': _utcnow().isoformat(),
-    })
     if target_user:
         _queue_shift_change_notifications(block, target_user, 'delete')
     db.session.commit()
@@ -5974,20 +5936,14 @@ def create_penalty():
             'description': penalty.description,
         },
     )
-    enqueue_sync('penalty', 'create', {
-        'student': penalty.student_name,
-        'volunteer': penalty.volunteer_name,
-        'hours': 2,
-        'description': penalty.description,
-        'at': _utcnow().isoformat(),
-    })
-    _notify_admins_penalty_created(penalty)
+    critical_events = _notify_admins_penalty_created(penalty)
     _queue_penalty_method_question(
         penalty,
         scheduled_for=_utcnow() + timedelta(minutes=5),
         suffix='initial',
     )
     db.session.commit()
+    dispatch_notifications_immediately(critical_events)
     return jsonify({'id': penalty.id, 'message': 'Штраф добавлен'}), 201
 
 
@@ -6003,6 +5959,7 @@ def update_penalty_status(penalty_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
     old_status = penalty.workoff_status
     old_hours = penalty.hours * penalty.multiplier
+    critical_events = []
     new_status = data.get('workoff_status', penalty.workoff_status)
     if new_status not in PENALTY_STATUSES:
         return jsonify({'error': 'Некорректный статус штрафа'}), 400
@@ -6020,7 +5977,7 @@ def update_penalty_status(penalty_id):
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question'])
         if new_status == 'awaiting_unlock':
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
-            _notify_admins_penalty_awaiting_unlock(penalty)
+            critical_events = _notify_admins_penalty_awaiting_unlock(penalty)
         if new_status in ('pending', 'overdue', 'unlocked', 'done'):
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
     if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:
@@ -6038,13 +5995,9 @@ def update_penalty_status(penalty_id):
                 'new_hours': penalty.hours * penalty.multiplier,
             },
         )
-    enqueue_sync('penalty', 'update', {
-        'id': penalty.id,
-        'student': penalty.student_name,
-        'status': new_status,
-        'total_hours': penalty.hours * penalty.multiplier,
-    })
     db.session.commit()
+    if critical_events:
+        dispatch_notifications_immediately(critical_events)
     return jsonify({'message': 'Штраф обновлён'})
 
 
@@ -6072,7 +6025,6 @@ def delete_penalty(penalty_id):
         },
     )
     db.session.delete(penalty)
-    enqueue_sync('penalty', 'delete', {'id': penalty_id, 'student': student_name})
     db.session.commit()
     return jsonify({'message': f'Штраф для {student_name} отменён'})
 
@@ -6474,7 +6426,6 @@ def start_runtime_services():
     if _runtime_started:
         return
     _runtime_started = True
-    start_sync_worker()
     start_backup_worker()
 
 
@@ -6496,34 +6447,264 @@ def export_xlsx():
     )
 
 
-@app.route('/api/admin/export/google-sheets', methods=['POST'])
-@require_role('team_lead', 'admin')
-def export_google_sheets():
-    if not SYNC_WEBHOOK_URL:
-        return jsonify({'error': 'SYNC_WEBHOOK_URL не настроен'}), 400
-    sheets = build_export_sheets()
-    body = {
-        'secret': SYNC_SECRET,
-        'mode': 'full_export',
-        'exported_at': _utcnow().isoformat(),
-        'sheets': {
-            name: [data['headers'], *data['rows']]
-            for name, data in sheets.items()
-        },
+GOOGLE_TEMPLATE_SHEETS = ['volunteers', 'shifts', 'penalty', 'tribe_event', 'tribe_events']
+
+
+def _template_penalty_status(status):
+    if status in {'done', 'unlocked'}:
+        return 'Отработано'
+    if status in {'in_workoff', 'awaiting_unlock'}:
+        return 'Назначено'
+    return 'Ожидает'
+
+
+def build_google_sheets_template_payload(pool_id):
+    """Build a pool-scoped snapshot for the existing formatted Sheets template."""
+    pool = get_model_or_404(Pool, pool_id)
+    memberships = (
+        db.session.query(PoolVolunteer, User)
+        .join(User, User.id == PoolVolunteer.user_id)
+        .filter(PoolVolunteer.pool_id == pool_id)
+        .order_by(User.nick)
+        .all()
+    )
+    volunteers = sorted(({
+        'nick': user.nick,
+        'name': user.name or user.nick,
+        'role': membership.pool_role or 'volunteer',
+        'tribe': membership.tribe or '',
+        'is_group_reviewer': bool(user.is_group_reviewer),
     }
+        for membership, user in memberships
+        if membership.pool_role in {'volunteer', 'tribe_master'}
+    ), key=lambda item: item['nick'].lower())
+    block_rows = ShiftBlock.query.filter_by(pool_id=pool_id).order_by(
+        ShiftBlock.date,
+        ShiftBlock.time_start,
+        ShiftBlock.id,
+    ).all()
+    block_ids = [block.id for block in block_rows]
+    signup_rows = (
+        db.session.query(Signup, User)
+        .join(User, User.id == Signup.user_id)
+        .filter(Signup.block_id.in_(block_ids))
+        .order_by(Signup.created_at, Signup.id)
+        .all()
+        if block_ids else []
+    )
+    signups_by_block = defaultdict(list)
+    for signup, user in signup_rows:
+        signups_by_block[signup.block_id].append(user.nick)
+
+    students = {
+        student.id: student
+        for student in Student.query.filter_by(pool_id=pool_id).all()
+    }
+    student_ids = list(students)
+    student_events = (
+        StudentEvent.query
+        .filter(StudentEvent.student_id.in_(student_ids))
+        .order_by(StudentEvent.event_date, StudentEvent.created_at, StudentEvent.id)
+        .all()
+        if student_ids else []
+    )
+    creators = {
+        user.id: user
+        for user in User.query.filter(User.id.in_({
+            event.created_by for event in student_events if event.created_by
+        })).all()
+    }
+    penalties = StudentPenalty.query.filter_by(pool_id=pool_id).order_by(
+        StudentPenalty.date_issued,
+        StudentPenalty.id,
+    ).all()
+    tribe_events = TribeEvent.query.filter_by(pool_id=pool_id).order_by(
+        TribeEvent.event_date,
+        TribeEvent.time_start,
+        TribeEvent.id,
+    ).all()
+
+    return {
+        'secret': SYNC_SECRET,
+        'mode': 'template_snapshot_v1',
+        'exported_at': _utcnow().isoformat(),
+        'pool': {
+            'id': pool.id,
+            'name': pool.name,
+            'start_date': pool.start_date.isoformat() if pool.start_date else None,
+        },
+        'volunteers': volunteers,
+        'shifts': [{
+            'id': block.id,
+            'date': block.date.isoformat(),
+            'time_start': block.time_start,
+            'time_end': block.time_end,
+            'label': block.label or '',
+            'capacity': block.capacity,
+            'volunteers': signups_by_block.get(block.id, []),
+        } for block in block_rows],
+        'penalties': [{
+            'id': penalty.id,
+            'student': penalty.student_name,
+            'issued_at': penalty.date_issued.isoformat() if penalty.date_issued else None,
+            'description': penalty.description or '',
+            'volunteer': penalty.volunteer_name or '',
+            'status': _template_penalty_status(penalty.workoff_status),
+            'entered_by': penalty.volunteer_name or '',
+            'assigned_at': penalty.date_issued.isoformat() if penalty.date_issued else None,
+        } for penalty in penalties],
+        'student_events': [{
+            'id': event.id,
+            'student': students[event.student_id].nick,
+            'tribe': students[event.student_id].tribe or '',
+            'event_date': event.event_date.isoformat() if event.event_date else None,
+            'event_type': _export_event_type_label(event.event_type),
+            'description': event.comment or '',
+            'tribe_master': creators[event.created_by].nick if event.created_by in creators else '',
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'points': event.points or STUDENT_EVENT_POINTS.get(event.event_type, 0),
+            'status': event.status or '',
+            'post_url': event.post_url or '',
+        } for event in student_events],
+        'tribe_events': [{
+            'id': event.id,
+            'date': event.event_date.isoformat(),
+            'time_start': event.time_start or '',
+            'tribe': event.tribe or '',
+            'title': event.title or '',
+            'location': event.location or '',
+            'comment': event.comment or '',
+        } for event in tribe_events],
+    }
+
+
+def _google_sheet_connection_payload(pool):
+    return {
+        'pool_id': pool.id,
+        'sheet_url': pool.google_sheet_url or '',
+        'webhook_url': pool.google_sheet_webhook_url or '',
+        'enabled': bool(pool.google_sheet_enabled),
+        'last_export_at': pool.google_sheet_last_export_at.isoformat() if pool.google_sheet_last_export_at else None,
+        'last_error': pool.google_sheet_last_error or '',
+    }
+
+
+def export_pool_to_google_sheets(pool):
+    if not pool.google_sheet_webhook_url:
+        raise ValueError('Не указан URL Apps Script')
+    if not SYNC_SECRET:
+        raise ValueError('На сервере не настроен SYNC_SECRET')
+    payload = build_google_sheets_template_payload(pool.id)
     try:
         import requests
-        resp = requests.post(SYNC_WEBHOOK_URL, json=body, timeout=60)
-        data = resp.json() if resp.content else {}
-    except Exception as e:
-        return jsonify({'error': f'Не удалось отправить в Google Sheets: {e}'}), 502
-    if resp.status_code != 200 or not data.get('ok'):
-        return jsonify({'error': data.get('error') or f'HTTP {resp.status_code}'}), 502
-    if not data.get('sheets'):
-        return jsonify({'error': 'Apps Script нужно обновить до версии с full_export'}), 502
-    log_action('export', 'google_sheets', None, 'Полный экспорт отправлен в Google Sheets', {'sheets': list(sheets.keys())})
+        response = requests.post(pool.google_sheet_webhook_url, json=payload, timeout=60)
+        data = response.json() if response.content else {}
+    except Exception as exc:
+        pool.google_sheet_last_error = str(exc)[:1000]
+        raise RuntimeError(f'Не удалось отправить данные: {exc}') from exc
+    if response.status_code != 200 or not isinstance(data, dict) or not data.get('ok'):
+        error = data.get('error') if isinstance(data, dict) else None
+        pool.google_sheet_last_error = str(error or f'HTTP {response.status_code}')[:1000]
+        raise RuntimeError(pool.google_sheet_last_error)
+    pool.google_sheet_last_export_at = _utcnow()
+    pool.google_sheet_last_error = ''
+    return data
+
+
+def _active_google_sheets_pool_or_error(pool_id):
+    pool = get_model_or_404(Pool, pool_id)
+    if not pool.active or pool.archived:
+        return None, (jsonify({'error': 'Google Sheets можно настраивать только для активного бассейна'}), 409)
+    return pool, None
+
+
+@app.route('/api/pools/<int:pool_id>/google-sheets', methods=['GET'])
+@require_role('team_lead', 'admin')
+def get_pool_google_sheets(pool_id):
+    pool, error = _active_google_sheets_pool_or_error(pool_id)
+    if error:
+        return error
+    return jsonify(_google_sheet_connection_payload(pool))
+
+
+@app.route('/api/pools/<int:pool_id>/google-sheets', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_pool_google_sheets(pool_id):
+    pool, error = _active_google_sheets_pool_or_error(pool_id)
+    if error:
+        return error
+    data = request.json or {}
+    sheet_url = (data.get('sheet_url') or '').strip()
+    webhook_url = (data.get('webhook_url') or '').strip()
+    enabled = bool(data.get('enabled'))
+    if sheet_url and not re.match(r'^https://docs\.google\.com/spreadsheets/d/[\w-]+', sheet_url):
+        return jsonify({'error': 'Некорректная ссылка на Google Sheets'}), 400
+    if webhook_url and not re.match(r'^https://script\.google\.com/macros/s/[\w-]+/exec$', webhook_url):
+        return jsonify({'error': 'Некорректный URL веб-приложения Apps Script'}), 400
+    if enabled and (not sheet_url or not webhook_url):
+        return jsonify({'error': 'Для включения нужны ссылка на таблицу и URL Apps Script'}), 400
+    pool.google_sheet_url = sheet_url or None
+    pool.google_sheet_webhook_url = webhook_url or None
+    pool.google_sheet_enabled = enabled
+    pool.google_sheet_last_error = ''
+    log_action(
+        'update',
+        'google_sheets_export',
+        pool.id,
+        f'Настроена автовыгрузка Google Sheets для бассейна «{pool.name}»',
+        {'enabled': enabled, 'sheet_url': sheet_url},
+    )
     db.session.commit()
-    return jsonify({'message': 'Экспорт отправлен в Google Sheets', 'sheets': data.get('sheets') or list(sheets.keys())})
+    return jsonify(_google_sheet_connection_payload(pool))
+
+
+@app.route('/api/pools/<int:pool_id>/google-sheets/export', methods=['POST'])
+@require_role('team_lead', 'admin')
+def export_pool_google_sheets_now(pool_id):
+    pool, error = _active_google_sheets_pool_or_error(pool_id)
+    if error:
+        return error
+    try:
+        result = export_pool_to_google_sheets(pool)
+        log_action(
+            'export',
+            'google_sheets_export',
+            pool.id,
+            f'Данные бассейна «{pool.name}» выгружены в Google Sheets',
+            {'sheets': result.get('sheets') or GOOGLE_TEMPLATE_SHEETS, 'warnings': result.get('warnings') or []},
+        )
+        db.session.commit()
+        return jsonify({
+            'message': 'Таблица обновлена',
+            'sheets': result.get('sheets') or GOOGLE_TEMPLATE_SHEETS,
+            'warnings': result.get('warnings') or [],
+            **_google_sheet_connection_payload(pool),
+        })
+    except (ValueError, RuntimeError) as exc:
+        db.session.commit()
+        return jsonify({'error': str(exc), **_google_sheet_connection_payload(pool)}), 502
+
+
+@app.route('/api/internal/google-sheets/export', methods=['POST'])
+def export_configured_google_sheets():
+    if not verify_internal_api_secret():
+        return jsonify({'error': 'Недостаточно прав для Google Sheets export'}), 403
+    pools = Pool.query.filter_by(
+        active=True,
+        archived=False,
+        google_sheet_enabled=True,
+    ).order_by(Pool.id).all()
+    exported = []
+    errors = []
+    for pool in pools:
+        try:
+            result = export_pool_to_google_sheets(pool)
+            exported.append({'pool_id': pool.id, 'sheets': result.get('sheets') or GOOGLE_TEMPLATE_SHEETS})
+        except (ValueError, RuntimeError) as exc:
+            errors.append({'pool_id': pool.id, 'error': str(exc)})
+    db.session.commit()
+    status = 502 if errors else 200
+    return jsonify({'ok': not errors, 'exported': exported, 'errors': errors}), status
 
 
 @app.route('/api/admin/backup-status', methods=['GET'])
@@ -6552,22 +6733,6 @@ def backup_now():
     return jsonify({'message': 'Резерв создан', 'path': path})
 
 
-@app.route('/api/admin/sync-status', methods=['GET'])
-@require_role('team_lead', 'admin')
-def sync_status():
-    pending = SyncOutbox.query.filter_by(status='pending').count()
-    errors = SyncOutbox.query.filter_by(status='error').count()
-    sent = SyncOutbox.query.filter_by(status='sent').count()
-    last = SyncOutbox.query.filter_by(status='sent').order_by(SyncOutbox.sent_at.desc()).first()
-    return jsonify({
-        'pending': pending,
-        'errors': errors,
-        'sent': sent,
-        'configured': bool(SYNC_WEBHOOK_URL),
-        'last_sent_at': last.sent_at.isoformat() if last and last.sent_at else None,
-    })
-
-
 @app.route('/api/admin/action-log', methods=['GET'])
 @require_role('team_lead', 'admin')
 def action_log():
@@ -6584,24 +6749,6 @@ def action_log():
         'payload': json.loads(row.payload or '{}'),
         'created_at': row.created_at.isoformat(),
     } for row in rows])
-
-
-@app.route('/api/admin/sync-now', methods=['POST'])
-@require_role('team_lead', 'admin')
-def sync_now():
-    result = process_outbox_once()
-    return jsonify(result)
-
-
-@app.route('/api/internal/sync', methods=['POST'])
-def internal_sync_now():
-    if not verify_internal_api_secret():
-        return jsonify({'error': 'Недостаточно прав для sync'}), 403
-    try:
-        return jsonify({'ok': True, **process_outbox_once()})
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify({'error': str(exc)}), 500
 
 
 @app.route('/api/admin/reset', methods=['POST'])
@@ -6958,6 +7105,16 @@ def ensure_user_profile_columns():
             pool_columns = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(pools)').fetchall()}
             if 'archived' not in pool_columns:
                 conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN archived BOOLEAN DEFAULT 0')
+            if 'google_sheet_url' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_url TEXT')
+            if 'google_sheet_webhook_url' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_webhook_url TEXT')
+            if 'google_sheet_enabled' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_enabled BOOLEAN DEFAULT 0')
+            if 'google_sheet_last_export_at' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_last_export_at DATETIME')
+            if 'google_sheet_last_error' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_last_error TEXT')
         # PoolVolunteer table
         if 'pool_volunteers' not in tables:
             conn.exec_driver_sql("""
@@ -7121,6 +7278,11 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('UPDATE group_reviews SET quantity = 1 WHERE quantity IS NULL OR quantity < 1')
 
         conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_url TEXT')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_webhook_url TEXT')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_enabled BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_last_export_at TIMESTAMP')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_last_error TEXT')
         conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS pool_id INTEGER')
         conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN IF NOT EXISTS pool_id INTEGER')
