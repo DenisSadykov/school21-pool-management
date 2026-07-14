@@ -59,8 +59,8 @@
 .form-group select:focus {
   outline: none;
   border-color: var(--accent);
-  background-color: #fff;
-  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.14);
+  background-color: var(--bg-card);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .error-message {

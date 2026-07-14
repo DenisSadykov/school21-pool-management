@@ -26,7 +26,7 @@ const formatStatusLabel = (status) => {
 
 const normalizeStudentName = (value) => (value || '').trim().toLowerCase();
 
-function Penalties() {
+function Penalties({ user }) {
   const location = useLocation();
   const [penalties, setPenalties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +36,7 @@ function Penalties() {
   const [error, setError] = useState('');
   const [highlightedStatus, setHighlightedStatus] = useState('');
   const [highlightedPenaltyId, setHighlightedPenaltyId] = useState(null);
+  const [deletingPenaltyId, setDeletingPenaltyId] = useState(null);
   const sectionRefs = useRef({});
   const penaltyRefs = useRef({});
   const penaltyTargetTimerRef = useRef(null);
@@ -126,7 +127,22 @@ function Penalties() {
     }
   };
 
+  const deleteWorkedOffPenalty = async (penalty) => {
+    if (!window.confirm(`Удалить отработанный штраф для ${penalty.student_name}?\nЭто действие нельзя отменить.`)) return;
+
+    setDeletingPenaltyId(penalty.id);
+    try {
+      await api.del(`/api/penalties/${penalty.id}`);
+      setPenalties((current) => current.filter((item) => item.id !== penalty.id));
+    } catch (deleteError) {
+      alert('❌ Ошибка: ' + deleteError.message);
+    } finally {
+      setDeletingPenaltyId(null);
+    }
+  };
+
   if (loading) return <Loader text="Загрузка штрафов..." />;
+  const isStaff = user?.role === 'admin' || user?.role === 'team_lead';
   const activePenalties = penalties.filter((p) => p.workoff_status !== 'unlocked');
   const workedOffPenalties = penalties
     .filter((p) => ['awaiting_unlock', 'unlocked', 'done'].includes(p.workoff_status) && p.date_worked_off)
@@ -265,6 +281,7 @@ function Penalties() {
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
+                    canDelete={isStaff}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
                   />
@@ -289,6 +306,7 @@ function Penalties() {
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
+                    canDelete={isStaff}
                     isInWorkoff={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -314,6 +332,7 @@ function Penalties() {
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
+                    canDelete={isStaff}
                     isAwaitingUnlock={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -339,6 +358,7 @@ function Penalties() {
                     key={penalty.id}
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
+                    canDelete={isStaff}
                     isOverdue={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -361,7 +381,7 @@ function Penalties() {
             {workedOffPenalties.map((penalty) => {
               const workoffNote = getWorkoffNote(penalty);
               return (
-                <div className="worked-off-row" key={penalty.id}>
+                <div className={`worked-off-row ${isStaff ? 'has-actions' : ''}`} key={penalty.id}>
                   <div>
                     <strong>{penalty.student_name}</strong>
                     <span>{STATUS_LABELS[penalty.workoff_status] || penalty.workoff_status}</span>
@@ -378,6 +398,18 @@ function Penalties() {
                     <small>Часы</small>
                     <span>{penalty.total_hours}h</span>
                   </div>
+                  {isStaff && (
+                    <button
+                      type="button"
+                      className="worked-off-delete"
+                      onClick={() => deleteWorkedOffPenalty(penalty)}
+                      disabled={deletingPenaltyId === penalty.id}
+                      aria-label={`Удалить отработанный штраф для ${penalty.student_name}`}
+                      title="Удалить запись"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -390,7 +422,7 @@ function Penalties() {
   );
 }
 
-function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
+function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
   const workoffNote = getWorkoffNote(penalty);
 
   const handleStartWorkoff = async () => {
@@ -517,58 +549,66 @@ function PenaltyCard({ penalty, onStatusChange, isAwaitingUnlock, isOverdue, isI
       )}
 
       {penalty.workoff_status === 'pending' && (
-        <div className="penalty-actions">
+        <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
           <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
             <Check size={18} /> Начал отработку
           </button>
           <button className="btn-overdue" onClick={handleMarkOverdue} title="Не пришёл (×2)">
             <X size={18} /> Не пришёл
           </button>
-          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
-            <Trash2 size={18} />
-          </button>
+          {canDelete && (
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       )}
 
       {isInWorkoff && (
-        <div className="penalty-actions">
+        <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
           <button className="btn-done" onClick={handleMarkDone} title="Отработал">
             <Check size={18} /> Отработал
           </button>
           <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
             ↶ Вернуть в ожидание
           </button>
-          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
-            <Trash2 size={18} />
-          </button>
+          {canDelete && (
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       )}
 
       {isOverdue && (
-        <div className="penalty-actions">
+        <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
           <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
             <Check size={18} /> Начал отработку
           </button>
           <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
             ↶ В ожидание
           </button>
-          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
-            <Trash2 size={18} />
-          </button>
+          {canDelete && (
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       )}
 
       {isAwaitingUnlock && (
-        <div className="penalty-actions">
+        <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
           <button className="btn-done" onClick={handleUnlock} title="Разблокирован">
             <Check size={18} /> Разблокирован
           </button>
           <button className="btn-cancel" onClick={handleMarkPending} title="Отменить отработку">
             ↶ Отменить
           </button>
-          <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
-            <Trash2 size={18} />
-          </button>
+          {canDelete && (
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+              <Trash2 size={18} />
+            </button>
+          )}
         </div>
       )}
     </div>

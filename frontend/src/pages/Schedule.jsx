@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { UserPlus, UserMinus, Trash2, Plus } from 'lucide-react';
+import { UserPlus, UserMinus, Trash2, Plus, Lock, Unlock } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import useIsMobile from '../useIsMobile';
@@ -81,9 +81,12 @@ function Schedule({ user }) {
   const [volunteers, setVolunteers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [savingSignupSetting, setSavingSignupSetting] = useState(false);
   const currentDay = todayIso();
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
   const isMobile = useIsMobile();
+  const selfSignupEnabled = data.pool?.self_signup_enabled !== false;
+  const canSelfManageSignup = isStaff || selfSignupEnabled;
 
   const loadSchedule = useCallback(async ({ showLoading = false, includeVolunteers = false } = {}) => {
     if (showLoading) {
@@ -137,6 +140,7 @@ function Schedule({ user }) {
   }, []);
 
   const toggleSignup = async (block) => {
+    if (!canSelfManageSignup) return;
     try {
       if (isMine(block)) {
         await api.del(`/api/blocks/${block.id}/signup`);
@@ -161,6 +165,28 @@ function Schedule({ user }) {
       }
     } catch (e) {
       alert(e.message);
+    }
+  };
+
+  const toggleSelfSignupSetting = async () => {
+    if (!isStaff || savingSignupSetting) return;
+    const nextEnabled = !selfSignupEnabled;
+    setSavingSignupSetting(true);
+    try {
+      const response = await api.patch('/api/schedule/settings', {
+        self_signup_enabled: nextEnabled,
+      });
+      setData((current) => ({
+        ...current,
+        pool: {
+          ...current.pool,
+          self_signup_enabled: response.self_signup_enabled,
+        },
+      }));
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSavingSignupSetting(false);
     }
   };
 
@@ -257,9 +283,29 @@ function Schedule({ user }) {
 
   return (
     <div className="page schedule-page">
-      <div className="page-header">
+      <div className="page-header schedule-page-header">
         <h1>График смен</h1>
+        {isStaff && (
+          <button
+            type="button"
+            className={`schedule-access-toggle ${selfSignupEnabled ? 'is-enabled' : 'is-disabled'}`}
+            onClick={toggleSelfSignupSetting}
+            disabled={savingSignupSetting}
+            aria-pressed={selfSignupEnabled}
+          >
+            {selfSignupEnabled ? <Unlock size={15} /> : <Lock size={15} />}
+            {savingSignupSetting
+              ? 'Сохраняем...'
+              : selfSignupEnabled ? 'Запись включена' : 'Запись выключена'}
+          </button>
+        )}
       </div>
+      {!isStaff && !selfSignupEnabled && (
+        <div className="schedule-readonly-notice" role="status">
+          <Lock size={15} />
+          Самозапись временно выключена. График доступен только для просмотра.
+        </div>
+      )}
       {data.days.length === 0 ? (
         <div className="empty-state">
           <p>Тайм-блоков пока нет.</p>
@@ -305,6 +351,7 @@ function Schedule({ user }) {
                       onChangeCapacity={changeCapacity}
                       volunteers={volunteers}
                       onAssignVolunteer={assignVolunteer}
+                      signupEnabled={canSelfManageSignup}
                     />
                   ))}
 
@@ -357,6 +404,7 @@ function Schedule({ user }) {
                             onChangeCapacity={changeCapacity}
                             volunteers={volunteers}
                             onAssignVolunteer={assignVolunteer}
+                            signupEnabled={canSelfManageSignup}
                           />
                         ))}
                       </section>
@@ -406,6 +454,7 @@ function Schedule({ user }) {
                               onChangeCapacity={changeCapacity}
                               volunteers={volunteers}
                               onAssignVolunteer={assignVolunteer}
+                              signupEnabled={canSelfManageSignup}
                             />
                           ) : (
                             <div className="empty-block">—</div>
@@ -446,6 +495,7 @@ function BlockCard({
   onChangeCapacity,
   volunteers,
   onAssignVolunteer,
+  signupEnabled,
 }) {
   const mine = isMine(block);
   const full = block.capacity != null && block.count >= block.capacity;
@@ -519,9 +569,13 @@ function BlockCard({
       <button
         className={`btn-secondary block-signup ${mine ? 'leave' : ''}`}
         onClick={() => onToggleSignup(block)}
-        disabled={!mine && full}
+        disabled={!signupEnabled || (!mine && full)}
       >
-        {mine ? (
+        {!signupEnabled ? (
+          <>
+            <Lock size={16} /> Запись выключена
+          </>
+        ) : mine ? (
           <>
             <UserMinus size={16} /> Отписаться
           </>

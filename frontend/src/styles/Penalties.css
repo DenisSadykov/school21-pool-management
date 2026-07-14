@@ -281,13 +281,50 @@
 
 .worked-off-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.2fr) minmax(160px, 1fr) minmax(220px, 2fr) 70px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   align-items: start;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated);
+}
+
+.worked-off-row.has-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) 38px;
+}
+
+.worked-off-delete {
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition), background var(--transition), opacity var(--transition);
+}
+
+.worked-off-delete:hover {
+  border-color: var(--danger);
+  background: rgba(207, 34, 46, 0.12);
+  color: var(--danger);
+}
+
+.worked-off-delete:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.worked-off-delete:disabled {
+  cursor: wait;
+  opacity: 0.5;
 }
 
 .worked-off-row div {
@@ -328,7 +365,7 @@
 }
 
 .penalty-card:hover {
-  border-color: #3a414d;
+  border-color: var(--text-secondary);
   background: var(--bg-elevated);
 }
 
@@ -464,6 +501,10 @@
   gap: var(--spacing-sm);
   margin-top: 8px;
   align-items: stretch;
+}
+
+.penalty-actions.no-delete {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .btn-done,
@@ -775,6 +816,18 @@
 
   .worked-off-row {
     grid-template-columns: 1fr;
+  }
+
+  .worked-off-row.has-actions {
+    grid-template-columns: 1fr;
+    position: relative;
+    padding-right: 56px;
+  }
+
+  .worked-off-row.has-actions .worked-off-delete {
+    position: absolute;
+    top: 10px;
+    right: 10px;
   }
 }
 

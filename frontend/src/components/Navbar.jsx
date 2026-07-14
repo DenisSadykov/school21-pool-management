@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu, UserCircle2 } from 'lucide-react';
 import { api, clearSession, POOLS_CHANGED_EVENT } from '../api';
 import AuthenticatedImage from './AuthenticatedImage';
+import ThemeToggle from './ThemeToggle';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = {
@@ -12,7 +13,7 @@ const ROLE_LABELS = {
   admin: 'Админ',
 };
 
-function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
+function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, onThemeToggle }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(user);
   const [activePool, setActivePool] = useState(null);
@@ -94,6 +95,7 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle }) {
                 </button>
                   </>
                 )}
+                <ThemeToggle theme={theme} onToggle={onThemeToggle} />
                 <div className="dropdown-divider" />
                 <button className="dropdown-item danger" onClick={handleLogout}>
                   <LogOut size={15} /> Выйти

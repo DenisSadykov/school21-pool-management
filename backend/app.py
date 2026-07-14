@@ -200,6 +200,7 @@ class Pool(db.Model):
     google_sheet_enabled = db.Column(db.Boolean, default=False)
     google_sheet_last_export_at = db.Column(db.DateTime)
     google_sheet_last_error = db.Column(db.Text)
+    self_signup_enabled = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
     __table_args__ = (
         db.Index(
@@ -235,6 +236,7 @@ class Pool(db.Model):
             'schedule_generations_count': generations_count,
             'has_schedule_generation': generations_count > 0,
             'last_schedule_generation_at': last_generation.created_at.isoformat() if last_generation and last_generation.created_at else None,
+            'self_signup_enabled': self.self_signup_enabled is not False,
         }
 
 
@@ -279,6 +281,7 @@ class PoolVolunteer(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     tribe = db.Column(db.String(50))
     pool_role = db.Column(db.String(40), default='volunteer')
+    notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
     has_confession = db.Column(db.Boolean, default=False)
     coins_adjustment = db.Column(db.Integer, default=0)
     assigned_at = db.Column(db.DateTime, default=_naive_utcnow)
@@ -1057,6 +1060,7 @@ def _pool_responsible_users(pool_id):
         .filter(
             PoolVolunteer.pool_id == pool_id,
             PoolVolunteer.pool_role.in_(['responsible_admin', 'responsible_team_lead']),
+            PoolVolunteer.notifications_enabled.isnot(False),
             User.active.is_(True),
         )
         .order_by(User.role, User.nick)
@@ -1087,7 +1091,17 @@ def _pool_responsibles(pool_id):
         'telegram_url': _tg_url(user.telegram),
         'avatar_url': _avatar_url_for_user(user),
         'pool_role': pv.pool_role,
+        'notifications_enabled': pv.notifications_enabled is not False,
     } for user, pv in rows]
+
+
+def _pool_notifications_enabled_for_user(user_id, pool_id):
+    if not user_id or not pool_id:
+        return True
+    relation = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).first()
+    if not relation or relation.pool_role not in ('responsible_admin', 'responsible_team_lead'):
+        return True
+    return relation.notifications_enabled is not False
 
 
 def _signed_users_for_block(block):
@@ -1149,6 +1163,8 @@ def _queue_notification(user, event_type, text, dedupe_key, pool_id=None, priori
                         scheduled_for=None, payload=None, source_entity=None, source_entity_id=None,
                         created_by=None, action_buttons=None):
     if not user or not dedupe_key:
+        return None
+    if pool_id and not _pool_notifications_enabled_for_user(user.id, pool_id):
         return None
     if pool_id is not None and not dedupe_key.startswith(f'pool:{pool_id}:'):
         dedupe_key = f'pool:{pool_id}:{dedupe_key}'
@@ -2812,6 +2828,50 @@ def remove_pool_responsible(pool_id, user_id):
     return jsonify({'message': 'Ответственный удалён'})
 
 
+@app.route('/api/pools/<int:pool_id>/responsibles/<int:user_id>/notifications', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_pool_responsible_notifications(pool_id, user_id):
+    get_model_or_404(Pool, pool_id)
+    error = _active_entity_error(pool_id)
+    if error:
+        return error
+    data = request.json or {}
+    enabled = data.get('enabled')
+    if not isinstance(enabled, bool):
+        return jsonify({'error': 'Поле enabled должно быть boolean'}), 400
+
+    relation = PoolVolunteer.query.filter(
+        PoolVolunteer.pool_id == pool_id,
+        PoolVolunteer.user_id == user_id,
+        PoolVolunteer.pool_role.in_(['responsible_admin', 'responsible_team_lead']),
+    ).first_or_404()
+    relation.notifications_enabled = enabled
+
+    if not enabled:
+        pending_events = NotificationEvent.query.filter(
+            NotificationEvent.pool_id == pool_id,
+            NotificationEvent.recipient_user_id == user_id,
+            NotificationEvent.status.in_(['queued', 'pending', 'processing']),
+        ).all()
+        for event in pending_events:
+            event.status = 'cancelled'
+            event.cancelled_at = _utcnow()
+            event.processing_started_at = None
+
+    log_action(
+        'update',
+        'pool_responsible',
+        user_id,
+        'Изменена подписка ответственного на уведомления',
+        {'pool_id': pool_id, 'notifications_enabled': enabled},
+    )
+    db.session.commit()
+    return jsonify({
+        'notifications_enabled': enabled,
+        'message': 'Уведомления включены' if enabled else 'Уведомления выключены',
+    })
+
+
 @app.route('/api/pools/<int:pool_id>/invite-link', methods=['GET'])
 @require_role('team_lead', 'admin')
 def get_pool_invite_link(pool_id):
@@ -3183,6 +3243,42 @@ def schedule():
     return jsonify({'pool': pool.to_dict(), 'days': days_list})
 
 
+@app.route('/api/schedule/settings', methods=['PATCH'])
+@require_role('team_lead', 'admin')
+def update_schedule_settings():
+    pool_id, error = _active_pool_id_for_request()
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    enabled = data.get('self_signup_enabled')
+    if not isinstance(enabled, bool):
+        return jsonify({'error': 'self_signup_enabled должен быть true или false'}), 400
+
+    pool = get_model_or_404(Pool, pool_id)
+    previous = pool.self_signup_enabled is not False
+    pool.self_signup_enabled = enabled
+    log_action(
+        'update',
+        'schedule_settings',
+        pool.id,
+        'Самозапись на смены включена' if enabled else 'Самозапись на смены выключена',
+        {'self_signup_enabled': enabled, 'previous_self_signup_enabled': previous},
+    )
+    db.session.commit()
+    return jsonify({
+        'self_signup_enabled': enabled,
+        'message': 'Самозапись включена' if enabled else 'Самозапись выключена',
+    })
+
+
+def _self_signup_access_error(user, pool):
+    if pool.self_signup_enabled is not False:
+        return None
+    if _effective_access_role(user, pool.id) in {'team_lead', 'admin'}:
+        return None
+    return jsonify({'error': 'Самозапись на смены временно выключена'}), 403
+
+
 @app.route('/api/blocks', methods=['POST'])
 @require_role('team_lead', 'admin')
 def create_block():
@@ -3408,6 +3504,9 @@ def signup_block(block_id):
     pool = db.session.get(Pool, block.pool_id)
     if pool and not can_access_pool(user, pool):
         return jsonify({'error': 'Ты не добавлен на этот бассейн'}), 403
+    signup_error = _self_signup_access_error(user, pool)
+    if signup_error:
+        return signup_error
     data = request.get_json(silent=True) or {}
     target_id = data.get('user_id')
     if target_id and user.role in ('team_lead', 'admin'):
@@ -3481,6 +3580,10 @@ def unsignup_block(block_id):
     error = _active_entity_error(block.pool_id)
     if error:
         return error
+    pool = db.session.get(Pool, block.pool_id)
+    signup_error = _self_signup_access_error(user, pool)
+    if signup_error:
+        return signup_error
     # волонтёр снимает себя; тимлид/админ может снять любого через ?user_id=
     target_id = request.args.get('user_id', type=int)
     if target_id and user.role in ('team_lead', 'admin'):
@@ -5007,7 +5110,10 @@ def create_broadcast():
     )
     db.session.add(broadcast)
     db.session.flush()
-    recipients = _broadcast_recipient_query(pool_id, filters).all()
+    recipients = [
+        user for user in _broadcast_recipient_query(pool_id, filters).all()
+        if _pool_notifications_enabled_for_user(user.id, pool_id)
+    ]
     for user in recipients:
         payload = {
             'text': text,
@@ -6002,7 +6108,7 @@ def update_penalty_status(penalty_id):
 
 
 @app.route('/api/penalties/<int:penalty_id>', methods=['DELETE'])
-@require_auth
+@require_role('admin', 'team_lead')
 def delete_penalty(penalty_id):
     penalty = get_model_or_404(StudentPenalty, penalty_id)
     error = _active_entity_error(penalty.pool_id)
@@ -6026,7 +6132,7 @@ def delete_penalty(penalty_id):
     )
     db.session.delete(penalty)
     db.session.commit()
-    return jsonify({'message': f'Штраф для {student_name} отменён'})
+    return jsonify({'message': f'Штраф для {student_name} удалён'})
 
 
 # ==================== Админ ====================
@@ -7115,6 +7221,8 @@ def ensure_user_profile_columns():
                 conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_last_export_at DATETIME')
             if 'google_sheet_last_error' not in pool_columns:
                 conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN google_sheet_last_error TEXT')
+            if 'self_signup_enabled' not in pool_columns:
+                conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN self_signup_enabled BOOLEAN DEFAULT 1 NOT NULL')
         # PoolVolunteer table
         if 'pool_volunteers' not in tables:
             conn.exec_driver_sql("""
@@ -7124,6 +7232,7 @@ def ensure_user_profile_columns():
                     user_id INTEGER NOT NULL,
                     tribe VARCHAR(50),
                     pool_role VARCHAR(40) DEFAULT 'volunteer',
+                    notifications_enabled BOOLEAN DEFAULT 1 NOT NULL,
                     has_confession BOOLEAN DEFAULT 0,
                     coins_adjustment INTEGER DEFAULT 0,
                     assigned_at DATETIME,
@@ -7137,6 +7246,8 @@ def ensure_user_profile_columns():
             pv_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(pool_volunteers)').fetchall()}
             if 'pool_role' not in pv_cols:
                 conn.exec_driver_sql("ALTER TABLE pool_volunteers ADD COLUMN pool_role VARCHAR(40) DEFAULT 'volunteer'")
+            if 'notifications_enabled' not in pv_cols:
+                conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN notifications_enabled BOOLEAN DEFAULT 1 NOT NULL')
             if 'has_confession' not in pv_cols:
                 conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN has_confession BOOLEAN DEFAULT 0')
             if 'coins_adjustment' not in pv_cols:
@@ -7283,6 +7394,7 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_enabled BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_last_export_at TIMESTAMP')
         conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS google_sheet_last_error TEXT')
+        conn.exec_driver_sql('ALTER TABLE pools ADD COLUMN IF NOT EXISTS self_signup_enabled BOOLEAN DEFAULT TRUE NOT NULL')
         conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS pool_id INTEGER')
         conn.exec_driver_sql('ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE dashboard_notes ADD COLUMN IF NOT EXISTS pool_id INTEGER')
@@ -7292,6 +7404,7 @@ def ensure_postgres_profile_columns():
 
         conn.exec_driver_sql("ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS pool_role VARCHAR(40) DEFAULT 'volunteer'")
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ALTER COLUMN pool_role TYPE VARCHAR(40)')
+        conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN DEFAULT TRUE NOT NULL')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS max_uses INTEGER')
