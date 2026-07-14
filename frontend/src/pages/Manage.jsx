@@ -498,6 +498,7 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
   const [responsibles, setResponsibles] = useState([]);
   const [addUserId, setAddUserId] = useState('');
   const [msg, setMsg] = useState('');
+  const [savingNotificationsFor, setSavingNotificationsFor] = useState(null);
 
   const load = useCallback(async () => {
     setResponsibles(await api.get(`/api/pools/${poolId}/responsibles`));
@@ -531,6 +532,27 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
     }
   };
 
+  const toggleNotifications = async (person) => {
+    const enabled = person.notifications_enabled === false;
+    setSavingNotificationsFor(person.id);
+    try {
+      const result = await api.patch(
+        `/api/pools/${poolId}/responsibles/${person.id}/notifications`,
+        { enabled },
+      );
+      setResponsibles((current) => current.map((item) => (
+        item.id === person.id
+          ? { ...item, notifications_enabled: result.notifications_enabled }
+          : item
+      )));
+      setMsg(result.message);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingNotificationsFor(null);
+    }
+  };
+
   return (
     <div className="pool-volunteers-section" style={{ border: 'none', padding: 0, borderRadius: 0 }}>
       {msg && <div className="pv-msg">{msg}</div>}
@@ -558,6 +580,7 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
             <span>Имя</span>
             <span>Телеграм</span>
             <span>Роль</span>
+            <span>Уведомления</span>
             <span>Удалить</span>
           </div>
           {responsibles.map((person) => (
@@ -566,6 +589,20 @@ function PoolResponsiblesSection({ poolId, allStaff }) {
               <span className="pv-name">{person.name || '—'}</span>
               <span className="pv-tg">{person.telegram || '—'}</span>
               <span className="pv-role">{person.role === 'admin' ? 'Админ' : 'Тимлид'}</span>
+              <span className="pv-notifications">
+                <button
+                  type="button"
+                  className="responsible-notification-toggle"
+                  role="switch"
+                  aria-checked={person.notifications_enabled !== false}
+                  aria-label={`Уведомления для @${person.nick}`}
+                  title={person.notifications_enabled !== false ? 'Уведомления включены' : 'Уведомления выключены'}
+                  disabled={savingNotificationsFor === person.id}
+                  onClick={() => toggleNotifications(person)}
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </span>
               <button className="btn-icon danger pv-del" onClick={() => remove(person)} title="Убрать из ответственных">
                 <Trash2 size={14} />
               </button>

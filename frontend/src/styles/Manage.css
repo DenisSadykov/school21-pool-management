@@ -51,7 +51,7 @@
   border-radius: var(--radius-md);
   border: 1px solid rgba(154, 103, 0, 0.28);
   background: rgba(154, 103, 0, 0.1);
-  color: #9a6700;
+  color: var(--warning);
   font-size: 0.82rem;
   font-weight: 600;
 }
@@ -470,15 +470,17 @@
 
 .responsibles-head,
 .responsibles-row {
-  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 1fr) minmax(180px, 1fr) minmax(140px, 0.8fr) 48px;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) 48px;
 }
 
 .responsibles-head span:nth-child(2),
 .responsibles-head span:nth-child(3),
 .responsibles-head span:nth-child(4),
+.responsibles-head span:nth-child(5),
 .responsibles-row .pv-name,
 .responsibles-row .pv-tg,
-.responsibles-row .pv-role {
+.responsibles-row .pv-role,
+.responsibles-row .pv-notifications {
   text-align: center;
 }
 
@@ -489,6 +491,53 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pv-notifications {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.responsible-notification-toggle {
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+
+.responsible-notification-toggle span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transform: translateX(0);
+  transition: transform var(--transition), background var(--transition);
+}
+
+.responsible-notification-toggle[aria-checked="true"] {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 22%, var(--bg-card));
+}
+
+.responsible-notification-toggle[aria-checked="true"] span {
+  background: var(--success);
+  transform: translateX(16px);
+}
+
+.responsible-notification-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.responsible-notification-toggle:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .responsibles-row .pv-del {
@@ -638,6 +687,19 @@
   .responsibles-row .pv-role {
     text-align: left;
     white-space: normal;
+  }
+
+  .responsibles-row .pv-notifications {
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
+  }
+
+  .responsibles-row .pv-notifications::before {
+    content: 'Уведомления';
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
   }
 
   .responsibles-row {

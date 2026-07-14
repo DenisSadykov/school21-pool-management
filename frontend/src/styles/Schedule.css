@@ -1,3 +1,58 @@
+.schedule-page-header {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.schedule-access-toggle {
+  min-height: var(--control-height);
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.schedule-access-toggle.is-enabled {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+  background: color-mix(in srgb, var(--success) 9%, var(--bg-elevated));
+}
+
+.schedule-access-toggle.is-disabled {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+  background: color-mix(in srgb, var(--warning) 9%, var(--bg-elevated));
+}
+
+.schedule-access-toggle:hover:not(:disabled) {
+  border-color: currentColor;
+  background: var(--bg-hover);
+}
+
+.schedule-access-toggle:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.schedule-readonly-notice {
+  margin: -4px 0 12px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 8%, var(--bg-card));
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
 .schedule-weeks {
   display: flex;
   flex-direction: column;
@@ -405,6 +460,18 @@
 }
 
 @media (max-width: 768px) {
+  .schedule-page-header {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .schedule-access-toggle {
+    min-height: 35px;
+    margin-left: auto;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+
   .schedule-weeks {
     display: none;
   }

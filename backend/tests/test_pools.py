@@ -141,9 +141,49 @@ def test_team_lead_can_be_added_as_pool_responsible(client, factories, auth_head
     payload = response.get_json()
     assert payload['message'] == 'Ответственный добавлен'
     assert any(
-        item['nick'] == 'lead' and item['role'] == 'team_lead'
+        item['nick'] == 'lead'
+        and item['role'] == 'team_lead'
+        and item['notifications_enabled'] is True
         for item in payload['responsibles']
     )
+
+
+def test_responsible_notifications_can_be_disabled_for_active_pool(
+    client, factories, auth_headers, db_session,
+):
+    admin = factories.user('admin', role='admin', password='secret123')
+    team_lead = factories.user('lead', role='team_lead', password='lead1234')
+    pool = factories.pool('Active pool', active=True)
+    relation = factories.assign(team_lead, pool, pool_role='responsible_team_lead')
+    event = app_module.NotificationEvent(
+        type='manual_broadcast',
+        pool_id=pool.id,
+        recipient_user_id=team_lead.id,
+        status='queued',
+        dedupe_key='pending-responsible-notification',
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    response = client.patch(
+        f'/api/pools/{pool.id}/responsibles/{team_lead.id}/notifications',
+        headers=auth_headers(admin),
+        json={'enabled': False},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()['notifications_enabled'] is False
+    db_session.refresh(relation)
+    db_session.refresh(event)
+    assert relation.notifications_enabled is False
+    assert event.status == 'cancelled'
+    assert event.cancelled_at is not None
+
+    listed = client.get(
+        f'/api/pools/{pool.id}/responsibles',
+        headers=auth_headers(admin),
+    ).get_json()
+    assert listed[0]['notifications_enabled'] is False
 
 
 def test_responsibles_are_not_shown_in_pool_volunteers_list(client, factories, auth_headers):
@@ -172,7 +212,12 @@ def test_manual_broadcast_targets_only_users_linked_to_pool(client, factories, a
     pool = factories.pool('Broadcast pool', active=True)
 
     factories.assign(admin, pool, pool_role='responsible_admin')
-    factories.assign(responsible_lead, pool, pool_role='responsible_team_lead')
+    factories.assign(
+        responsible_lead,
+        pool,
+        pool_role='responsible_team_lead',
+        notifications_enabled=False,
+    )
     factories.assign(volunteer, pool)
 
     response = client.post(
@@ -187,7 +232,7 @@ def test_manual_broadcast_targets_only_users_linked_to_pool(client, factories, a
         for event in db_session.query(app_module.NotificationEvent).filter_by(type='manual_broadcast', pool_id=pool.id).all()
     }
     assert admin.id in recipients
-    assert responsible_lead.id in recipients
+    assert responsible_lead.id not in recipients
     assert volunteer.id in recipients
     assert unrelated_lead.id not in recipients
     assert outsider.id not in recipients

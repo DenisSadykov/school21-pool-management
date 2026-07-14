@@ -85,12 +85,13 @@ def factories(db_session):
             db_session.commit()
             return pool
 
-        def assign(self, user, pool, pool_role='volunteer', tribe=None):
+        def assign(self, user, pool, pool_role='volunteer', tribe=None, notifications_enabled=True):
             relation = PoolVolunteer(
                 pool_id=pool.id,
                 user_id=user.id,
                 pool_role=pool_role,
                 tribe=tribe,
+                notifications_enabled=notifications_enabled,
             )
             db_session.add(relation)
             db_session.commit()

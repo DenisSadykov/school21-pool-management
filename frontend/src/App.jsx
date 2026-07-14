@@ -21,7 +21,9 @@ import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
+import ThemeToggle from './components/ThemeToggle';
 import { api, getToken, getUser, isPoolsChangedStorageEvent, POOLS_CHANGED_EVENT, setSession } from './api';
+import useTheme from './hooks/useTheme';
 
 import './styles/App.css';
 import './styles/theme.css';
@@ -33,12 +35,11 @@ function App() {
   const [loading, setLoading] = React.useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [poolContextVersion, setPoolContextVersion] = React.useState(0);
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     let alive = true;
     const root = document.documentElement;
-    root.setAttribute('data-theme', 'light');
-
     const params = new URLSearchParams(window.location.search);
     const accentFromUrl = params.get('accent');
     const accentFromStorage = localStorage.getItem('uiAccentScheme');
@@ -110,24 +111,38 @@ function App() {
         mobileSidebarOpen={mobileSidebarOpen}
         setMobileSidebarOpen={setMobileSidebarOpen}
         poolContextVersion={poolContextVersion}
+        theme={theme}
+        onThemeToggle={toggleTheme}
       />
-      <ToastContainer position="bottom-right" autoClose={3000} theme="light" />
+      <ToastContainer position="bottom-right" autoClose={3000} theme={theme} />
     </BrowserRouter>
   );
 }
 
-function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebarOpen, poolContextVersion }) {
+function AppRoutes({
+  user,
+  setUser,
+  loading,
+  mobileSidebarOpen,
+  setMobileSidebarOpen,
+  poolContextVersion,
+  theme,
+  onThemeToggle,
+}) {
   if (loading) {
     return <Loader text="Загрузка..." fullscreen />;
   }
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="/login" element={<Login setUser={setUser} />} />
-        <Route path="/join/:token" element={<PoolInvite user={null} setUser={setUser} />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <>
+        <ThemeToggle theme={theme} onToggle={onThemeToggle} compact />
+        <Routes>
+          <Route path="/login" element={<Login setUser={setUser} />} />
+          <Route path="/join/:token" element={<PoolInvite user={null} setUser={setUser} />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </>
     );
   }
 
@@ -148,6 +163,8 @@ function AppRoutes({ user, setUser, loading, mobileSidebarOpen, setMobileSidebar
               setUser={setUser}
               mobileSidebarOpen={mobileSidebarOpen}
               onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)}
+              theme={theme}
+              onThemeToggle={onThemeToggle}
             />
             <div className="app-container">
               <Sidebar

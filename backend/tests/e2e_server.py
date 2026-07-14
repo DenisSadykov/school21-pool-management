@@ -37,6 +37,7 @@ def seed_data():
     DashboardNote = app_module.DashboardNote
     ShiftBlock = app_module.ShiftBlock
     Signup = app_module.Signup
+    StudentPenalty = app_module.StudentPenalty
 
     with app_module.app.app_context():
         app_module.db.session.remove()
@@ -105,6 +106,17 @@ def seed_data():
         app_module.db.session.commit()
 
         app_module.db.session.add(Signup(block_id=block.id, user_id=volunteer.id))
+        app_module.db.session.add(StudentPenalty(
+            student_name='completed_student',
+            volunteer_id=volunteer.id,
+            volunteer_name=volunteer.name,
+            hours=2,
+            multiplier=1,
+            workoff_status='unlocked',
+            description='E2E завершённая пенальти',
+            date_worked_off=app_module._naive_utcnow(),
+            pool_id=pool.id,
+        ))
         app_module.db.session.commit()
 
 

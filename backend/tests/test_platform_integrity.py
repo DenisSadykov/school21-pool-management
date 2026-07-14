@@ -115,6 +115,7 @@ def test_penalty_overdue_is_idempotent_and_status_is_validated(client, factories
 
 
 def test_deleting_penalty_removes_history_and_cancels_pending_event(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer')
     pool = factories.pool('Active', active=True)
     factories.assign(volunteer, pool)
@@ -135,7 +136,7 @@ def test_deleting_penalty_removes_history_and_cancels_pending_event(client, fact
     db_session.add_all([history, event])
     db_session.commit()
 
-    response = client.delete(f'/api/penalties/{penalty.id}', headers=auth_headers(volunteer))
+    response = client.delete(f'/api/penalties/{penalty.id}', headers=auth_headers(admin))
 
     db_session.refresh(event)
     assert response.status_code == 200

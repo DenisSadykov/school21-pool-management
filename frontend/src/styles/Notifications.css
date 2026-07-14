@@ -120,7 +120,7 @@
 
 .notifications-note-card {
   min-height: 240px;
-  background: linear-gradient(180deg, #fff8a6 0%, #ffe98b 100%);
+  background: var(--note-bg);
   border: 1px solid rgba(153, 112, 28, 0.18);
   border-radius: 4px;
   padding: 16px 16px 14px;
@@ -151,7 +151,7 @@
 }
 
 .notifications-note-card.highlighted {
-  background: linear-gradient(180deg, #ffd6a0 0%, #ffbe6f 100%);
+  background: var(--note-strong-bg);
   border-color: rgba(180, 76, 0, 0.22);
 }
 
@@ -194,15 +194,15 @@
   gap: 6px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  color: #6c4f11;
+  background: var(--note-control-bg);
+  color: var(--note-text);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
 .notifications-note-badge.fire {
-  color: #8b2c00;
-  background: rgba(255, 241, 231, 0.82);
+  color: var(--note-strong-text);
+  background: color-mix(in srgb, var(--note-strong-text) 14%, var(--note-control-bg));
 }
 
 .notifications-recipient-picker {
@@ -210,7 +210,7 @@
   padding: 12px;
   border: 1px dashed var(--border);
   border-radius: 12px;
-  background: rgba(246, 248, 250, 0.72);
+  background: var(--note-subtle-bg);
 }
 
 .notifications-recipient-picker-head {

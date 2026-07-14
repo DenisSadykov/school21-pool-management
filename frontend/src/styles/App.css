@@ -68,6 +68,10 @@
   transform-origin: center;
 }
 
+[data-theme="dark"] .loading-logo {
+  filter: invert(1) brightness(1.12);
+}
+
 .loading-text {
   color: var(--accent);
   font-size: 1rem;
@@ -94,7 +98,7 @@
     bottom: 0;
     left: 0;
     border: 0;
-    background: rgba(15, 23, 42, 0.45);
+    background: var(--overlay);
     z-index: 110;
     padding: 0;
     cursor: default;

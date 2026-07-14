@@ -52,6 +52,57 @@ def test_penalty_creation_is_forbidden_without_pool_access(client, factories, au
     assert response.get_json()['error'] == 'У тебя нет доступа к активному бассейну'
 
 
+def test_only_staff_can_delete_completed_penalties(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    team_lead = factories.user('lead', role='team_lead', password='lead1234')
+    volunteer = factories.user('volunteer1', role='volunteer')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+    penalties = [
+        app_module.StudentPenalty(
+            student_name=f'completed_{index}',
+            volunteer_id=volunteer.id,
+            volunteer_name=volunteer.nick,
+            pool_id=pool.id,
+            workoff_status='unlocked',
+            date_worked_off=app_module._utcnow(),
+        )
+        for index in range(2)
+    ]
+    db_session.add_all(penalties)
+    db_session.flush()
+    history = app_module.PenaltyHistory(
+        penalty_id=penalties[0].id,
+        old_status='awaiting_unlock',
+        new_status='unlocked',
+    )
+    db_session.add(history)
+    db_session.commit()
+    history_id = history.id
+
+    forbidden = client.delete(
+        f'/api/penalties/{penalties[0].id}',
+        headers=auth_headers(volunteer),
+    )
+    assert forbidden.status_code == 403
+    assert db_session.get(app_module.StudentPenalty, penalties[0].id) is not None
+
+    admin_delete = client.delete(
+        f'/api/penalties/{penalties[0].id}',
+        headers=auth_headers(admin),
+    )
+    lead_delete = client.delete(
+        f'/api/penalties/{penalties[1].id}',
+        headers=auth_headers(team_lead),
+    )
+
+    assert admin_delete.status_code == 200
+    assert lead_delete.status_code == 200
+    assert db_session.get(app_module.StudentPenalty, penalties[0].id) is None
+    assert db_session.get(app_module.StudentPenalty, penalties[1].id) is None
+    assert db_session.query(app_module.PenaltyHistory).filter_by(id=history_id).count() == 0
+
+
 def test_manual_penalty_status_to_overdue_doubles_hours_and_cancels_questions(client, factories, auth_headers, db_session):
     volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
     pool = factories.pool('Active pool', active=True)
@@ -188,6 +239,42 @@ def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, a
     assert responsible_lead.id in recipients
     assert unrelated_admin.id not in recipients
     assert unrelated_lead.id not in recipients
+
+
+def test_penalty_notifications_skip_responsible_with_notifications_disabled(
+    client, factories, auth_headers, db_session,
+):
+    responsible_admin = factories.user('resp_admin', role='admin', password='secret123')
+    muted_lead = factories.user('muted_lead', role='team_lead', password='lead1234')
+    volunteer = factories.user('volunteer1', role='volunteer')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+    factories.assign(responsible_admin, pool, pool_role='responsible_admin')
+    factories.assign(
+        muted_lead,
+        pool,
+        pool_role='responsible_team_lead',
+        notifications_enabled=False,
+    )
+    student = app_module.Student(nick='muted_test', name='Muted Test', pool_id=pool.id)
+    db_session.add(student)
+    db_session.commit()
+
+    response = client.post(
+        '/api/penalties',
+        headers=auth_headers(volunteer),
+        json={'student_id': student.id, 'description': 'Late'},
+    )
+
+    assert response.status_code == 201
+    recipients = {
+        event.recipient_user_id
+        for event in db_session.query(app_module.NotificationEvent).filter_by(
+            type='penalty_admin_block',
+        ).all()
+    }
+    assert responsible_admin.id in recipients
+    assert muted_lead.id not in recipients
 
 
 def test_penalty_block_notification_is_dispatched_immediately(client, factories, auth_headers, db_session, monkeypatch):

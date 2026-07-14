@@ -83,7 +83,17 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
           aria-label="Открыть Telegram DenisSadykov"
           title="DenisSadykov в Telegram"
         >
-          <img className="sidebar-duck-image" src="/duck-odessabu.png" alt="prod_by_odessabu" />
+          <img
+            className="sidebar-duck-image sidebar-duck-image-light"
+            src="/duck-odessabu.png"
+            alt="prod_by_odessabu"
+          />
+          <img
+            className="sidebar-duck-image sidebar-duck-image-dark"
+            src="/duck-odessabu-dark.png"
+            alt=""
+            aria-hidden="true"
+          />
         </a>
       </nav>
     </aside>
