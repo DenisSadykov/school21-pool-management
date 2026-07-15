@@ -246,7 +246,7 @@ function OpsDashboard({ data }) {
         )}
 
         <section className="info-section wide dashboard-notes-section">
-          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <SectionTitle icon={FileText} title="Доска объявлений" tone="upcoming" />
           <DashboardNotes notes={notes} />
         </section>
 
@@ -344,7 +344,7 @@ function TribeMasterDashboard({ data }) {
         )}
 
         <section className="info-section wide dashboard-notes-section">
-          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <SectionTitle icon={FileText} title="Доска объявлений" tone="upcoming" />
           <DashboardNotes notes={notes} />
         </section>
 
@@ -415,7 +415,7 @@ function VolunteerDashboard({ data, user }) {
         )}
 
         <section className="info-section dashboard-notes-section">
-          <SectionTitle icon={FileText} title="Доска объявлений" meta={notes.length || null} tone="upcoming" />
+          <SectionTitle icon={FileText} title="Доска объявлений" tone="upcoming" />
           <DashboardNotes notes={notes} />
         </section>
 
@@ -470,27 +470,32 @@ function DashboardNotes({ notes }) {
   return (
     <div className="dashboard-notes-list">
       {notes.map((note) => (
-        <article
-          key={note.id}
-          className={`dashboard-note-card ${note.is_highlighted ? 'is-highlighted' : ''}`}
-        >
-          <div className="dashboard-note-meta">
-            <strong>
-              {note.is_pinned ? 'Закреплено' : 'Объявление'}
-              {note.is_pinned ? ' 📌' : ''}
-              {note.is_highlighted ? ' 🔥' : ''}
-            </strong>
-            <span>{formatDashboardAuthor(note)}</span>
-          </div>
-          <p>{note.text}</p>
-        </article>
+        <DashboardNote key={note.id} note={note} />
       ))}
     </div>
   );
 }
 
+function DashboardNote({ note }) {
+  const author = formatDashboardAuthor(note);
+
+  return (
+    <article className={`dashboard-note-card ${note.is_highlighted ? 'is-highlighted' : ''}`}>
+      <div className="dashboard-note-meta">
+        <strong>
+          {note.is_pinned ? 'Закреплено' : 'Объявление'}
+          {note.is_pinned ? ' 📌' : ''}
+          {note.is_highlighted ? ' 🔥' : ''}
+        </strong>
+        {author && <span>{author}</span>}
+      </div>
+      <p>{note.text}</p>
+    </article>
+  );
+}
+
 function formatDashboardAuthor(note) {
-  if (note?.is_anonymous) return 'анонимно';
+  if (note?.is_anonymous) return '';
   if (note?.author_name && note?.author_nick) return `${note.author_name} (@${note.author_nick})`;
   if (note?.author_nick) return `@${note.author_nick}`;
   return 'система';
