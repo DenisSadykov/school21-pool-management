@@ -44,6 +44,58 @@ def test_create_dashboard_note_for_active_pool(client, factories, auth_headers, 
 
     note = db_session.query(app_module.DashboardNote).one()
     assert note.text == 'Проверить бриф'
+    assert db_session.query(app_module.NotificationEvent).filter_by(
+        type='dashboard_note_created',
+    ).count() == 0
+
+
+def test_dashboard_note_notifies_only_active_pool_members(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setattr(app_module, 'dispatch_notifications_immediately', lambda events: None)
+    monkeypatch.setattr(app_module, 'frontend_urls', ['https://pool.example'])
+
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('active_volunteer', role='volunteer')
+    outsider = factories.user('other_volunteer', role='volunteer')
+    active_pool = factories.pool('Active pool', active=True)
+    other_pool = factories.pool('Other pool')
+    factories.assign(admin, active_pool, pool_role='responsible_admin')
+    factories.assign(volunteer, active_pool)
+    factories.assign(outsider, other_pool)
+
+    response = client.post(
+        '/api/notifications/notes',
+        headers=auth_headers(admin),
+        json={'text': 'Сбор в 14:00', 'notify_telegram': True},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()['telegram_notification_count'] == 2
+
+    events = db_session.query(app_module.NotificationEvent).filter_by(
+        type='dashboard_note_created',
+        pool_id=active_pool.id,
+    ).all()
+    assert {event.recipient_user_id for event in events} == {admin.id, volunteer.id}
+    assert outsider.id not in {event.recipient_user_id for event in events}
+
+    payload = app_module.json.loads(events[0].payload)
+    assert payload['text'] == 'На дашборде появилось новое объявление:\n\nСбор в 14:00'
+    assert payload['action_buttons'] == [{
+        'text': 'Открыть дашборд',
+        'url': 'https://pool.example/',
+    }]
+    assert app_module.build_notification_reply_markup(events[0]) == {
+        'inline_keyboard': [[{
+            'text': 'Открыть дашборд',
+            'url': 'https://pool.example/',
+        }]],
+    }
 
 
 def test_create_broadcast_creates_events_and_skips_unlinked_users(client, factories, auth_headers, db_session, monkeypatch):

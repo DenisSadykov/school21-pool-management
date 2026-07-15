@@ -1505,12 +1505,17 @@ def build_notification_reply_markup(event):
     buttons = payload.get('action_buttons') or []
     if not buttons:
         return None
-    return {
-        'inline_keyboard': [[{
-            'text': button['text'],
-            'callback_data': button['callback_data'],
-        } for button in buttons]]
-    }
+    telegram_buttons = []
+    for button in buttons:
+        telegram_button = {'text': button.get('text') or 'Открыть'}
+        if button.get('url'):
+            telegram_button['url'] = button['url']
+        elif button.get('callback_data'):
+            telegram_button['callback_data'] = button['callback_data']
+        else:
+            continue
+        telegram_buttons.append(telegram_button)
+    return {'inline_keyboard': [telegram_buttons]} if telegram_buttons else None
 
 
 def build_notification_text(event):
@@ -5246,15 +5251,45 @@ def create_notification_note():
         is_anonymous=bool(data.get('is_anonymous')),
     )
     db.session.add(note)
+    db.session.flush()
+    notification_events = []
+    if data.get('notify_telegram'):
+        dashboard_url = f'{_frontend_base_url()}/' if _frontend_base_url() else '/'
+        notification_text = f'На дашборде появилось новое объявление:\n\n{text}'
+        recipients = _broadcast_recipient_query(pool_id, {}).all()
+        for user in recipients:
+            event = _queue_notification(
+                user,
+                'dashboard_note_created',
+                notification_text,
+                f'dashboard-note:{note.id}:user:{user.id}',
+                pool_id=pool_id,
+                source_entity='dashboard_note',
+                source_entity_id=note.id,
+                created_by=g.user.id,
+                action_buttons=[{'text': 'Открыть дашборд', 'url': dashboard_url}],
+            )
+            if event:
+                notification_events.append(event)
     log_action(
         'create',
         'dashboard_note',
         None,
         'Создана заметка для дашборда',
-        {'text': text, 'is_pinned': note.is_pinned, 'is_highlighted': note.is_highlighted, 'is_anonymous': note.is_anonymous},
+        {
+            'text': text,
+            'is_pinned': note.is_pinned,
+            'is_highlighted': note.is_highlighted,
+            'is_anonymous': note.is_anonymous,
+            'notify_telegram': bool(data.get('notify_telegram')),
+            'telegram_notification_count': len(notification_events),
+        },
     )
     db.session.commit()
-    return jsonify(_dashboard_note_to_dict(note)), 201
+    dispatch_notifications_immediately(notification_events)
+    response = _dashboard_note_to_dict(note)
+    response['telegram_notification_count'] = len(notification_events)
+    return jsonify(response), 201
 
 
 @app.route('/api/notifications/notes/<int:note_id>', methods=['PATCH'])

@@ -43,6 +43,11 @@ test.describe('School 21 Pool smoke', () => {
     await expect(page.getByRole('button', { name: 'Рассылки' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Доска объявлений' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Telegram' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Доска объявлений' }).click();
+    await expect(page.getByRole('checkbox', {
+      name: 'Уведомить в Telegram о новом объявлении',
+    })).toBeVisible();
   });
 
   test('volunteer can log in and sees only volunteer screens', async ({ page }) => {

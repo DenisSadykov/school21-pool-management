@@ -26,6 +26,7 @@ const DEFAULT_NOTE = {
   is_pinned: false,
   is_highlighted: false,
   is_anonymous: false,
+  notify_telegram: false,
 };
 
 const DEFAULT_TELEGRAM_SETTINGS = {
@@ -117,8 +118,13 @@ function Notifications() {
     event.preventDefault();
     try {
       const createdNote = await api.post('/api/notifications/notes', noteForm);
+      const shouldNotifyTelegram = noteForm.notify_telegram;
       setNoteForm(DEFAULT_NOTE);
-      setMessage('Заметка добавлена в доску объявлений.');
+      setMessage(
+        shouldNotifyTelegram
+          ? `Заметка опубликована. Telegram-уведомление подготовлено для ${createdNote.telegram_notification_count || 0} чел.`
+          : 'Заметка добавлена в доску объявлений.'
+      );
       patchOverview((prev) => ({
         ...prev,
         notes: [createdNote, ...(prev.notes || [])],
@@ -428,6 +434,14 @@ function Notifications() {
                   onChange={(e) => setNoteForm((prev) => ({ ...prev, is_anonymous: e.target.checked }))}
                 />
                 Опубликовать анонимно
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={noteForm.notify_telegram}
+                  onChange={(e) => setNoteForm((prev) => ({ ...prev, notify_telegram: e.target.checked }))}
+                />
+                Уведомить в Telegram о новом объявлении
               </label>
             </div>
           </form>
