@@ -277,7 +277,13 @@ def test_penalty_notifications_skip_responsible_with_notifications_disabled(
     assert muted_lead.id not in recipients
 
 
-def test_penalty_block_notification_is_dispatched_immediately(client, factories, auth_headers, db_session, monkeypatch):
+def test_penalty_block_notification_is_queued_without_blocking_request(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+    monkeypatch,
+):
     admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
     volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
     pool = factories.pool('Active pool', active=True)
@@ -297,15 +303,11 @@ def test_penalty_block_notification_is_dispatched_immediately(client, factories,
     db_session.commit()
 
     monkeypatch.setattr(app_module, 'TELEGRAM_BOT_TOKEN', 'test-bot-token')
-    sent_messages = []
+    dispatched_event_ids = []
     monkeypatch.setattr(
         app_module,
-        'telegram_send_message',
-        lambda chat_id, text, disable_notification=False, reply_markup=None: sent_messages.append({
-            'chat_id': chat_id,
-            'text': text,
-            'reply_markup': reply_markup,
-        }) or {'message_id': 777},
+        'queue_notification_dispatch',
+        lambda events: dispatched_event_ids.extend(event.id for event in events),
     )
 
     response = client.post(
@@ -320,7 +322,5 @@ def test_penalty_block_notification_is_dispatched_immediately(client, factories,
         type='penalty_admin_block',
         source_entity_id=penalty.id,
     ).one()
-    assert event.status == 'sent'
-    assert len(sent_messages) == 1
-    assert sent_messages[0]['chat_id'] == '999'
-    assert sent_messages[0]['reply_markup'] is None
+    assert event.status == 'queued'
+    assert dispatched_event_ids == [event.id]

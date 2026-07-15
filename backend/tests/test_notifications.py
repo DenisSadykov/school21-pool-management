@@ -9,10 +9,20 @@ def test_dispatch_requires_internal_secret(client):
 
 
 def test_dispatch_accepts_internal_secret(client, monkeypatch):
+    captured = {}
+
+    def fake_process(limit=20, event_ids=None, schedule_events=True):
+        captured.update({
+            'limit': limit,
+            'event_ids': event_ids,
+            'schedule_events': schedule_events,
+        })
+        return {'processed': 2, 'sent': 1, 'failed': 0, 'skipped': 1}
+
     monkeypatch.setattr(
         app_module,
         'process_pending_notifications',
-        lambda limit=20: {'processed': 2, 'sent': 1, 'failed': 0, 'skipped': 1},
+        fake_process,
     )
 
     response = client.post(
@@ -23,6 +33,30 @@ def test_dispatch_accepts_internal_secret(client, monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload == {'ok': True, 'processed': 2, 'sent': 1, 'failed': 0, 'skipped': 1}
+    assert captured == {'limit': 15, 'event_ids': None, 'schedule_events': True}
+
+
+def test_dispatch_targets_requested_events_without_scheduling(client, monkeypatch):
+    captured = {}
+
+    def fake_process(limit=20, event_ids=None, schedule_events=True):
+        captured.update({
+            'limit': limit,
+            'event_ids': event_ids,
+            'schedule_events': schedule_events,
+        })
+        return {'processed': 2, 'sent': 2, 'failed': 0, 'skipped': 0}
+
+    monkeypatch.setattr(app_module, 'process_pending_notifications', fake_process)
+
+    response = client.post(
+        '/api/notifications/dispatch',
+        headers={'X-Internal-Secret': 'test-internal-secret'},
+        json={'event_ids': [9, 4, 9]},
+    )
+
+    assert response.status_code == 200
+    assert captured == {'limit': 20, 'event_ids': [9, 4], 'schedule_events': False}
 
 
 def test_create_dashboard_note_for_active_pool(client, factories, auth_headers, db_session):
@@ -56,7 +90,7 @@ def test_dashboard_note_notifies_only_active_pool_members(
     db_session,
     monkeypatch,
 ):
-    monkeypatch.setattr(app_module, 'dispatch_notifications_immediately', lambda events: None)
+    monkeypatch.setattr(app_module, 'queue_notification_dispatch', lambda events: None)
     monkeypatch.setattr(app_module, 'frontend_urls', ['https://pool.example'])
 
     admin = factories.user('admin', role='admin', password='secret123')
