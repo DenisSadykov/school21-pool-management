@@ -163,6 +163,8 @@
   line-height: 1.55;
   flex: 1;
   padding-top: 14px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .notifications-note-card small {

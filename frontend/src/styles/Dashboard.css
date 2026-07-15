@@ -585,11 +585,12 @@
   grid-template-columns: repeat(auto-fit, minmax(190px, 220px));
   gap: 12px;
   justify-content: flex-start;
+  align-items: start;
 }
 
 .dashboard-note-card {
-  min-height: 0;
-  aspect-ratio: 1 / 1;
+  min-height: 190px;
+  height: auto;
   padding: 12px 11px 11px;
   border-radius: 4px;
   border: 1px solid rgba(153, 112, 28, 0.18);
@@ -614,7 +615,8 @@
   color: var(--text-primary);
   line-height: 1.42;
   font-size: 0.94rem;
-  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dashboard-note-meta {
@@ -709,7 +711,7 @@
 
   .dashboard-note-card {
     min-height: 0;
-    aspect-ratio: 1 / 1;
+    height: auto;
     padding: 12px 10px 10px;
     transform: none;
   }
@@ -722,7 +724,6 @@
     margin-top: 10px;
     font-size: 0.92rem;
     line-height: 1.38;
-    overflow: hidden;
   }
 
   .dashboard-note-meta {
