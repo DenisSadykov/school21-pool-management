@@ -451,32 +451,7 @@ function Notifications() {
               <div className="info-section"><p className="text-muted">Заметок пока нет.</p></div>
             ) : (
               (overview?.notes || []).map((note) => (
-                <article
-                  key={note.id}
-                  className={`notifications-note-card ${note.is_highlighted ? 'highlighted' : ''}`}
-                >
-                  <div className="notifications-note-head">
-                    <div className="notifications-note-badges">
-                      {note.is_pinned && (
-                        <span className="notifications-note-badge">
-                          <Pin size={14} /> Закреплено
-                        </span>
-                      )}
-                      {note.is_highlighted && (
-                        <span className="notifications-note-badge fire">
-                          <Flame size={14} /> Огонек
-                        </span>
-                      )}
-                    </div>
-                    <button className="btn-icon danger" type="button" onClick={() => removeNote(note.id)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                  <p>{note.text}</p>
-                  <small className="notifications-note-signature">
-                    {formatAuthor(note)} · {note.updated_at ? new Date(note.updated_at).toLocaleString('ru-RU') : ''}
-                  </small>
-                </article>
+                <NotificationNote key={note.id} note={note} onRemove={removeNote} />
               ))
             )}
           </div>
@@ -668,10 +643,40 @@ function formatFilters(filters) {
 }
 
 function formatAuthor(item) {
-  if (item?.is_anonymous) return 'анонимно';
+  if (item?.is_anonymous) return '';
   if (item?.author_name && item?.author_nick) return `${item.author_name} (@${item.author_nick})`;
   if (item?.author_nick) return `@${item.author_nick}`;
   return 'система';
+}
+
+function NotificationNote({ note, onRemove }) {
+  const author = formatAuthor(note);
+  const updatedAt = note.updated_at ? new Date(note.updated_at).toLocaleString('ru-RU') : '';
+  const signature = [author, updatedAt].filter(Boolean).join(' · ');
+
+  return (
+    <article className={`notifications-note-card ${note.is_highlighted ? 'highlighted' : ''}`}>
+      <div className="notifications-note-head">
+        <div className="notifications-note-badges">
+          {note.is_pinned && (
+            <span className="notifications-note-badge">
+              <Pin size={14} /> Закреплено
+            </span>
+          )}
+          {note.is_highlighted && (
+            <span className="notifications-note-badge fire">
+              <Flame size={14} /> Огонек
+            </span>
+          )}
+        </div>
+        <button className="btn-icon danger" type="button" onClick={() => onRemove(note.id)}>
+          <Trash2 size={16} />
+        </button>
+      </div>
+      <p>{note.text}</p>
+      {signature && <small className="notifications-note-signature">{signature}</small>}
+    </article>
+  );
 }
 
 function formatHourLabel(hour) {
