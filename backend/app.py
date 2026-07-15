@@ -140,6 +140,14 @@ TELEGRAM_QUIET_HOURS_END = int(os.getenv('TELEGRAM_QUIET_HOURS_END', '7'))
 TELEGRAM_WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '').strip()
 TELEGRAM_SUPPORT_CONTACT = os.getenv('TELEGRAM_SUPPORT_CONTACT', '@odessabu').strip()
 INTERNAL_API_SECRET = os.getenv('INTERNAL_API_SECRET', '').strip()
+NOTIFICATION_DISPATCH_URL = os.getenv(
+    'NOTIFICATION_DISPATCH_URL',
+    'https://school21-pool-management-api.vercel.app/api/notifications/dispatch',
+).strip()
+NOTIFICATION_DISPATCH_TIMEOUT_MS = max(
+    1000,
+    int(os.getenv('NOTIFICATION_DISPATCH_TIMEOUT_MS', '60000')),
+)
 SCHOOL_RULES_URL = os.getenv('SCHOOL_RULES_URL', 'https://applicant.21-school.ru/rules')
 EXAM_BRIEF_URL = os.getenv('EXAM_BRIEF_URL', '')
 MOSCOW_OFFSET = timedelta(hours=3)
@@ -1812,7 +1820,7 @@ def telegram_handle_callback(callback):
                 telegram_answer_callback(callback_id, 'Пенальти уже изменилось, обнови данные')
     db.session.commit()
     if immediate_events:
-        dispatch_notifications_immediately(immediate_events)
+        queue_notification_dispatch(immediate_events)
     return {'ok': True}
 
 
@@ -2129,23 +2137,43 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
     }
 
 
-def dispatch_notifications_immediately(events):
-    """Deliver selected committed events now; the regular queue remains the fallback."""
-    if not _telegram_is_configured():
-        return {'processed': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
-    event_ids = [event.id for event in events if event and event.id]
-    if not event_ids:
-        return {'processed': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
+def queue_notification_dispatch(events):
+    """Ask Postgres to start delivery after commit without blocking the UI request."""
+    event_ids = sorted({event.id for event in events if event and event.id})
+    if (
+        not event_ids
+        or not _telegram_is_configured()
+        or not INTERNAL_API_SECRET
+        or not NOTIFICATION_DISPATCH_URL
+        or db.engine.dialect.name != 'postgresql'
+    ):
+        return None
     try:
-        return process_pending_notifications(
-            limit=len(event_ids),
-            event_ids=event_ids,
-            schedule_events=False,
-        )
+        request_id = db.session.execute(
+            db.text('''
+                SELECT net.http_post(
+                    url := :url,
+                    body := CAST(:body AS jsonb),
+                    headers := CAST(:headers AS jsonb),
+                    timeout_milliseconds := :timeout_ms
+                )
+            '''),
+            {
+                'url': NOTIFICATION_DISPATCH_URL,
+                'body': json.dumps({'event_ids': event_ids}),
+                'headers': json.dumps({
+                    'Authorization': f'Bearer {INTERNAL_API_SECRET}',
+                    'Content-Type': 'application/json',
+                }),
+                'timeout_ms': NOTIFICATION_DISPATCH_TIMEOUT_MS,
+            },
+        ).scalar()
+        db.session.commit()
+        return request_id
     except Exception as exc:
         db.session.rollback()
-        app.logger.exception('Immediate Telegram delivery failed: %s', exc)
-        return {'processed': 0, 'sent': 0, 'failed': len(event_ids), 'skipped': 0}
+        app.logger.warning('Could not queue immediate Telegram dispatch: %s', exc)
+        return None
 
 
 def verify_internal_api_secret():
@@ -4884,9 +4912,26 @@ def sync_telegram_commands():
 def dispatch_notifications():
     if not verify_internal_api_secret():
         return jsonify({'error': 'Недостаточно прав для dispatch'}), 403
+    data = request.get_json(silent=True) or {}
+    raw_event_ids = data.get('event_ids')
+    event_ids = None
+    if raw_event_ids is not None:
+        if not isinstance(raw_event_ids, list):
+            return jsonify({'error': 'event_ids должен быть списком'}), 400
+        try:
+            parsed_event_ids = [int(item) for item in raw_event_ids]
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Некорректный event_ids'}), 400
+        event_ids = list(dict.fromkeys(item for item in parsed_event_ids if item > 0))[:100]
     limit = request.args.get('limit', default=20, type=int) or 20
+    if event_ids:
+        limit = max(limit, len(event_ids))
     try:
-        result = process_pending_notifications(limit=min(limit, 100))
+        result = process_pending_notifications(
+            limit=min(limit, 100),
+            event_ids=event_ids,
+            schedule_events=event_ids is None,
+        )
         db.session.commit()
         return jsonify({'ok': True, **result})
     except Exception as exc:
@@ -5119,6 +5164,7 @@ def create_broadcast():
         user for user in _broadcast_recipient_query(pool_id, filters).all()
         if _pool_notifications_enabled_for_user(user.id, pool_id)
     ]
+    notification_events = []
     for user in recipients:
         payload = {
             'text': text,
@@ -5139,6 +5185,7 @@ def create_broadcast():
         )
         db.session.add(event)
         db.session.flush()
+        notification_events.append(event)
         account = TelegramAccount.query.filter_by(user_id=user.id, is_linked=True).first()
         db.session.add(NotificationDelivery(
             notification_id=event.id,
@@ -5155,11 +5202,7 @@ def create_broadcast():
         {'filters': filters, 'priority': priority, 'text': text, 'is_anonymous': bool(broadcast.is_anonymous)},
     )
     db.session.commit()
-    try:
-        process_pending_notifications(limit=max(20, len(recipients) + 5))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+    queue_notification_dispatch(notification_events)
     return jsonify(_broadcast_to_dict(broadcast)), 201
 
 
@@ -5286,7 +5329,7 @@ def create_notification_note():
         },
     )
     db.session.commit()
-    dispatch_notifications_immediately(notification_events)
+    queue_notification_dispatch(notification_events)
     response = _dashboard_note_to_dict(note)
     response['telegram_notification_count'] = len(notification_events)
     return jsonify(response), 201
@@ -6084,7 +6127,7 @@ def create_penalty():
         suffix='initial',
     )
     db.session.commit()
-    dispatch_notifications_immediately(critical_events)
+    queue_notification_dispatch(critical_events)
     return jsonify({'id': penalty.id, 'message': 'Штраф добавлен'}), 201
 
 
@@ -6138,7 +6181,7 @@ def update_penalty_status(penalty_id):
         )
     db.session.commit()
     if critical_events:
-        dispatch_notifications_immediately(critical_events)
+        queue_notification_dispatch(critical_events)
     return jsonify({'message': 'Штраф обновлён'})
 
 
