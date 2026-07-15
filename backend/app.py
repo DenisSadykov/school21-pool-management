@@ -7543,44 +7543,6 @@ def ensure_postgres_profile_columns():
         conn.commit()
 
 
-def harden_postgres_data_api_access():
-    """Keep application tables private from Supabase's browser-facing Data API."""
-    if db.engine.dialect.name != 'postgresql':
-        return
-    with db.engine.begin() as conn:
-        conn.exec_driver_sql("""
-            DO $$
-            DECLARE
-                target RECORD;
-            BEGIN
-                FOR target IN
-                    SELECT format('%I.%I', n.nspname, c.relname) AS qualified_name
-                    FROM pg_class c
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = 'public'
-                      AND c.relkind IN ('r', 'p')
-                      AND NOT c.relrowsecurity
-                LOOP
-                    EXECUTE 'ALTER TABLE ' || target.qualified_name || ' ENABLE ROW LEVEL SECURITY';
-                END LOOP;
-            END $$;
-        """)
-        conn.exec_driver_sql(
-            'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated'
-        )
-        conn.exec_driver_sql(
-            'REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated'
-        )
-        conn.exec_driver_sql(
-            'ALTER DEFAULT PRIVILEGES IN SCHEMA public '
-            'REVOKE ALL PRIVILEGES ON TABLES FROM anon, authenticated'
-        )
-        conn.exec_driver_sql(
-            'ALTER DEFAULT PRIVILEGES IN SCHEMA public '
-            'REVOKE ALL PRIVILEGES ON SEQUENCES FROM anon, authenticated'
-        )
-
-
 def should_auto_init_db():
     value = os.getenv('AUTO_INIT_DB')
     if value is not None:
@@ -7620,13 +7582,11 @@ if should_auto_init_db():
         db.create_all()
         ensure_user_profile_columns()
         ensure_postgres_profile_columns()
-        harden_postgres_data_api_access()
         seed_admin()
         seed_pool_data()
 else:
     with app.app_context():
         ensure_postgres_profile_columns()
-        harden_postgres_data_api_access()
 
 
 sync_telegram_commands_on_startup()
