@@ -4,6 +4,7 @@ import time
 import threading
 import secrets
 import re
+import hashlib
 import zipfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -108,6 +109,8 @@ STUDENT_EVENT_POINTS = {
 }
 STUDENT_EVENT_STATUSES = {'pending', 'confirmed', 'rejected'}
 PENALTY_STATUSES = {'pending', 'in_workoff', 'overdue', 'awaiting_unlock', 'unlocked', 'done'}
+PENALTY_DUPLICATE_WINDOW = timedelta(minutes=3)
+ANNOUNCEMENT_DUPLICATE_WINDOW = timedelta(minutes=1)
 TIME_VALUE_RE = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$')
 REWARD_RATES = {
     'first_day_hour': 15,
@@ -156,6 +159,24 @@ _telegram_bot_avatar_cache = {
     'bytes': None,
     'content_type': None,
 }
+
+
+def _normalized_dedupe_text(value):
+    return ' '.join((value or '').split()).casefold()
+
+
+def _dedupe_lock_key(*parts):
+    payload = ':'.join(str(part) for part in parts)
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _acquire_dedupe_lock(*parts):
+    if db.engine.dialect.name != 'postgresql':
+        return
+    db.session.execute(
+        db.text('SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))'),
+        {'key': _dedupe_lock_key(*parts)},
+    )
 
 
 def _moscow_today():
@@ -5284,6 +5305,25 @@ def create_notification_note():
     pool_id = active_pool_id()
     if not pool_id:
         return jsonify({'error': 'Нет активного бассейна'}), 400
+    normalized_text = _normalized_dedupe_text(text)
+    _acquire_dedupe_lock('dashboard-note', pool_id, normalized_text)
+    recent_notes = DashboardNote.query.filter(
+        DashboardNote.pool_id == pool_id,
+        DashboardNote.created_at >= _utcnow() - ANNOUNCEMENT_DUPLICATE_WINDOW,
+    ).order_by(DashboardNote.created_at.desc()).all()
+    duplicate_note = next(
+        (note for note in recent_notes if _normalized_dedupe_text(note.text) == normalized_text),
+        None,
+    )
+    if duplicate_note:
+        response = _dashboard_note_to_dict(duplicate_note)
+        response.update({
+            'duplicate': True,
+            'telegram_notification_count': 0,
+            'message': 'Такое объявление уже опубликовано менее минуты назад',
+        })
+        db.session.commit()
+        return jsonify(response), 200
     note = DashboardNote(
         author_id=g.user.id,
         pool_id=pool_id,
@@ -5331,6 +5371,7 @@ def create_notification_note():
     db.session.commit()
     queue_notification_dispatch(notification_events)
     response = _dashboard_note_to_dict(note)
+    response['duplicate'] = False
     response['telegram_notification_count'] = len(notification_events)
     return jsonify(response), 201
 
@@ -6096,6 +6137,19 @@ def create_penalty():
             ).first()
     if not student or student.pool_id != pool_id:
         return jsonify({'error': 'Ученик не найден в активном бассейне'}), 404
+    _acquire_dedupe_lock('penalty-create', pool_id, student.id)
+    duplicate_penalty = StudentPenalty.query.filter(
+        StudentPenalty.pool_id == pool_id,
+        StudentPenalty.student_id == student.id,
+        StudentPenalty.date_issued >= _utcnow() - PENALTY_DUPLICATE_WINDOW,
+    ).order_by(StudentPenalty.date_issued.desc()).first()
+    if duplicate_penalty:
+        db.session.commit()
+        return jsonify({
+            'id': duplicate_penalty.id,
+            'duplicate': True,
+            'message': 'Этому ученику уже выдан пенальти менее 3 минут назад',
+        }), 200
     penalty = StudentPenalty(
         student_id=student.id,
         student_name=student.nick,
@@ -6128,7 +6182,7 @@ def create_penalty():
     )
     db.session.commit()
     queue_notification_dispatch(critical_events)
-    return jsonify({'id': penalty.id, 'message': 'Штраф добавлен'}), 201
+    return jsonify({'id': penalty.id, 'duplicate': False, 'message': 'Штраф добавлен'}), 201
 
 
 @app.route('/api/penalties/<int:penalty_id>', methods=['PATCH'])
@@ -6141,12 +6195,34 @@ def update_penalty_status(penalty_id):
         return error
     if not _can_access_pool_id(g.user, penalty.pool_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
-    old_status = penalty.workoff_status
-    old_hours = penalty.hours * penalty.multiplier
-    critical_events = []
     new_status = data.get('workoff_status', penalty.workoff_status)
     if new_status not in PENALTY_STATUSES:
         return jsonify({'error': 'Некорректный статус штрафа'}), 400
+    _acquire_dedupe_lock('penalty-status', penalty.id)
+    db.session.refresh(penalty)
+    old_status = penalty.workoff_status
+    old_hours = penalty.hours * penalty.multiplier
+    critical_events = []
+    if new_status == old_status:
+        db.session.commit()
+        return jsonify({
+            'message': 'Статус штрафа уже обновлён',
+            'duplicate': True,
+            'workoff_status': penalty.workoff_status,
+        })
+    if new_status == 'awaiting_unlock':
+        recent_unlock_transition = PenaltyHistory.query.filter(
+            PenaltyHistory.penalty_id == penalty.id,
+            PenaltyHistory.new_status == 'awaiting_unlock',
+            PenaltyHistory.created_at >= _utcnow() - PENALTY_DUPLICATE_WINDOW,
+        ).first()
+        if recent_unlock_transition:
+            db.session.commit()
+            return jsonify({
+                'message': 'Запрос на разблокировку уже создан менее 3 минут назад',
+                'duplicate': True,
+                'workoff_status': penalty.workoff_status,
+            })
     penalty.workoff_status = new_status
     if new_status == 'overdue' and old_status == 'pending':
         penalty.multiplier *= 2
@@ -6182,7 +6258,11 @@ def update_penalty_status(penalty_id):
     db.session.commit()
     if critical_events:
         queue_notification_dispatch(critical_events)
-    return jsonify({'message': 'Штраф обновлён'})
+    return jsonify({
+        'message': 'Штраф обновлён',
+        'duplicate': False,
+        'workoff_status': penalty.workoff_status,
+    })
 
 
 @app.route('/api/penalties/<int:penalty_id>', methods=['DELETE'])

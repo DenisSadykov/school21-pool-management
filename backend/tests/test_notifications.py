@@ -83,6 +83,33 @@ def test_create_dashboard_note_for_active_pool(client, factories, auth_headers, 
     ).count() == 0
 
 
+def test_duplicate_dashboard_note_is_reused_within_one_minute(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+):
+    admin = factories.user('admin', role='admin', password='secret123')
+    factories.pool('Active pool', active=True)
+
+    first = client.post(
+        '/api/notifications/notes',
+        headers=auth_headers(admin),
+        json={'text': '  Общий   сбор в 14:00  '},
+    )
+    second = client.post(
+        '/api/notifications/notes',
+        headers=auth_headers(admin),
+        json={'text': 'общий сбор В 14:00'},
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.get_json()['duplicate'] is True
+    assert second.get_json()['id'] == first.get_json()['id']
+    assert db_session.query(app_module.DashboardNote).count() == 1
+
+
 def test_dashboard_note_notifies_only_active_pool_members(
     client,
     factories,

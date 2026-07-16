@@ -424,79 +424,73 @@ function Penalties({ user }) {
 
 function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
   const workoffNote = getWorkoffNote(penalty);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const runAction = async (action) => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      await action();
+      onStatusChange();
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('❌ Ошибка: ' + error.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleStartWorkoff = async () => {
     const comment = window.prompt('Как отрабатывает? Комментарий можно оставить пустым.', '');
     if (comment === null) return;
 
-    try {
-      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'in_workoff', comment });
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { workoff_status: 'in_workoff', comment }
+    ));
   };
 
   const handleMarkDone = async () => {
     if (!window.confirm(`Отметить что ${penalty.student_name} отработал ${penalty.total_hours} часов?`)) return;
 
-    try {
-      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'awaiting_unlock' });
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { workoff_status: 'awaiting_unlock' }
+    ));
   };
 
   const handleUnlock = async () => {
     if (!window.confirm(`${penalty.student_name} разблокирован на учебной платформе?`)) return;
 
-    try {
-      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'unlocked' });
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { workoff_status: 'unlocked' }
+    ));
   };
 
   const handleMarkPending = async () => {
     if (!window.confirm(`Отменить отработку для ${penalty.student_name}?`)) return;
 
-    try {
-      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'pending' });
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { workoff_status: 'pending' }
+    ));
   };
 
   const handleMarkOverdue = async () => {
     const newHours = penalty.total_hours * 2;
     if (!window.confirm(`Ученик не пришёл на отработку?\n${penalty.total_hours}h → ${newHours}h`)) return;
 
-    try {
-      await api.patch(`/api/penalties/${penalty.id}`, { workoff_status: 'overdue' });
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { workoff_status: 'overdue' }
+    ));
   };
 
   const handleDelete = async () => {
     if (!window.confirm(`Удалить штраф для ${penalty.student_name}?\nЭто действие нельзя отменить.`)) return;
 
-    try {
-      await api.del(`/api/penalties/${penalty.id}`);
-      onStatusChange();
-    } catch (error) {
-      console.error('Ошибка:', error);
-      alert('❌ Ошибка: ' + error.message);
-    }
+    await runAction(() => api.del(`/api/penalties/${penalty.id}`));
   };
 
   return (
@@ -550,14 +544,14 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
 
       {penalty.workoff_status === 'pending' && (
         <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
-          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
+          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку" disabled={isUpdating}>
             <Check size={18} /> Начал отработку
           </button>
-          <button className="btn-overdue" onClick={handleMarkOverdue} title="Не пришёл (×2)">
+          <button className="btn-overdue" onClick={handleMarkOverdue} title="Не пришёл (×2)" disabled={isUpdating}>
             <X size={18} /> Не пришёл
           </button>
           {canDelete && (
-            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф" disabled={isUpdating}>
               <Trash2 size={18} />
             </button>
           )}
@@ -566,14 +560,14 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
 
       {isInWorkoff && (
         <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
-          <button className="btn-done" onClick={handleMarkDone} title="Отработал">
+          <button className="btn-done" onClick={handleMarkDone} title="Отработал" disabled={isUpdating}>
             <Check size={18} /> Отработал
           </button>
-          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
+          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание" disabled={isUpdating}>
             ↶ Вернуть в ожидание
           </button>
           {canDelete && (
-            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф" disabled={isUpdating}>
               <Trash2 size={18} />
             </button>
           )}
@@ -582,14 +576,14 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
 
       {isOverdue && (
         <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
-          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку">
+          <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку" disabled={isUpdating}>
             <Check size={18} /> Начал отработку
           </button>
-          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание">
+          <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание" disabled={isUpdating}>
             ↶ В ожидание
           </button>
           {canDelete && (
-            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф" disabled={isUpdating}>
               <Trash2 size={18} />
             </button>
           )}
@@ -598,14 +592,14 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
 
       {isAwaitingUnlock && (
         <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
-          <button className="btn-done" onClick={handleUnlock} title="Разблокирован">
+          <button className="btn-done" onClick={handleUnlock} title="Разблокирован" disabled={isUpdating}>
             <Check size={18} /> Разблокирован
           </button>
-          <button className="btn-cancel" onClick={handleMarkPending} title="Отменить отработку">
+          <button className="btn-cancel" onClick={handleMarkPending} title="Отменить отработку" disabled={isUpdating}>
             ↶ Отменить
           </button>
           {canDelete && (
-            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф">
+            <button className="btn-delete" onClick={handleDelete} title="Удалить штраф" disabled={isUpdating}>
               <Trash2 size={18} />
             </button>
           )}
@@ -622,6 +616,7 @@ function PenaltyForm({ students, onClose, onSuccess }) {
     description: ''
   });
   const [filteredStudents, setFilteredStudents] = useState(students);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleStudentSearch = (value) => {
     setForm({ ...form, student_id: null, student_name: value });
@@ -632,11 +627,13 @@ function PenaltyForm({ students, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     if (!form.student_id) {
       alert('Выберите ученика из списка активного бассейна');
       return;
     }
 
+    setSubmitting(true);
     try {
       await api.post('/api/penalties', {
         student_id: form.student_id,
@@ -645,6 +642,8 @@ function PenaltyForm({ students, onClose, onSuccess }) {
       onSuccess();
     } catch (error) {
       alert('❌ Ошибка: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -698,8 +697,8 @@ function PenaltyForm({ students, onClose, onSuccess }) {
       </div>
 
       <div className="form-actions">
-        <button type="submit" className="btn-penalty-primary">
-          ➕ Выдать штраф
+        <button type="submit" className="btn-penalty-primary" disabled={submitting}>
+          {submitting ? 'Выдаём...' : '➕ Выдать штраф'}
         </button>
         <button type="button" className="btn-secondary" onClick={onClose}>
           Отмена

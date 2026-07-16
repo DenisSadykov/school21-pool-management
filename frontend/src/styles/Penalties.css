@@ -79,6 +79,13 @@
   border-color: rgba(9, 105, 218, 0.6);
 }
 
+.btn-penalty-primary:disabled,
+.penalty-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .btn-penalty-secondary {
   min-height: var(--control-height);
   padding: 0 var(--control-padding-x);
