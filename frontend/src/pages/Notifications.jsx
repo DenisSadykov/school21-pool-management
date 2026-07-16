@@ -40,6 +40,7 @@ function Notifications() {
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [broadcastForm, setBroadcastForm] = useState(DEFAULT_BROADCAST);
   const [noteForm, setNoteForm] = useState(DEFAULT_NOTE);
   const [telegramSettings, setTelegramSettings] = useState(DEFAULT_TELEGRAM_SETTINGS);
@@ -116,21 +117,29 @@ function Notifications() {
 
   const submitNote = async (event) => {
     event.preventDefault();
+    if (noteSubmitting) return;
+    setNoteSubmitting(true);
     try {
       const createdNote = await api.post('/api/notifications/notes', noteForm);
       const shouldNotifyTelegram = noteForm.notify_telegram;
       setNoteForm(DEFAULT_NOTE);
       setMessage(
-        shouldNotifyTelegram
+        createdNote.duplicate
+          ? createdNote.message
+          : shouldNotifyTelegram
           ? `Заметка опубликована. Telegram-уведомление подготовлено для ${createdNote.telegram_notification_count || 0} чел.`
           : 'Заметка добавлена в доску объявлений.'
       );
-      patchOverview((prev) => ({
-        ...prev,
-        notes: [createdNote, ...(prev.notes || [])],
-      }));
+      if (!createdNote.duplicate) {
+        patchOverview((prev) => ({
+          ...prev,
+          notes: [createdNote, ...(prev.notes || [])],
+        }));
+      }
     } catch (error) {
       setMessage(`Ошибка заметки: ${error.message}`);
+    } finally {
+      setNoteSubmitting(false);
     }
   };
 
@@ -396,7 +405,9 @@ function Notifications() {
           <form className="form" onSubmit={submitNote}>
             <div className="notifications-form-head">
               <h2>Новая заметка на дашборд</h2>
-              <button className="btn-primary" type="submit">Опубликовать заметку</button>
+              <button className="btn-primary" type="submit" disabled={noteSubmitting}>
+                {noteSubmitting ? 'Публикуем...' : 'Опубликовать заметку'}
+              </button>
             </div>
             <div className="form-row">
               <div className="form-group">

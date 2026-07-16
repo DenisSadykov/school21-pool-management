@@ -38,6 +38,37 @@ def test_volunteer_can_create_penalty_in_accessible_active_pool(client, factorie
     assert any(event.type == 'penalty_admin_block' and event.recipient_user_id == admin.id for event in notifications)
 
 
+def test_penalty_creation_reuses_recent_penalty_for_same_student(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+):
+    volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+    student = app_module.Student(nick='duplicate_student', name='Duplicate Student', pool_id=pool.id)
+    db_session.add(student)
+    db_session.commit()
+
+    first = client.post(
+        '/api/penalties',
+        headers=auth_headers(volunteer),
+        json={'student_id': student.id, 'description': 'Late'},
+    )
+    second = client.post(
+        '/api/penalties',
+        headers=auth_headers(volunteer),
+        json={'student_id': student.id, 'description': 'Late'},
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.get_json()['duplicate'] is True
+    assert second.get_json()['id'] == first.get_json()['id']
+    assert db_session.query(app_module.StudentPenalty).filter_by(student_id=student.id).count() == 1
+
+
 def test_penalty_creation_is_forbidden_without_pool_access(client, factories, auth_headers):
     outsider = factories.user('outsider')
     factories.pool('Active pool', active=True)
@@ -203,6 +234,24 @@ def test_manual_penalty_status_to_awaiting_unlock_notifies_admins_and_cancels_pe
     ).all()
     assert admin_events
     assert any(item.recipient_user_id == admin.id for item in admin_events)
+
+    duplicate_response = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'workoff_status': 'awaiting_unlock', 'comment': 'Повторное нажатие'},
+    )
+
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.get_json()['duplicate'] is True
+    assert db_session.query(app_module.NotificationEvent).filter_by(
+        type='penalty_admin_unlock',
+        source_entity='penalty',
+        source_entity_id=penalty.id,
+    ).count() == len(admin_events)
+    assert db_session.query(app_module.PenaltyHistory).filter_by(
+        penalty_id=penalty.id,
+        new_status='awaiting_unlock',
+    ).count() == 1
 
 
 def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, auth_headers, db_session):
