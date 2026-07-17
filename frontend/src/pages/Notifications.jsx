@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin } from 'lucide-react';
+import { Flame, Megaphone, FileText, Send, Trash2, Users, Pin, UserX, X } from 'lucide-react';
 import { api } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
 import Loader from '../components/Loader';
@@ -44,6 +44,7 @@ function Notifications() {
   const [broadcastForm, setBroadcastForm] = useState(DEFAULT_BROADCAST);
   const [noteForm, setNoteForm] = useState(DEFAULT_NOTE);
   const [telegramSettings, setTelegramSettings] = useState(DEFAULT_TELEGRAM_SETTINGS);
+  const [showUnlinkedUsers, setShowUnlinkedUsers] = useState(false);
 
   const loadOverview = async ({ showLoading = false } = {}) => {
     if (showLoading) {
@@ -65,6 +66,16 @@ function Notifications() {
   useEffect(() => {
     loadOverview({ showLoading: true });
   }, []);
+
+  useEffect(() => {
+    if (!showUnlinkedUsers) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowUnlinkedUsers(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showUnlinkedUsers]);
 
   const patchOverview = (updater) => {
     setOverview((prev) => (prev ? updater(prev) : prev));
@@ -233,12 +244,64 @@ function Notifications() {
             <span>Привязано</span>
             <strong>{overview?.linked_users_count || 0}</strong>
           </div>
-          <div className="notifications-summary-card danger">
+          <button
+            type="button"
+            className="notifications-summary-card notifications-summary-button danger"
+            onClick={() => setShowUnlinkedUsers(true)}
+            aria-haspopup="dialog"
+          >
             <span>Не привязано</span>
             <strong>{overview?.unlinked_users?.length || 0}</strong>
-          </div>
+          </button>
         </div>
       </div>
+
+      {showUnlinkedUsers && (
+        <div className="notifications-modal-backdrop" onClick={() => setShowUnlinkedUsers(false)}>
+          <div
+            className="notifications-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unlinked-users-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="notifications-modal-head">
+              <div className="notifications-modal-title">
+                <span className="notifications-modal-icon"><UserX size={18} /></span>
+                <div>
+                  <h2 id="unlinked-users-title">Не привязались к Telegram</h2>
+                  <p>{overview?.unlinked_users?.length || 0} чел. в активном бассейне</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="notifications-modal-close"
+                onClick={() => setShowUnlinkedUsers(false)}
+                aria-label="Закрыть список"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="notifications-unlinked-list">
+              {(overview?.unlinked_users || []).length === 0 ? (
+                <div className="notifications-unlinked-empty">
+                  Все пользователи активного бассейна уже привязались к Telegram.
+                </div>
+              ) : (
+                (overview?.unlinked_users || []).map((item) => (
+                  <div className="notifications-unlinked-item" key={item.id}>
+                    <PersonTelegramCell person={item} />
+                    <span className="notifications-unlinked-role">{formatRole(item.role)}</span>
+                    <span className="notifications-unlinked-status">
+                      {item.needs_username ? 'Нужно указать username' : 'Ожидает привязки'}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {message && <div className="alert success">{message}</div>}
 
