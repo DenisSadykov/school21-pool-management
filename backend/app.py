@@ -16,6 +16,7 @@ from flask import Flask, jsonify, request, g, send_file, abort
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -2358,7 +2359,19 @@ def require_role(*roles):
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'timestamp': _utcnow().isoformat()})
+    database_status = production_database_status()
+    return jsonify({
+        'status': 'ok',
+        'timestamp': _utcnow().isoformat(),
+        'production_config': {
+            'ok': not database_status['issues'],
+            'serverless': database_status['serverless'],
+            'connection_mode': database_status['connection_mode'],
+            'runtime_pool': type(db.engine.pool).__name__,
+            'auto_init_db': should_auto_init_db(),
+            'schema_migrations': should_run_schema_migrations(),
+        },
+    })
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -7691,7 +7704,7 @@ def ensure_postgres_profile_columns():
 def should_auto_init_db():
     value = os.getenv('AUTO_INIT_DB')
     if value is not None:
-        return value.lower() == 'true'
+        return _env_flag('AUTO_INIT_DB')
     return not _is_production_runtime()
 
 
@@ -7722,9 +7735,48 @@ def run_database_migrations():
             lock_connection.close()
 
 
+def production_database_status(database_url=None):
+    """Return a secret-free summary of serverless database safety settings."""
+    serverless = _env_flag('VERCEL')
+    issues = []
+    connection_mode = 'not-serverless'
+    if serverless:
+        try:
+            url = make_url(database_url or app.config['SQLALCHEMY_DATABASE_URI'])
+            backend = url.get_backend_name()
+            port = url.port
+        except Exception:
+            backend = None
+            port = None
+        if backend != 'postgresql':
+            issues.append('Vercel runtime должен использовать PostgreSQL')
+        if port == 6543:
+            connection_mode = 'transaction'
+        elif port == 5432:
+            connection_mode = 'session'
+            issues.append('Vercel runtime не должен использовать Session Mode на порту 5432')
+        else:
+            connection_mode = 'unknown'
+            issues.append('Vercel runtime должен использовать Transaction Mode на порту 6543')
+        if should_auto_init_db():
+            issues.append('AUTO_INIT_DB должен быть выключен в Vercel production')
+        if should_run_schema_migrations():
+            issues.append('RUN_SCHEMA_MIGRATIONS должен быть выключен в Vercel production')
+        if not _env_flag('SERVERLESS_DB_NULL_POOL', 'true'):
+            issues.append('SERVERLESS_DB_NULL_POOL должен быть включён в Vercel production')
+    return {
+        'serverless': serverless,
+        'connection_mode': connection_mode,
+        'issues': issues,
+    }
+
+
 def validate_runtime_config():
     if _is_production_runtime() and app.config['SECRET_KEY'] == 'dev-secret-key-change-me':
         raise RuntimeError('SECRET_KEY должен быть задан безопасным значением в production')
+    database_status = production_database_status()
+    if database_status['issues']:
+        raise RuntimeError('Небезопасная production-конфигурация БД: ' + '; '.join(database_status['issues']))
 
 
 def should_start_runtime_services():
