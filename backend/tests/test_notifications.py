@@ -1,6 +1,28 @@
 import app as app_module
 
 
+def test_production_does_not_run_schema_changes_on_import(monkeypatch):
+    monkeypatch.delenv('AUTO_INIT_DB', raising=False)
+    monkeypatch.setenv('FLASK_ENV', 'production')
+    monkeypatch.delenv('VERCEL', raising=False)
+
+    assert app_module.should_auto_init_db() is False
+    assert app_module.should_run_schema_migrations() is False
+
+
+def test_schema_migrations_require_explicit_opt_in(monkeypatch):
+    monkeypatch.setenv('RUN_SCHEMA_MIGRATIONS', 'true')
+
+    assert app_module.should_run_schema_migrations() is True
+
+
+def test_production_does_not_sync_telegram_commands_by_default(monkeypatch):
+    monkeypatch.delenv('AUTO_SYNC_TELEGRAM_COMMANDS', raising=False)
+    monkeypatch.setenv('FLASK_ENV', 'production')
+
+    assert app_module.should_auto_sync_telegram_commands() is False
+
+
 def test_dispatch_requires_internal_secret(client):
     response = client.post('/api/notifications/dispatch')
 
@@ -57,6 +79,49 @@ def test_dispatch_targets_requested_events_without_scheduling(client, monkeypatc
 
     assert response.status_code == 200
     assert captured == {'limit': 20, 'event_ids': [9, 4], 'schedule_events': False}
+
+
+def test_claim_pending_notifications_marks_only_due_events(db_session):
+    due = app_module.NotificationEvent(
+        type='test_due',
+        status='queued',
+        dedupe_key='test-due',
+    )
+    future = app_module.NotificationEvent(
+        type='test_future',
+        status='queued',
+        scheduled_for=app_module._utcnow() + app_module.timedelta(hours=1),
+        dedupe_key='test-future',
+    )
+    db_session.add_all([due, future])
+    db_session.commit()
+
+    claimed_ids = app_module._claim_pending_notification_ids(limit=10)
+
+    db_session.refresh(due)
+    db_session.refresh(future)
+    assert claimed_ids == [due.id]
+    assert due.status == 'processing'
+    assert due.processing_started_at is not None
+    assert future.status == 'queued'
+
+
+def test_claim_pending_notifications_recovers_stale_processing(db_session):
+    stale = app_module.NotificationEvent(
+        type='test_stale',
+        status='processing',
+        processing_started_at=app_module._utcnow() - app_module.timedelta(minutes=11),
+        dedupe_key='test-stale',
+    )
+    db_session.add(stale)
+    db_session.commit()
+
+    claimed_ids = app_module._claim_pending_notification_ids(limit=10)
+
+    db_session.refresh(stale)
+    assert claimed_ids == [stale.id]
+    assert stale.status == 'processing'
+    assert stale.processing_started_at > app_module._utcnow() - app_module.timedelta(minutes=1)
 
 
 def test_create_dashboard_note_for_active_pool(client, factories, auth_headers, db_session):

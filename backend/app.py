@@ -2027,9 +2027,7 @@ def enqueue_scheduled_notifications():
     _schedule_penalty_checks()
 
 
-def process_pending_notifications(limit=20, event_ids=None, schedule_events=True):
-    if schedule_events:
-        enqueue_scheduled_notifications()
+def _claim_pending_notification_ids(limit, event_ids=None):
     now = _utcnow()
     stale_before = now - timedelta(minutes=10)
     NotificationEvent.query.filter(
@@ -2039,6 +2037,7 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
         NotificationEvent.status: 'queued',
         NotificationEvent.processing_started_at: None,
     }, synchronize_session=False)
+
     candidate_query = (
         NotificationEvent.query
         .with_entities(NotificationEvent.id)
@@ -2047,27 +2046,36 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
     )
     if event_ids is not None:
         candidate_query = candidate_query.filter(NotificationEvent.id.in_(event_ids))
-    candidate_ids = [row.id for row in (
+    candidate_query = (
         candidate_query
         .order_by(NotificationEvent.created_at.asc(), NotificationEvent.id.asc())
         .limit(limit)
-        .all()
-    )]
+    )
+    if db.engine.dialect.name == 'postgresql':
+        candidate_query = candidate_query.with_for_update(skip_locked=True)
+
+    candidate_ids = [row.id for row in candidate_query.all()]
+    if candidate_ids:
+        NotificationEvent.query.filter(
+            NotificationEvent.id.in_(candidate_ids),
+            NotificationEvent.status.in_(['queued', 'pending']),
+        ).update({
+            NotificationEvent.status: 'processing',
+            NotificationEvent.processing_started_at: now,
+        }, synchronize_session=False)
+    db.session.commit()
+    return candidate_ids
+
+
+def process_pending_notifications(limit=20, event_ids=None, schedule_events=True):
+    if schedule_events:
+        enqueue_scheduled_notifications()
+    candidate_ids = _claim_pending_notification_ids(limit, event_ids=event_ids)
     sent = 0
     failed = 0
     skipped = 0
     processed = 0
     for event_id in candidate_ids:
-        claimed = NotificationEvent.query.filter(
-            NotificationEvent.id == event_id,
-            NotificationEvent.status.in_(['queued', 'pending']),
-        ).update({
-            NotificationEvent.status: 'processing',
-            NotificationEvent.processing_started_at: _utcnow(),
-        }, synchronize_session=False)
-        db.session.commit()
-        if not claimed:
-            continue
         processed += 1
         event = db.session.get(NotificationEvent, event_id)
         if event.pool_id is not None and event.pool_id != active_pool_id():
@@ -7670,7 +7678,34 @@ def should_auto_init_db():
     value = os.getenv('AUTO_INIT_DB')
     if value is not None:
         return value.lower() == 'true'
-    return os.getenv('VERCEL', '').lower() not in {'1', 'true'}
+    return not _is_production_runtime()
+
+
+def should_run_schema_migrations():
+    return _env_flag('RUN_SCHEMA_MIGRATIONS', 'false')
+
+
+def run_database_migrations():
+    """Apply schema changes explicitly, never as a production import side effect."""
+    if db.engine.dialect.name != 'postgresql':
+        db.create_all()
+        ensure_user_profile_columns()
+        return
+
+    lock_connection = db.engine.connect()
+    try:
+        lock_connection.exec_driver_sql(
+            "SELECT pg_advisory_lock(hashtext('school21-pool-management-schema'))"
+        )
+        db.create_all()
+        ensure_postgres_profile_columns()
+    finally:
+        try:
+            lock_connection.exec_driver_sql(
+                "SELECT pg_advisory_unlock(hashtext('school21-pool-management-schema'))"
+            )
+        finally:
+            lock_connection.close()
 
 
 def validate_runtime_config():
@@ -7686,7 +7721,8 @@ def should_start_runtime_services():
 
 
 def should_auto_sync_telegram_commands():
-    return os.getenv('AUTO_SYNC_TELEGRAM_COMMANDS', 'true').lower() == 'true'
+    default = 'false' if _is_production_runtime() else 'true'
+    return os.getenv('AUTO_SYNC_TELEGRAM_COMMANDS', default).lower() == 'true'
 
 
 def sync_telegram_commands_on_startup():
@@ -7702,14 +7738,12 @@ validate_runtime_config()
 
 if should_auto_init_db():
     with app.app_context():
-        db.create_all()
-        ensure_user_profile_columns()
-        ensure_postgres_profile_columns()
+        run_database_migrations()
         seed_admin()
         seed_pool_data()
-else:
+elif should_run_schema_migrations():
     with app.app_context():
-        ensure_postgres_profile_columns()
+        run_database_migrations()
 
 
 sync_telegram_commands_on_startup()

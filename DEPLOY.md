@@ -120,6 +120,9 @@ REACT_APP_API_URL=https://your-render-service.onrender.com
 
 ## 5. Важно перед продом
 
-- Сейчас схема БД создаётся через `db.create_all()` и sqlite-ветка миграций.
-- Для `Postgres` текущее состояние должно подняться, но для дальнейшего роста лучше перевести миграции на `Flask-Migrate`.
+- Production-процессы не меняют схему БД при старте. Перед деплоем schema-изменений запусти
+  `python backend/migrate.py` один раз с production `DATABASE_URL`; команда защищена PostgreSQL advisory lock.
+- `AUTO_INIT_DB` и `RUN_SCHEMA_MIGRATIONS` должны оставаться выключенными в production runtime.
+- GitHub Actions secret `INTERNAL_API_SECRET` должен совпадать с одноимённой переменной backend в Vercel.
+- Для дальнейшего роста ручные schema-операции стоит перевести на версионируемые миграции Alembic/Flask-Migrate.
 - Локальные backup-файлы не являются надёжным постоянным хранилищем на бесплатном хостинге. Это скорее аварийный кэш, чем вечный архив.
