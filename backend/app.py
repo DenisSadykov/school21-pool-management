@@ -16,12 +16,13 @@ from flask import Flask, jsonify, request, g, send_file, abort
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 def _env_flag(name, default='false'):
-    return os.getenv(name, default).lower() == 'true'
+    return os.getenv(name, default).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def _is_production_runtime():
@@ -31,6 +32,18 @@ def _is_production_runtime():
 load_dotenv()
 if not _env_flag('SKIP_LOCAL_DOTENV', 'false'):
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env.local'), override=True)
+
+
+def database_engine_options():
+    """Avoid persistent per-instance pools in ephemeral serverless runtimes."""
+    if not _env_flag('VERCEL') or not _env_flag('SERVERLESS_DB_NULL_POOL', 'true'):
+        return {}
+    return {
+        'poolclass': NullPool,
+        'connect_args': {
+            'connect_timeout': max(1, int(os.getenv('DATABASE_CONNECT_TIMEOUT', '10'))),
+        },
+    }
 
 
 def _naive_utcnow():
@@ -48,6 +61,7 @@ app = Flask(__name__)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///pool.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = database_engine_options()
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 app.config['TESTING'] = _env_flag('TESTING', 'false')
 
