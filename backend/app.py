@@ -118,6 +118,8 @@ TRIBE_ALIASES = {
     'c': 'Олени',
     'олени': 'Олени',
 }
+with open(os.path.join(os.path.dirname(__file__), 'tribe_message_templates.json'), encoding='utf-8') as templates_file:
+    TRIBE_MESSAGE_TEMPLATES = json.load(templates_file)
 STUDENT_EVENT_POINTS = {
     'entertainment': 2,
     'education': 4,
@@ -436,6 +438,19 @@ class TribeEvent(db.Model):
     comment = db.Column(db.Text)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
+
+
+class TribeMessageStatus(db.Model):
+    __tablename__ = 'tribe_message_statuses'
+    id = db.Column(db.Integer, primary_key=True)
+    pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    template_id = db.Column(db.String(120), nullable=False)
+    sent_at = db.Column(db.DateTime)
+    updated_at = db.Column(db.DateTime, default=_naive_utcnow, onupdate=_naive_utcnow)
+    __table_args__ = (
+        db.UniqueConstraint('pool_id', 'user_id', 'template_id', name='uq_tribe_message_status'),
+    )
 
 
 class StudentPenalty(db.Model):
@@ -5928,6 +5943,94 @@ def my_tribe():
         } for event, student in event_rows],
         'tribe_events': [_tribe_event_to_dict(event) for event in next_events],
         'all_tribe_events': [_tribe_event_to_dict(event) for event in all_tribe_events],
+    })
+
+
+def _tribe_script_payload(template, pool, sent_at=None):
+    recommended_date = None
+    if pool.start_date is not None:
+        recommended_date = pool.start_date + timedelta(days=template['day_offset'])
+    return {
+        **template,
+        'recommended_date': recommended_date.isoformat() if recommended_date else None,
+        'sent': sent_at is not None,
+        'sent_at': sent_at.isoformat() if sent_at else None,
+    }
+
+
+@app.route('/api/tribe-scripts', methods=['GET'])
+@require_role('tribe_master')
+def tribe_scripts():
+    pool_id, error = _active_pool_id_for_request()
+    if error:
+        return error
+    tribe = normalize_tribe(g.current_tribe)
+    if not tribe:
+        return jsonify({'error': 'Для трайб-мастера не указан трайб'}), 400
+    pool = db.session.get(Pool, pool_id)
+    templates = TRIBE_MESSAGE_TEMPLATES.get(tribe, [])
+    statuses = {
+        status.template_id: status.sent_at
+        for status in TribeMessageStatus.query.filter_by(pool_id=pool_id, user_id=g.user.id).all()
+    }
+    payload = [
+        _tribe_script_payload(template, pool, statuses.get(template['id']))
+        for template in templates
+    ]
+    payload.sort(key=lambda template: template['recommended_date'] or '9999-12-31')
+    sent_count = sum(1 for template in payload if template['sent'])
+    return jsonify({
+        'tribe': tribe,
+        'pool_id': pool_id,
+        'pool_name': pool.name,
+        'pool_start_date': pool.start_date.isoformat() if pool.start_date else None,
+        'templates': payload,
+        'summary': {
+            'total': len(payload),
+            'sent': sent_count,
+            'remaining': len(payload) - sent_count,
+        },
+    })
+
+
+@app.route('/api/tribe-scripts/<string:template_id>', methods=['PATCH'])
+@require_role('tribe_master')
+def update_tribe_script_status(template_id):
+    pool_id, error = _active_pool_id_for_request()
+    if error:
+        return error
+    tribe = normalize_tribe(g.current_tribe)
+    template = next(
+        (item for item in TRIBE_MESSAGE_TEMPLATES.get(tribe, []) if item['id'] == template_id),
+        None,
+    )
+    if template is None:
+        return jsonify({'error': 'Шаблон для вашего трайба не найден'}), 404
+
+    sent = bool((request.json or {}).get('sent'))
+    status = TribeMessageStatus.query.filter_by(
+        pool_id=pool_id,
+        user_id=g.user.id,
+        template_id=template_id,
+    ).first()
+    if sent:
+        if status is None:
+            status = TribeMessageStatus(
+                pool_id=pool_id,
+                user_id=g.user.id,
+                template_id=template_id,
+            )
+            db.session.add(status)
+        status.sent_at = _naive_utcnow()
+    elif status is not None:
+        db.session.delete(status)
+        status = None
+    db.session.commit()
+
+    return jsonify({
+        'template_id': template_id,
+        'sent': sent,
+        'sent_at': status.sent_at.isoformat() if status and status.sent_at else None,
     })
 
 
