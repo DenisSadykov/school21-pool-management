@@ -15,6 +15,7 @@ import Manage from './pages/Manage';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
 import MyTribe from './pages/MyTribe';
+import TribeScripts from './pages/TribeScripts';
 import GroupReviews from './pages/GroupReviews';
 import Login from './pages/Login';
 import ExamBrief from './pages/ExamBrief';
@@ -190,6 +191,7 @@ function AppRoutes({
                   <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
                   <Route path="/exam-brief" element={<ExamBrief />} />
                   {canUseTribe && <Route path="/my-tribe" element={<MyTribe user={user} />} />}
+                  {user.role === 'tribe_master' && <Route path="/tribe-scripts" element={<TribeScripts />} />}
                   {canUseGroupReviews && <Route path="/group-reviews" element={<GroupReviews user={user} />} />}
                   {isStaff && <Route path="/manage" element={<Manage user={user} />} />}
                   {isStaff && <Route path="/notifications" element={<Notifications user={user} />} />}

@@ -13,6 +13,11 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
   const canUseTribe = user?.role === 'tribe_master' || isStaff;
   const canUseGroupReviews = isStaff;
+  const tribeConnectorTone = {
+    'Ленты': 'tribe-ribbons',
+    'Короны': 'tribe-crowns',
+    'Олени': 'tribe-deer',
+  }[user?.tribe] || 'tribe-neutral';
 
   useEffect(() => {
     setMounted(true);
@@ -30,6 +35,12 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
     { path: '/penalties', label: 'Штрафы', icon: AlertCircle, tone: 'penalties' },
     { path: '/students', label: 'Ученики', icon: BookOpen, tone: 'students' },
     ...(canUseTribe ? [{ path: '/my-tribe', label: isStaff ? 'Трайбы' : 'Мой трайб', icon: Trophy, tone: 'tribe' }] : []),
+    ...(user?.role === 'tribe_master' ? [{
+      path: '/tribe-scripts',
+      label: 'Скрипты трайба',
+      tone: 'tribe',
+      tribeChild: true,
+    }] : []),
     ...(canUseGroupReviews ? [{ path: '/group-reviews', label: 'Групповые', icon: ClipboardCheck, tone: 'reviews' }] : []),
     { path: '/volunteers', label: 'Волонтёры', icon: Users, tone: 'volunteers' },
     ...(isStaff ? [{ path: '/notifications', label: 'Уведомления', icon: Bell, tone: 'notifications' }] : []),
@@ -60,12 +71,14 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
           <Link
             key={item.path}
             to={item.path}
-            className={`nav-item tone-${item.tone} ${location.pathname === item.path ? 'active' : ''}`}
+            className={`nav-item tone-${item.tone} ${item.tribeChild ? 'tribe-child' : ''} ${location.pathname === item.path ? 'active' : ''}`}
             title={item.label}
             onClick={handleNavClick}
           >
             <span className="nav-icon-slot">
-              {item.path === '/my-tribe' && user?.role === 'tribe_master' && user?.tribe ? (
+              {item.tribeChild ? (
+                <span className={`tribe-child-connector ${tribeConnectorTone}`} aria-hidden="true" />
+              ) : item.path === '/my-tribe' && user?.role === 'tribe_master' && user?.tribe ? (
                 <TribeLabel tribe={user.tribe} size={16} showText={false} className="sidebar-tribe-icon sidebar-tribe-icon-leading" />
               ) : (
                 <item.icon size={20} />

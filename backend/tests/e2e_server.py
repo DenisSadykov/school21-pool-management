@@ -67,6 +67,14 @@ def seed_data():
             telegram='@DenisSadykov',
             active=True,
         )
+        tribe_master = User(
+            nick='deer_master',
+            name='Трайб-мастер Оленей',
+            role='tribe_master',
+            telegram='@deer_master',
+            tribe='Олени',
+            active=True,
+        )
         pool = Pool(
             name='E2E Бассейн',
             active=True,
@@ -74,11 +82,12 @@ def seed_data():
             start_date=date.today(),
         )
 
-        app_module.db.session.add_all([admin, team_lead, volunteer, pool])
+        app_module.db.session.add_all([admin, team_lead, volunteer, tribe_master, pool])
         app_module.db.session.commit()
 
         app_module.db.session.add_all([
             PoolVolunteer(pool_id=pool.id, user_id=volunteer.id, pool_role='volunteer'),
+            PoolVolunteer(pool_id=pool.id, user_id=tribe_master.id, pool_role='tribe_master', tribe='Олени'),
             PoolVolunteer(pool_id=pool.id, user_id=admin.id, pool_role='responsible_admin'),
             PoolVolunteer(pool_id=pool.id, user_id=team_lead.id, pool_role='responsible_team_lead'),
         ])

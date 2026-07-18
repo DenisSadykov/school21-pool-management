@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -126,21 +126,28 @@ function tomorrowCoverage(blocks = []) {
 
 function Dashboard({ user }) {
   const [data, setData] = useState(null);
+  const [tribeScripts, setTribeScripts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadDashboard = () => {
+  const loadDashboard = useCallback(() => {
     setLoading(true);
     setError('');
-    api.get('/api/dashboard')
-      .then(setData)
+    const scriptsRequest = user.role === 'tribe_master'
+      ? api.get('/api/tribe-scripts').catch(() => null)
+      : Promise.resolve(null);
+    Promise.all([api.get('/api/dashboard'), scriptsRequest])
+      .then(([dashboardPayload, scriptsPayload]) => {
+        setData(dashboardPayload);
+        setTribeScripts(scriptsPayload);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [user.role]);
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
   if (loading) return <Loader text="Загрузка..." />;
   if (error) {
@@ -169,7 +176,7 @@ function Dashboard({ user }) {
       </div>
 
       {isOps && <OpsDashboard data={data} />}
-      {role === 'tribe_master' && <TribeMasterDashboard data={data} />}
+      {role === 'tribe_master' && <TribeMasterDashboard data={data} scripts={tribeScripts} />}
       {role === 'volunteer' && <VolunteerDashboard data={data} user={user} />}
     </div>
   );
@@ -291,12 +298,19 @@ function OpsDashboard({ data }) {
   );
 }
 
-function TribeMasterDashboard({ data }) {
+function TribeMasterDashboard({ data, scripts }) {
   const tribe = data?.tribe || {};
   const telegram = data?.telegram || {};
   const notes = data?.dashboard_notes || [];
   const responsibles = data?.pool_responsibles || [];
   const telegramBotLinks = getTelegramBotLinks(telegram.bot_username);
+  const reminderPreview = process.env.NODE_ENV === 'development'
+    && new URLSearchParams(window.location.search).get('preview_script_reminder') === '1';
+  const scriptTemplates = scripts?.templates || [];
+  const previewTemplate = scriptTemplates.find((template) => !template.sent);
+  const reminderTemplates = reminderPreview && previewTemplate
+    ? [{ ...previewTemplate, recommended_date: todayIso(), sent: false }]
+    : scriptTemplates;
   return (
     <>
       <div className="stats-grid ops-grid">
@@ -353,9 +367,13 @@ function TribeMasterDashboard({ data }) {
           <PoolResponsiblesRow responsibles={responsibles} />
         </section>
 
-        <section className="info-section">
-          <SectionTitle icon={Calendar} title="Ближайшие встречи трайба" />
-          <TribeEventList events={tribe.next_events || []} empty="Пока нет назначенных встреч трайба." />
+        <section className="info-section tribe-work-section">
+          <SectionTitle icon={Users} title="Работа с трайбом" tone="users" />
+          <TribeScriptReminder templates={reminderTemplates} preview={reminderPreview} />
+          <div className="tribe-work-meetings">
+            <strong className="tribe-work-label">Ближайшие встречи</strong>
+            <TribeEventList events={tribe.next_events || []} empty="Пока нет назначенных встреч трайба." />
+          </div>
           <Link className="dashboard-action" to="/my-tribe">
             Открыть мой трайб <ExternalLink size={16} />
           </Link>
@@ -367,6 +385,47 @@ function TribeMasterDashboard({ data }) {
         </section>
       </div>
     </>
+  );
+}
+
+function messageWord(count) {
+  const remainder100 = count % 100;
+  const remainder10 = count % 10;
+  if (remainder100 >= 11 && remainder100 <= 14) return 'сообщений';
+  if (remainder10 === 1) return 'сообщение';
+  if (remainder10 >= 2 && remainder10 <= 4) return 'сообщения';
+  return 'сообщений';
+}
+
+function TribeScriptReminder({ templates, preview = false }) {
+  const dueToday = templates.filter((template) => (
+    !template.sent && template.recommended_date === todayIso()
+  ));
+  const hasMessages = dueToday.length > 0;
+
+  const previewTitles = dueToday.slice(0, 2).map((template) => template.title).join(' · ');
+  const remaining = dueToday.length - 2;
+
+  return (
+    <div className={`tribe-script-reminder ${hasMessages ? 'has-messages' : 'is-clear'}`} aria-label="Сообщения трайба на сегодня">
+      <span className="tribe-script-reminder-icon" aria-hidden="true">
+        {hasMessages ? <CalendarClock size={18} /> : <CheckCircle size={18} />}
+      </span>
+      <div className="tribe-script-reminder-copy">
+        <strong>
+          {hasMessages
+            ? `Сегодня нужно отправить ${dueToday.length} ${messageWord(dueToday.length)}`
+            : 'На сегодня сообщений нет'}
+        </strong>
+        {hasMessages && <p>{previewTitles}{remaining > 0 ? ` · ещё ${remaining}` : ''}</p>}
+      </div>
+      <Link
+        className="dashboard-action tribe-script-reminder-action"
+        to={preview || !hasMessages ? '/tribe-scripts' : '/tribe-scripts?today=1'}
+      >
+        Открыть скрипты <ExternalLink size={16} />
+      </Link>
+    </div>
   );
 }
 
