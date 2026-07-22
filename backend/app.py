@@ -1431,7 +1431,7 @@ def telegram_handle_responsibles(chat_id):
 
 
 def _telegram_code_block(value):
-    return f'<pre>{html_escape(str(value or ""))}</pre>'
+    return f'<code>{html_escape(str(value or ""))}</code>'
 
 
 def _telegram_user_from_tg(tg_user):
@@ -1473,8 +1473,12 @@ def telegram_handle_penalties(chat_id, tg_user):
         total_hours = sum(entry[1] for entry in entries)
         lines.append('')
         lines.append(f'{title} ({len(names)}, всего {total_hours}h):')
-        visible_names = names[:20]
-        lines.append(_telegram_code_block('\n'.join(visible_names)) if visible_names else 'нет')
+        visible_entries = entries[:20]
+        if visible_entries:
+            for name, hours in visible_entries:
+                lines.append(f'{_telegram_code_block(name)} ({hours}h)')
+        else:
+            lines.append('нет')
         if len(names) > 20:
             lines.append(f'...и ещё {len(names) - 20}')
     telegram_send_message(chat_id, '\n'.join(lines), parse_mode='HTML')
