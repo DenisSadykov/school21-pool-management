@@ -474,6 +474,49 @@
   font-weight: 600;
 }
 
+.database-entry-mark {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.database-entry-mark:hover {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(26, 127, 55, 0.06);
+}
+
+.database-entry-mark.is-marked {
+  border-style: solid;
+  border-color: rgba(26, 127, 55, 0.38);
+  background: rgba(26, 127, 55, 0.09);
+  color: var(--success);
+}
+
+.database-entry-mark small {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.database-entry-mark:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .history-list {
   display: flex;
   flex-direction: column;

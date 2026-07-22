@@ -464,6 +464,9 @@ class StudentPenalty(db.Model):
     multiplier = db.Column(db.Integer, default=1)
     workoff_status = db.Column(db.String(20), default='pending')  # pending, done, overdue
     description = db.Column(db.Text)
+    database_entry_marked = db.Column(db.Boolean, default=False, nullable=False)
+    database_entry_marked_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    database_entry_marked_at = db.Column(db.DateTime)
     date_issued = db.Column(db.DateTime, default=_naive_utcnow)
     date_worked_off = db.Column(db.DateTime)
     pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False)
@@ -6247,11 +6250,48 @@ def get_penalties():
         'total_hours': p.hours * p.multiplier,
         'workoff_status': p.workoff_status,
         'description': p.description,
+        'database_entry_marked': bool(p.database_entry_marked),
+        'database_entry_marked_at': p.database_entry_marked_at.isoformat() if p.database_entry_marked_at else None,
+        'database_entry_marked_by': _user_public_dict(db.session.get(User, p.database_entry_marked_by), p.pool_id)
+            if p.database_entry_marked_by else None,
         'date_issued': p.date_issued.isoformat(),
         'date_worked_off': p.date_worked_off.isoformat() if p.date_worked_off else None,
         'workoff_started_at': p.date_worked_off.isoformat() if p.workoff_status == 'in_workoff' and p.date_worked_off else None,
         'history': histories.get(p.id, []),
     } for p in penalties])
+
+
+@app.route('/api/penalties/<int:penalty_id>/database-entry', methods=['PATCH'])
+@require_role('admin', 'team_lead')
+def update_penalty_database_entry(penalty_id):
+    data = request.json or {}
+    marked = data.get('database_entry_marked')
+    if not isinstance(marked, bool):
+        return jsonify({'error': 'Нужна булева отметка передачи в базу'}), 400
+
+    penalty = get_model_or_404(StudentPenalty, penalty_id)
+    error = _active_entity_error(penalty.pool_id)
+    if error:
+        return error
+    if not _can_access_pool_id(g.user, penalty.pool_id):
+        return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
+
+    penalty.database_entry_marked = marked
+    penalty.database_entry_marked_by = g.user.id if marked else None
+    penalty.database_entry_marked_at = _utcnow() if marked else None
+    log_action(
+        'update',
+        'penalty',
+        penalty.id,
+        f'Штраф {penalty.student_name}: ' + ('передан в базу' if marked else 'снят с отметки передачи в базу'),
+        {'student': penalty.student_name, 'database_entry_marked': marked},
+    )
+    db.session.commit()
+    return jsonify({
+        'database_entry_marked': bool(penalty.database_entry_marked),
+        'database_entry_marked_at': penalty.database_entry_marked_at.isoformat() if penalty.database_entry_marked_at else None,
+        'database_entry_marked_by': _user_public_dict(g.user, penalty.pool_id) if marked else None,
+    })
 
 
 @app.route('/api/penalties', methods=['POST'])
@@ -7586,6 +7626,12 @@ def ensure_user_profile_columns():
             penalty_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(student_penalties)').fetchall()}
             if 'student_id' not in penalty_cols:
                 conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN student_id INTEGER')
+            if 'database_entry_marked' not in penalty_cols:
+                conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN database_entry_marked BOOLEAN DEFAULT 0')
+            if 'database_entry_marked_by' not in penalty_cols:
+                conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN database_entry_marked_by INTEGER')
+            if 'database_entry_marked_at' not in penalty_cols:
+                conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN database_entry_marked_at DATETIME')
             conn.exec_driver_sql("""
                 UPDATE student_penalties
                 SET student_id = (
@@ -7713,6 +7759,10 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('ALTER TABLE telegram_accounts ADD COLUMN IF NOT EXISTS telegram_user_id VARCHAR(100)')
         conn.exec_driver_sql('ALTER TABLE notification_events ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP')
         conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN IF NOT EXISTS student_id INTEGER')
+        conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN IF NOT EXISTS database_entry_marked BOOLEAN DEFAULT FALSE')
+        conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN IF NOT EXISTS database_entry_marked_by INTEGER')
+        conn.exec_driver_sql('ALTER TABLE student_penalties ADD COLUMN IF NOT EXISTS database_entry_marked_at TIMESTAMP')
+        conn.exec_driver_sql('UPDATE student_penalties SET database_entry_marked = FALSE WHERE database_entry_marked IS NULL')
 
         conn.exec_driver_sql("""
             UPDATE student_penalties sp

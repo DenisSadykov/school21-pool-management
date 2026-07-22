@@ -69,6 +69,49 @@ def test_penalty_creation_reuses_recent_penalty_for_same_student(
     assert db_session.query(app_module.StudentPenalty).filter_by(student_id=student.id).count() == 1
 
 
+def test_only_staff_can_mark_penalty_as_transferred_to_database(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    team_lead = factories.user('lead', role='team_lead', password='lead1234')
+    volunteer = factories.user('volunteer1', role='volunteer')
+    pool = factories.pool('Active pool', active=True)
+    for user in (admin, team_lead, volunteer):
+        factories.assign(user, pool)
+    penalty = app_module.StudentPenalty(student_name='Ivan Student', pool_id=pool.id)
+    db_session.add(penalty)
+    db_session.commit()
+
+    forbidden = client.patch(
+        f'/api/penalties/{penalty.id}/database-entry',
+        headers=auth_headers(volunteer),
+        json={'database_entry_marked': True},
+    )
+    assert forbidden.status_code == 403
+
+    marked = client.patch(
+        f'/api/penalties/{penalty.id}/database-entry',
+        headers=auth_headers(team_lead),
+        json={'database_entry_marked': True},
+    )
+    assert marked.status_code == 200
+    assert marked.get_json()['database_entry_marked'] is True
+    assert marked.get_json()['database_entry_marked_by']['nick'] == team_lead.nick
+    db_session.refresh(penalty)
+    assert penalty.database_entry_marked is True
+    assert penalty.database_entry_marked_by == team_lead.id
+    assert penalty.database_entry_marked_at is not None
+
+    unmarked = client.patch(
+        f'/api/penalties/{penalty.id}/database-entry',
+        headers=auth_headers(admin),
+        json={'database_entry_marked': False},
+    )
+    assert unmarked.status_code == 200
+    db_session.refresh(penalty)
+    assert penalty.database_entry_marked is False
+    assert penalty.database_entry_marked_by is None
+    assert penalty.database_entry_marked_at is None
+
+
 def test_penalty_creation_is_forbidden_without_pool_access(client, factories, auth_headers):
     outsider = factories.user('outsider')
     factories.pool('Active pool', active=True)

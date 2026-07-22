@@ -282,6 +282,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
+                    canMarkDatabaseEntry={isStaff}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
                   />
@@ -422,7 +423,7 @@ function Penalties({ user }) {
   );
 }
 
-function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
+function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
   const workoffNote = getWorkoffNote(penalty);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -493,6 +494,13 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
     await runAction(() => api.del(`/api/penalties/${penalty.id}`));
   };
 
+  const handleDatabaseEntryMark = async () => {
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}/database-entry`,
+      { database_entry_marked: !penalty.database_entry_marked }
+    ));
+  };
+
   return (
     <div
       ref={registerRef}
@@ -540,6 +548,25 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, isAwaitingUnlock, isO
             ))}
           </div>
         </details>
+      )}
+
+      {canMarkDatabaseEntry && penalty.workoff_status === 'pending' && (
+        <button
+          type="button"
+          className={`database-entry-mark ${penalty.database_entry_marked ? 'is-marked' : ''}`}
+          onClick={handleDatabaseEntryMark}
+          disabled={isUpdating}
+          aria-pressed={Boolean(penalty.database_entry_marked)}
+        >
+          <Check size={16} />
+          <span>{penalty.database_entry_marked ? 'Передан в базу' : 'Отметить: передан в базу'}</span>
+          {penalty.database_entry_marked_by?.nick && (
+            <small>
+              @{penalty.database_entry_marked_by.nick}
+              {penalty.database_entry_marked_at && ` · ${new Date(penalty.database_entry_marked_at).toLocaleString('ru-RU')}`}
+            </small>
+          )}
+        </button>
       )}
 
       {penalty.workoff_status === 'pending' && (
