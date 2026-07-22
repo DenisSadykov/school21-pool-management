@@ -1464,11 +1464,15 @@ def telegram_handle_penalties(chat_id, tg_user):
     }
     for penalty in penalties:
         if penalty.workoff_status in groups:
-            groups[penalty.workoff_status][1].append(penalty.student_name)
+            groups[penalty.workoff_status][1].append(
+                (penalty.student_name, penalty.hours * penalty.multiplier)
+            )
     lines = ['Ученики с нарушениями:']
-    for _, (title, names) in groups.items():
+    for _, (title, entries) in groups.items():
+        names = [entry[0] for entry in entries]
+        total_hours = sum(entry[1] for entry in entries)
         lines.append('')
-        lines.append(f'{title} ({len(names)}):')
+        lines.append(f'{title} ({len(names)}, всего {total_hours}h):')
         visible_names = names[:20]
         lines.append(_telegram_code_block('\n'.join(visible_names)) if visible_names else 'нет')
         if len(names) > 20:
