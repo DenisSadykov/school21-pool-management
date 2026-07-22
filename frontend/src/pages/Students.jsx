@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Check, Copy, Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { api, downloadFile } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
@@ -100,6 +100,9 @@ function Students({ user }) {
   const [showImport, setShowImport] = useState(false);
   const [tribeFilter, setTribeFilter] = useState('all');
   const [workoffFilter, setWorkoffFilter] = useState('all');
+  const [eventsFrom, setEventsFrom] = useState('');
+  const [eventsTo, setEventsTo] = useState('');
+  const [copiedEventPoints, setCopiedEventPoints] = useState(null);
   const [definedTribes, setDefinedTribes] = useState([]);
   const [error, setError] = useState('');
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
@@ -138,6 +141,42 @@ function Students({ user }) {
     if (workoffFilter !== 'all' && (student.penalty_status || 'clean') !== workoffFilter) return false;
     return true;
   });
+  const hasEventPeriod = Boolean(eventsFrom && eventsTo && eventsFrom <= eventsTo);
+  const eventStudentNicks = (points) => students
+    .filter((student) => (student.events || []).some((event) => (
+      Number(event.points) === points
+      && event.date
+      && event.date >= eventsFrom
+      && event.date <= eventsTo
+    )))
+    .map((student) => student.nick)
+    .sort((a, b) => a.localeCompare(b, 'ru'));
+
+  const copyEventStudentNicks = async (points) => {
+    const nicks = eventStudentNicks(points);
+    if (nicks.length === 0) return;
+    const text = nicks.join('\n');
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+      setCopiedEventPoints(points);
+      window.setTimeout(() => setCopiedEventPoints(null), 1600);
+    } catch (copyError) {
+      console.error('Ошибка копирования списка учеников:', copyError);
+      alert('Не удалось скопировать список. Разрешите доступ к буферу обмена и повторите попытку.');
+    }
+  };
 
   if (loading) return <Loader text="Загрузка учеников..." />;
 
@@ -247,6 +286,56 @@ function Students({ user }) {
           </select>
         </label>
       </div>
+
+      {isStaff && (
+        <section className="event-copy-filter" aria-labelledby="event-copy-filter-title">
+          <div className="event-copy-filter-heading">
+            <div>
+              <h2 id="event-copy-filter-title">Списки для базы</h2>
+              <p>Выберите период и скопируйте ники учеников одной колонкой.</p>
+            </div>
+          </div>
+          <div className="event-copy-filter-controls">
+            <label>
+              С даты
+              <input
+                type="date"
+                value={eventsFrom}
+                onChange={(event) => setEventsFrom(event.target.value)}
+              />
+            </label>
+            <label>
+              По дату
+              <input
+                type="date"
+                value={eventsTo}
+                onChange={(event) => setEventsTo(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="event-copy-button entertainment"
+              onClick={() => copyEventStudentNicks(2)}
+              disabled={!hasEventPeriod || eventStudentNicks(2).length === 0}
+            >
+              {copiedEventPoints === 2 ? <Check size={16} /> : <Copy size={16} />}
+              {copiedEventPoints === 2 ? 'Скопировано' : `Скопировать 2 балла (${hasEventPeriod ? eventStudentNicks(2).length : 0})`}
+            </button>
+            <button
+              type="button"
+              className="event-copy-button education"
+              onClick={() => copyEventStudentNicks(4)}
+              disabled={!hasEventPeriod || eventStudentNicks(4).length === 0}
+            >
+              {copiedEventPoints === 4 ? <Check size={16} /> : <Copy size={16} />}
+              {copiedEventPoints === 4 ? 'Скопировано' : `Скопировать 4 балла (${hasEventPeriod ? eventStudentNicks(4).length : 0})`}
+            </button>
+          </div>
+          {eventsFrom && eventsTo && eventsFrom > eventsTo && (
+            <p className="event-copy-filter-error">Дата начала не может быть позже даты окончания.</p>
+          )}
+        </section>
+      )}
 
       <div className="students-table-wrap">
         {filteredStudents.length === 0 ? (
