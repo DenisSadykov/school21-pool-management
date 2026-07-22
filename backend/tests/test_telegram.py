@@ -290,16 +290,10 @@ def test_responsible_can_confirm_penalty_unlock_from_telegram(client, factories,
 
     markup = app_module.build_notification_reply_markup(event)
     assert markup == {
-        'inline_keyboard': [
-            [{
-                'text': 'Скопировать ник',
-                'copy_text': {'text': 'unlock_student'},
-            }],
-            [{
-                'text': 'Разблокирован',
-                'callback_data': f'p:{penalty.id}:u:y:{event.id}',
-            }],
-        ],
+        'inline_keyboard': [[{
+            'text': 'Разблокирован',
+            'callback_data': f'p:{penalty.id}:u:y:{event.id}',
+        }]],
     }
 
     monkeypatch.setattr(app_module, 'TELEGRAM_BOT_TOKEN', 'test-bot-token')

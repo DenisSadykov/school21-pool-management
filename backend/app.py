@@ -7,6 +7,7 @@ import re
 import hashlib
 import zipfile
 import xml.etree.ElementTree as ET
+from html import escape as html_escape
 from collections import defaultdict
 from io import BytesIO
 from functools import wraps
@@ -1012,7 +1013,7 @@ def telegram_is_quiet_hours(now=None):
     return hour >= quiet_start or hour < quiet_end
 
 
-def telegram_send_message(chat_id, text, disable_notification=False, reply_markup=None):
+def telegram_send_message(chat_id, text, disable_notification=False, reply_markup=None, parse_mode=None):
     payload = {
         'chat_id': chat_id,
         'text': text,
@@ -1020,6 +1021,8 @@ def telegram_send_message(chat_id, text, disable_notification=False, reply_marku
     }
     if reply_markup:
         payload['reply_markup'] = reply_markup
+    if parse_mode:
+        payload['parse_mode'] = parse_mode
     return telegram_api('sendMessage', payload)
 
 
@@ -1427,11 +1430,8 @@ def telegram_handle_responsibles(chat_id):
     return {'ok': True, 'count': len(responsibles)}
 
 
-def _telegram_copy_button(text, label='Скопировать ники'):
-    value = (text or '').strip()
-    if not value or len(value) > 256:
-        return None
-    return {'text': label, 'copy_text': value}
+def _telegram_code_block(value):
+    return f'<pre>{html_escape(str(value or ""))}</pre>'
 
 
 def _telegram_user_from_tg(tg_user):
@@ -1464,20 +1464,17 @@ def telegram_handle_penalties(chat_id, tg_user):
     }
     for penalty in penalties:
         if penalty.workoff_status in groups:
-            groups[penalty.workoff_status][1].append(f'• {penalty.student_name} ({penalty.hours * penalty.multiplier}h)')
+            groups[penalty.workoff_status][1].append(
+                f'{_telegram_code_block(penalty.student_name)} ({penalty.hours * penalty.multiplier}h)'
+            )
     lines = ['Ученики с нарушениями:']
-    copy_buttons = []
     for _, (title, items) in groups.items():
         lines.append('')
         lines.append(title + ':')
         lines.extend(items[:20] or ['нет'])
         if len(items) > 20:
             lines.append(f'...и ещё {len(items) - 20}')
-        copy_value = '\n'.join(item.split(' (', 1)[0].replace('• ', '', 1) for item in items)
-        copy_button = _telegram_copy_button(copy_value, f'Скопировать: {title.lower()}')
-        if copy_button:
-            copy_buttons.append(copy_button)
-    telegram_send_message(chat_id, '\n'.join(lines), reply_markup=_build_telegram_action_markup(copy_buttons))
+    telegram_send_message(chat_id, '\n'.join(lines), parse_mode='HTML')
     return {'ok': True, 'action': 'penalties'}
 
 
@@ -1577,30 +1574,17 @@ def telegram_handle_message(message):
 def _build_telegram_action_markup(buttons):
     if not buttons:
         return None
-    copy_buttons = []
-    action_buttons = []
+    telegram_buttons = []
     for button in buttons:
         telegram_button = {'text': button.get('text') or 'Открыть'}
         if button.get('url'):
             telegram_button['url'] = button['url']
         elif button.get('callback_data'):
             telegram_button['callback_data'] = button['callback_data']
-        elif button.get('copy_text'):
-            copy_text = str(button['copy_text'])[:256]
-            if not copy_text:
-                continue
-            telegram_button['copy_text'] = {'text': copy_text}
-            copy_buttons.append(telegram_button)
-            continue
         else:
             continue
-        action_buttons.append(telegram_button)
-    rows = []
-    if copy_buttons:
-        rows.append(copy_buttons)
-    if action_buttons:
-        rows.append(action_buttons)
-    return {'inline_keyboard': rows} if rows else None
+        telegram_buttons.append(telegram_button)
+    return {'inline_keyboard': [telegram_buttons]} if telegram_buttons else None
 
 
 def build_notification_reply_markup(event):
@@ -1622,6 +1606,11 @@ def build_notification_text(event):
     if get_telegram_settings()['test_mode']:
         text = f'[TEST MODE]\n{text}'
     return text
+
+
+def build_notification_parse_mode(event):
+    payload = json.loads(event.payload or '{}')
+    return payload.get('parse_mode')
 
 
 def _delete_related_penalty_messages(penalty_id, event_type, exclude_event_id=None):
@@ -1674,13 +1663,12 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
 def _notify_admins_penalty_created(penalty):
     events = []
     block_reason = (penalty.description or '').strip() or 'не указана'
-    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in _pool_responsible_users(penalty.pool_id):
         event = _queue_notification(
             user,
             'penalty_admin_block',
             (
-                f'Ученик {penalty.student_name} получил штраф.\n'
+                f'Ученик {_telegram_code_block(penalty.student_name)} получил штраф.\n'
                 f'Выдал: {penalty.volunteer_name}.\n'
                 f'Причина блокировки: {block_reason}.\n'
                 'Нужно заблокировать ученика на учебной платформе.'
@@ -1690,7 +1678,7 @@ def _notify_admins_penalty_created(penalty):
             priority='urgent',
             source_entity='penalty',
             source_entity_id=penalty.id,
-            action_buttons=[copy_button] if copy_button else [],
+            payload={'parse_mode': 'HTML'},
         )
         if event:
             events.append(event)
@@ -1699,13 +1687,12 @@ def _notify_admins_penalty_created(penalty):
 
 def _notify_admins_penalty_awaiting_unlock(penalty):
     events = []
-    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in _pool_responsible_users(penalty.pool_id):
         event = _queue_notification(
             user,
             'penalty_admin_unlock',
             (
-                f'Ученик {penalty.student_name} отработал пенальти.\n'
+                f'Ученик {_telegram_code_block(penalty.student_name)} отработал пенальти.\n'
                 'Нужно снять ограничения на учебной платформе.'
             ),
             f'penalty:{penalty.id}:admin-unlock:user:{user.id}',
@@ -1713,12 +1700,13 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
             priority='urgent',
             source_entity='penalty',
             source_entity_id=penalty.id,
+            payload={'parse_mode': 'HTML'},
         )
         if not event:
             continue
         db.session.flush()
         payload = json.loads(event.payload or '{}')
-        payload['action_buttons'] = ([copy_button] if copy_button else []) + [{
+        payload['action_buttons'] = [{
             'text': 'Разблокирован',
             'callback_data': f'p:{penalty.id}:u:y:{event.id}',
         }]
@@ -1729,13 +1717,12 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
 
 def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'):
     users = _users_on_shift(penalty.pool_id)
-    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in users:
         event = _queue_notification(
             user,
             'penalty_method_question',
             (
-                f'Ученик {penalty.student_name} получил пенальти.\n'
+                f'Ученик {_telegram_code_block(penalty.student_name)} получил пенальти.\n'
                 'Получил ли он метод отработки?'
             ),
             f'penalty:{penalty.id}:method:{suffix}:user:{user.id}',
@@ -1743,13 +1730,13 @@ def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'
             scheduled_for=scheduled_for,
             source_entity='penalty',
             source_entity_id=penalty.id,
-            payload={'penalty_id': penalty.id, 'question': 'method'},
+            payload={'penalty_id': penalty.id, 'question': 'method', 'parse_mode': 'HTML'},
             action_buttons=[],
         )
         if event:
             db.session.flush()
             payload = json.loads(event.payload or '{}')
-            payload['action_buttons'] = ([copy_button] if copy_button else []) + [
+            payload['action_buttons'] = [
                 {'text': 'Да', 'callback_data': f'p:{penalty.id}:m:y:{event.id}'},
                 {'text': 'Нет', 'callback_data': f'p:{penalty.id}:m:n:{event.id}'},
                 {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:m:s:{event.id}'},
@@ -1759,24 +1746,23 @@ def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'
 
 def _queue_penalty_workoff_check(penalty, scheduled_for=None, suffix='initial'):
     users = _users_on_shift(penalty.pool_id)
-    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in users:
         event = _queue_notification(
             user,
             'penalty_workoff_check',
-            f'Проверь пенальти: {penalty.student_name} отработал?',
+            f'Проверь пенальти: {_telegram_code_block(penalty.student_name)} отработал?',
             f'penalty:{penalty.id}:complete:{suffix}:user:{user.id}',
             pool_id=penalty.pool_id,
             scheduled_for=scheduled_for,
             source_entity='penalty',
             source_entity_id=penalty.id,
-            payload={'penalty_id': penalty.id, 'question': 'complete'},
+            payload={'penalty_id': penalty.id, 'question': 'complete', 'parse_mode': 'HTML'},
             action_buttons=[],
         )
         if event:
             db.session.flush()
             payload = json.loads(event.payload or '{}')
-            payload['action_buttons'] = ([copy_button] if copy_button else []) + [
+            payload['action_buttons'] = [
                 {'text': 'Да', 'callback_data': f'p:{penalty.id}:c:y:{event.id}'},
                 {'text': 'Нет', 'callback_data': f'p:{penalty.id}:c:n:{event.id}'},
                 {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:c:s:{event.id}'},
@@ -2185,6 +2171,7 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
                 build_notification_text(event),
                 disable_notification=telegram_is_quiet_hours(_moscow_now()) and event.priority != 'urgent',
                 reply_markup=build_notification_reply_markup(event),
+                parse_mode=build_notification_parse_mode(event),
             )
             delivery.telegram_chat_id = account.telegram_chat_id
             delivery.delivery_status = 'sent'
