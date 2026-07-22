@@ -1642,6 +1642,7 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
         )
 def _notify_admins_penalty_created(penalty):
     events = []
+    block_reason = (penalty.description or '').strip() or 'не указана'
     for user in _pool_responsible_users(penalty.pool_id):
         event = _queue_notification(
             user,
@@ -1649,6 +1650,7 @@ def _notify_admins_penalty_created(penalty):
             (
                 f'Ученик {penalty.student_name} получил штраф.\n'
                 f'Выдал: {penalty.volunteer_name}.\n'
+                f'Причина блокировки: {block_reason}.\n'
                 'Нужно заблокировать ученика на учебной платформе.'
             ),
             f'penalty:{penalty.id}:admin-block:user:{user.id}',
