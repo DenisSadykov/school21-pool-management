@@ -1427,6 +1427,13 @@ def telegram_handle_responsibles(chat_id):
     return {'ok': True, 'count': len(responsibles)}
 
 
+def _telegram_copy_button(text, label='Скопировать ники'):
+    value = (text or '').strip()
+    if not value or len(value) > 256:
+        return None
+    return {'text': label, 'copy_text': value}
+
+
 def _telegram_user_from_tg(tg_user):
     username = normalize_tg_username(tg_user.get('username'))
     if not username:
@@ -1459,13 +1466,18 @@ def telegram_handle_penalties(chat_id, tg_user):
         if penalty.workoff_status in groups:
             groups[penalty.workoff_status][1].append(f'• {penalty.student_name} ({penalty.hours * penalty.multiplier}h)')
     lines = ['Ученики с нарушениями:']
+    copy_buttons = []
     for _, (title, items) in groups.items():
         lines.append('')
         lines.append(title + ':')
         lines.extend(items[:20] or ['нет'])
         if len(items) > 20:
             lines.append(f'...и ещё {len(items) - 20}')
-    telegram_send_message(chat_id, '\n'.join(lines))
+        copy_value = '\n'.join(item.split(' (', 1)[0].replace('• ', '', 1) for item in items)
+        copy_button = _telegram_copy_button(copy_value, f'Скопировать: {title.lower()}')
+        if copy_button:
+            copy_buttons.append(copy_button)
+    telegram_send_message(chat_id, '\n'.join(lines), reply_markup=_build_telegram_action_markup(copy_buttons))
     return {'ok': True, 'action': 'penalties'}
 
 
@@ -1562,22 +1574,38 @@ def telegram_handle_message(message):
     return {'ok': True, 'action': 'unknown_command'}
 
 
-def build_notification_reply_markup(event):
-    payload = json.loads(event.payload or '{}')
-    buttons = payload.get('action_buttons') or []
+def _build_telegram_action_markup(buttons):
     if not buttons:
         return None
-    telegram_buttons = []
+    copy_buttons = []
+    action_buttons = []
     for button in buttons:
         telegram_button = {'text': button.get('text') or 'Открыть'}
         if button.get('url'):
             telegram_button['url'] = button['url']
         elif button.get('callback_data'):
             telegram_button['callback_data'] = button['callback_data']
+        elif button.get('copy_text'):
+            copy_text = str(button['copy_text'])[:256]
+            if not copy_text:
+                continue
+            telegram_button['copy_text'] = {'text': copy_text}
+            copy_buttons.append(telegram_button)
+            continue
         else:
             continue
-        telegram_buttons.append(telegram_button)
-    return {'inline_keyboard': [telegram_buttons]} if telegram_buttons else None
+        action_buttons.append(telegram_button)
+    rows = []
+    if copy_buttons:
+        rows.append(copy_buttons)
+    if action_buttons:
+        rows.append(action_buttons)
+    return {'inline_keyboard': rows} if rows else None
+
+
+def build_notification_reply_markup(event):
+    payload = json.loads(event.payload or '{}')
+    return _build_telegram_action_markup(payload.get('action_buttons') or [])
 
 
 def build_notification_text(event):
@@ -1646,6 +1674,7 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
 def _notify_admins_penalty_created(penalty):
     events = []
     block_reason = (penalty.description or '').strip() or 'не указана'
+    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in _pool_responsible_users(penalty.pool_id):
         event = _queue_notification(
             user,
@@ -1661,6 +1690,7 @@ def _notify_admins_penalty_created(penalty):
             priority='urgent',
             source_entity='penalty',
             source_entity_id=penalty.id,
+            action_buttons=[copy_button] if copy_button else [],
         )
         if event:
             events.append(event)
@@ -1669,6 +1699,7 @@ def _notify_admins_penalty_created(penalty):
 
 def _notify_admins_penalty_awaiting_unlock(penalty):
     events = []
+    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in _pool_responsible_users(penalty.pool_id):
         event = _queue_notification(
             user,
@@ -1687,7 +1718,7 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
             continue
         db.session.flush()
         payload = json.loads(event.payload or '{}')
-        payload['action_buttons'] = [{
+        payload['action_buttons'] = ([copy_button] if copy_button else []) + [{
             'text': 'Разблокирован',
             'callback_data': f'p:{penalty.id}:u:y:{event.id}',
         }]
@@ -1698,6 +1729,7 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
 
 def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'):
     users = _users_on_shift(penalty.pool_id)
+    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in users:
         event = _queue_notification(
             user,
@@ -1717,7 +1749,7 @@ def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'
         if event:
             db.session.flush()
             payload = json.loads(event.payload or '{}')
-            payload['action_buttons'] = [
+            payload['action_buttons'] = ([copy_button] if copy_button else []) + [
                 {'text': 'Да', 'callback_data': f'p:{penalty.id}:m:y:{event.id}'},
                 {'text': 'Нет', 'callback_data': f'p:{penalty.id}:m:n:{event.id}'},
                 {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:m:s:{event.id}'},
@@ -1727,6 +1759,7 @@ def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'
 
 def _queue_penalty_workoff_check(penalty, scheduled_for=None, suffix='initial'):
     users = _users_on_shift(penalty.pool_id)
+    copy_button = _telegram_copy_button(penalty.student_name, 'Скопировать ник')
     for user in users:
         event = _queue_notification(
             user,
@@ -1743,7 +1776,7 @@ def _queue_penalty_workoff_check(penalty, scheduled_for=None, suffix='initial'):
         if event:
             db.session.flush()
             payload = json.loads(event.payload or '{}')
-            payload['action_buttons'] = [
+            payload['action_buttons'] = ([copy_button] if copy_button else []) + [
                 {'text': 'Да', 'callback_data': f'p:{penalty.id}:c:y:{event.id}'},
                 {'text': 'Нет', 'callback_data': f'p:{penalty.id}:c:n:{event.id}'},
                 {'text': 'Пропустить', 'callback_data': f'p:{penalty.id}:c:s:{event.id}'},
