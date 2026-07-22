@@ -372,4 +372,5 @@ def test_penalty_block_notification_is_queued_without_blocking_request(
         source_entity_id=penalty.id,
     ).one()
     assert event.status == 'queued'
+    assert 'Причина блокировки: Late.' in event.payload
     assert dispatched_event_ids == [event.id]
