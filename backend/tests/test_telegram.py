@@ -92,6 +92,65 @@ def test_telegram_responsibles_command_lists_pool_responsibles(client, factories
     assert 'Тимлид' in sent_messages[0]
 
 
+def test_telegram_penalties_lists_each_student_as_separate_copyable_nick(client, factories, db_session, monkeypatch):
+    admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    db_session.add(app_module.TelegramAccount(
+        user_id=admin.id,
+        telegram_username='admin',
+        telegram_chat_id='999',
+        is_linked=True,
+        delivery_enabled=True,
+    ))
+    db_session.add_all([
+        app_module.StudentPenalty(
+            student_name='bizarrba',
+            pool_id=pool.id,
+            workoff_status='pending',
+            hours=2,
+            multiplier=1,
+        ),
+        app_module.StudentPenalty(
+            student_name='carlynre',
+            pool_id=pool.id,
+            workoff_status='pending',
+            hours=2,
+            multiplier=1,
+        ),
+    ])
+    db_session.commit()
+
+    monkeypatch.setattr(app_module, 'TELEGRAM_BOT_TOKEN', 'test-bot-token')
+    sent_messages = []
+
+    def fake_send_message(chat_id, text, disable_notification=False, reply_markup=None, parse_mode=None):
+        sent_messages.append({
+            'chat_id': chat_id,
+            'text': text,
+            'parse_mode': parse_mode,
+        })
+        return {'message_id': 889}
+
+    monkeypatch.setattr(app_module, 'telegram_send_message', fake_send_message)
+
+    response = client.post('/api/telegram/webhook', json={
+        'message': {
+            'chat': {'id': 999},
+            'from': {'id': 999, 'username': 'admin'},
+            'text': '/penalties',
+        }
+    })
+
+    assert response.status_code == 200
+    assert sent_messages[0]['parse_mode'] == 'HTML'
+    text = sent_messages[0]['text']
+    assert '<pre>' not in text
+    assert '<code>bizarrba</code> (2h)' in text
+    assert '<code>carlynre</code> (2h)' in text
+    assert '<code>bizarrba\ncarlynre</code>' not in text
+
+
 def test_telegram_callback_marks_penalty_in_workoff(client, factories, db_session, monkeypatch):
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
