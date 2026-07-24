@@ -37,6 +37,21 @@ wait_for_url() {
   return 1
 }
 
+wait_for_log_line() {
+  local log_file="$1"
+  local pattern="$2"
+  local label="$3"
+  local attempts="${4:-90}"
+  for ((i=1; i<=attempts; i+=1)); do
+    if [[ -f "$log_file" ]] && grep -q "$pattern" "$log_file"; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for ${label} in ${log_file}" >&2
+  return 1
+}
+
 trap cleanup EXIT
 
 echo "Starting isolated backend on ${BACKEND_URL}"
@@ -59,6 +74,7 @@ echo "Starting frontend on ${FRONTEND_URL}"
 FRONTEND_PID=$!
 
 wait_for_url "${FRONTEND_URL}" "frontend"
+wait_for_log_line "${FRONTEND_LOG}" "Compiled successfully" "frontend build"
 
 echo "Running Playwright tests"
 (

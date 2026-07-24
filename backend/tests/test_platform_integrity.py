@@ -357,6 +357,47 @@ def test_google_sheets_payload_is_scoped_to_pool(factories, db_session):
     assert [row['student'] for row in payload['penalties']] == ['first-student']
 
 
+def test_google_sheets_student_event_statuses_match_sheet_validation(factories, db_session):
+    pool = factories.pool('Active', active=True, start_date=date(2026, 7, 20))
+    tribe_master = factories.user('tribe-master', role='tribe_master')
+    student = app_module.Student(nick='student', name='Student', tribe='Короны', pool_id=pool.id)
+    db_session.add(student)
+    db_session.flush()
+
+    db_session.add_all([
+        app_module.StudentEvent(
+            student_id=student.id,
+            event_type='entertainment',
+            event_date=date(2026, 7, 21),
+            created_by=tribe_master.id,
+            status='pending',
+            points=0,
+        ),
+        app_module.StudentEvent(
+            student_id=student.id,
+            event_type='education',
+            event_date=date(2026, 7, 22),
+            created_by=tribe_master.id,
+            status='confirmed',
+            points=4,
+        ),
+        app_module.StudentEvent(
+            student_id=student.id,
+            event_type='entertainment',
+            event_date=date(2026, 7, 23),
+            created_by=tribe_master.id,
+            status='rejected',
+            points=0,
+        ),
+    ])
+    db_session.commit()
+
+    payload = app_module.build_google_sheets_template_payload(pool.id)
+    exported_statuses = [row['status'] for row in payload['student_events']]
+
+    assert exported_statuses == ['Ожидает', 'Готово', 'FAKE']
+
+
 def test_pool_google_sheets_configuration_is_staff_only(client, factories, auth_headers):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer')
