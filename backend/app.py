@@ -6528,6 +6528,12 @@ STATUS_EXPORT_LABELS = {
     'done': 'Отработано',
 }
 
+STUDENT_EVENT_STATUS_EXPORT_LABELS = {
+    'pending': 'Ожидает',
+    'confirmed': 'Готово',
+    'rejected': 'FAKE',
+}
+
 EVENT_TYPE_EXPORT_LABELS = {
     'entertainment': 'Развлекательное',
     'education': 'Образовательное',
@@ -6623,7 +6629,7 @@ def build_export_sheets():
          'Ник трайб-мастера', 'Дата заполнения', 'Баллы', 'Статус', 'Ссылка на пост'],
         [[students.get(e.student_id).nick if students.get(e.student_id) else '', students.get(e.student_id).tribe if students.get(e.student_id) else '',
           e.event_date, _export_event_type_label(e.event_type), e.comment, users.get(e.created_by).nick if users.get(e.created_by) else '',
-          e.created_at, e.points or STUDENT_EVENT_POINTS.get(e.event_type, 0), e.status or '', e.post_url]
+          e.created_at, e.points or STUDENT_EVENT_POINTS.get(e.event_type, 0), _export_student_event_status(e.status), e.post_url]
          for e in StudentEvent.query.order_by(StudentEvent.event_date, StudentEvent.created_at).all()],
     )
 
@@ -6929,6 +6935,10 @@ def _template_penalty_status(status):
     return 'Ожидает'
 
 
+def _export_student_event_status(status):
+    return STUDENT_EVENT_STATUS_EXPORT_LABELS.get(status or 'pending', 'Ожидает')
+
+
 def build_google_sheets_template_payload(pool_id):
     """Build a pool-scoped snapshot for the existing formatted Sheets template."""
     pool = get_model_or_404(Pool, pool_id)
@@ -7034,7 +7044,7 @@ def build_google_sheets_template_payload(pool_id):
             'tribe_master': creators[event.created_by].nick if event.created_by in creators else '',
             'created_at': event.created_at.isoformat() if event.created_at else None,
             'points': event.points or STUDENT_EVENT_POINTS.get(event.event_type, 0),
-            'status': event.status or '',
+            'status': _export_student_event_status(event.status),
             'post_url': event.post_url or '',
         } for event in student_events],
         'tribe_events': [{
