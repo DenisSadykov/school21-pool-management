@@ -1722,6 +1722,28 @@ def _notify_admins_penalty_awaiting_unlock(penalty):
     return events
 
 
+def _notify_shift_volunteers_penalty_unlocked(penalty):
+    events = []
+    for user in _users_on_shift(penalty.pool_id):
+        event = _queue_notification(
+            user,
+            'penalty_student_unlocked',
+            (
+                f'Ученик {_telegram_code_block(penalty.student_name)} разблокирован на учебной платформе.\n'
+                'Можно больше не держать его в списке ожидающих разблокировки.'
+            ),
+            f'penalty:{penalty.id}:student-unlocked:user:{user.id}',
+            pool_id=penalty.pool_id,
+            priority='urgent',
+            source_entity='penalty',
+            source_entity_id=penalty.id,
+            payload={'parse_mode': 'HTML'},
+        )
+        if event:
+            events.append(event)
+    return events
+
+
 def _queue_penalty_method_question(penalty, scheduled_for=None, suffix='initial'):
     users = _users_on_shift(penalty.pool_id)
     for user in users:
@@ -5921,18 +5943,24 @@ def my_tribe():
     if error:
         return error
     available_tribes = _tribes_for_pool(pool_id)
-    tribe = normalize_tribe(request.args.get('tribe')) or _resolve_user_tribe(g.user, pool_id)
-    if g.current_role in ('team_lead', 'admin') and not tribe:
-        tribe = available_tribes[0] if available_tribes else ''
-    students = Student.query.filter_by(pool_id=pool_id, tribe=tribe).order_by(Student.nick).all()
+    requested_tribe = request.args.get('tribe')
+    if g.current_role in ('team_lead', 'admin'):
+        tribe = normalize_tribe(requested_tribe) if requested_tribe is not None else ''
+    else:
+        tribe = normalize_tribe(requested_tribe) or _resolve_user_tribe(g.user, pool_id)
+    students_query = Student.query.filter_by(pool_id=pool_id)
+    if tribe:
+        students_query = students_query.filter_by(tribe=tribe)
+    students = students_query.order_by(Student.tribe, Student.nick).all()
     rankings = _tribe_rankings(pool_id)
     own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
-    next_events = (
-        TribeEvent.query
-        .filter(TribeEvent.pool_id == pool_id, TribeEvent.tribe == tribe, TribeEvent.event_date >= _moscow_today())
-        .order_by(TribeEvent.event_date, TribeEvent.time_start)
-        .all()
+    next_events_query = TribeEvent.query.filter(
+        TribeEvent.pool_id == pool_id,
+        TribeEvent.event_date >= _moscow_today(),
     )
+    if tribe:
+        next_events_query = next_events_query.filter(TribeEvent.tribe == tribe)
+    next_events = next_events_query.order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe).all()
     student_ids = [student.id for student in students]
     event_rows = (
         db.session.query(StudentEvent, Student)
@@ -5951,6 +5979,7 @@ def my_tribe():
     )
     return jsonify({
         **_tribe_metrics(pool_id, tribe),
+        'all_tribes_view': not bool(tribe),
         'rank': own_rank,
         'rankings': rankings,
         'available_tribes': available_tribes,
@@ -5965,6 +5994,7 @@ def my_tribe():
             'student_id': student.id,
             'student_nick': student.nick,
             'student_name': student.name,
+            'student_tribe': student.tribe,
             'type': event.event_type,
             'date': event.event_date.isoformat() if event.event_date else None,
             'post_url': event.post_url or '',
@@ -6405,6 +6435,8 @@ def update_penalty_status(penalty_id):
     new_status = data.get('workoff_status', penalty.workoff_status)
     if new_status not in PENALTY_STATUSES:
         return jsonify({'error': 'Некорректный статус штрафа'}), 400
+    if new_status == 'unlocked' and g.current_role not in ('admin', 'team_lead'):
+        return jsonify({'error': 'Отмечать разблокировку может только тимлид или админ'}), 403
     _acquire_dedupe_lock('penalty-status', penalty.id)
     db.session.refresh(penalty)
     old_status = penalty.workoff_status
@@ -6445,6 +6477,8 @@ def update_penalty_status(penalty_id):
         if new_status == 'awaiting_unlock':
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
             critical_events = _notify_admins_penalty_awaiting_unlock(penalty)
+        if new_status == 'unlocked':
+            critical_events = _notify_shift_volunteers_penalty_unlocked(penalty)
         if new_status in ('pending', 'overdue', 'unlocked', 'done'):
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
     if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:

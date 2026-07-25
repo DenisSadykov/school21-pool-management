@@ -405,6 +405,52 @@
   margin-bottom: 6px;
 }
 
+.penalty-student-copy {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: copy;
+  font: inherit;
+  text-align: left;
+}
+
+.penalty-student-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.penalty-student-copy svg {
+  flex: none;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.penalty-student-copy:hover svg,
+.penalty-student-copy:focus-visible svg,
+.penalty-student-copy.is-copied svg {
+  opacity: 1;
+}
+
+.penalty-student-copy:hover,
+.penalty-student-copy:focus-visible,
+.penalty-student-copy.is-copied {
+  color: var(--accent);
+  outline: none;
+}
+
+.penalty-student-copy.is-copied svg {
+  color: var(--success);
+}
+
 .penalty-header h3 {
   font-size: 0.94rem;
   color: var(--text-primary);
@@ -494,16 +540,21 @@
 }
 
 .database-entry-mark:hover {
-  border-color: var(--success);
-  color: var(--success);
-  background: rgba(26, 127, 55, 0.06);
+  border-color: #f97316;
+  color: #c2410c;
+  background: rgba(249, 115, 22, 0.1);
 }
 
 .database-entry-mark.is-marked {
   border-style: solid;
-  border-color: rgba(26, 127, 55, 0.38);
-  background: rgba(26, 127, 55, 0.09);
-  color: var(--success);
+  border-color: rgba(249, 115, 22, 0.78);
+  background: rgba(249, 115, 22, 0.18);
+  color: #c2410c;
+  box-shadow: inset 3px 0 0 #f97316;
+}
+
+.database-entry-mark.is-marked svg {
+  color: #ea580c;
 }
 
 .database-entry-mark small {
