@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AlertCircle, Plus, Check, X, Trash2, ExternalLink } from 'lucide-react';
+import { AlertCircle, Plus, Check, X, Trash2, ExternalLink, Copy } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import '../styles/Pages.css';
@@ -426,6 +426,7 @@ function Penalties({ user }) {
 function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
   const workoffNote = getWorkoffNote(penalty);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [copiedNick, setCopiedNick] = useState(false);
 
   const runAction = async (action) => {
     if (isUpdating) return;
@@ -501,13 +502,40 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry,
     ));
   };
 
+  const handleCopyStudentNick = async () => {
+    try {
+      await navigator.clipboard.writeText(penalty.student_name);
+    } catch (error) {
+      const textarea = document.createElement('textarea');
+      textarea.value = penalty.student_name;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setCopiedNick(true);
+    window.setTimeout(() => setCopiedNick(false), 1200);
+  };
+
   return (
     <div
       ref={registerRef}
       className={`penalty-card ${isOverdue ? 'overdue' : ''} ${isAwaitingUnlock ? 'awaiting-unlock' : ''} ${isInWorkoff ? 'in-workoff' : ''} ${isTarget ? 'is-target' : ''}`}
     >
       <div className="penalty-header">
-        <h3>{penalty.student_name}</h3>
+        <button
+          type="button"
+          className={`penalty-student-copy ${copiedNick ? 'is-copied' : ''}`}
+          onClick={handleCopyStudentNick}
+          title="Скопировать ник ученика"
+          aria-label={`Скопировать ник ${penalty.student_name}`}
+        >
+          <span>{penalty.student_name}</span>
+          {copiedNick ? <Check size={16} /> : <Copy size={16} />}
+        </button>
         <span className="penalty-hours">
           {penalty.total_hours}h{penalty.multiplier > 1 && ` (×${penalty.multiplier})`}
         </span>

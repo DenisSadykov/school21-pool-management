@@ -252,6 +252,32 @@
   gap: var(--spacing-sm);
 }
 
+.tribe-view-switch {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--spacing-md);
+}
+
+.tribe-view-button {
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.tribe-view-button:hover,
+.tribe-view-button.active {
+  border-color: rgba(9, 105, 218, 0.35);
+  background: rgba(9, 105, 218, 0.08);
+  color: var(--accent);
+}
+
 .ranking-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(0, 170px));
@@ -317,14 +343,79 @@
   overflow: hidden;
 }
 
+.student-events-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.student-events-heading h2 {
+  margin-bottom: 0;
+}
+
+.student-event-tribe-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
+.student-event-tribe-toggle {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.42;
+  filter: grayscale(0.45);
+  transition: opacity var(--transition), filter var(--transition), background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.student-event-tribe-toggle.has-events {
+  opacity: 0.62;
+  filter: none;
+}
+
+.student-event-tribe-toggle.has-events:hover {
+  opacity: 1;
+  background: var(--bg-card);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+
+.student-event-tribe-toggle.active {
+  opacity: 1;
+  background: var(--bg-card);
+  border-color: rgba(9, 105, 218, 0.18);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.student-event-tribe-toggle.is-empty {
+  cursor: default;
+}
+
 .student-event-head {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(220px, auto) minmax(360px, auto);
+  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) minmax(390px, 1.45fr);
   gap: var(--spacing-md);
   align-items: center;
   padding: 10px var(--spacing-md);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
+}
+
+.student-event-table.is-all-tribes .student-event-head,
+.student-event-table.is-all-tribes .student-event-row {
+  grid-template-columns: minmax(100px, 0.5fr) minmax(54px, 0.28fr) minmax(230px, 1.08fr) minmax(150px, 0.7fr) minmax(390px, 1.55fr);
 }
 
 .student-event-head span {
@@ -344,7 +435,7 @@
 
 .student-event-row {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(220px, auto) minmax(360px, auto);
+  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) minmax(390px, 1.45fr);
   gap: var(--spacing-md);
   align-items: center;
   padding: var(--spacing-md);
@@ -372,6 +463,19 @@
 
 .student-event-meta {
   white-space: nowrap;
+}
+
+.student-event-tribe {
+  display: flex;
+  justify-content: center;
+}
+
+.student-event-tribe-head {
+  text-align: center;
+}
+
+.student-event-tribe .tribe-label {
+  justify-content: center;
 }
 
 .student-event-links {
@@ -414,10 +518,11 @@
 
 .student-event-admin {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .student-event-admin button {
@@ -617,6 +722,11 @@
     grid-template-columns: 1fr;
   }
 
+  .student-event-table.is-all-tribes .student-event-head,
+  .student-event-table.is-all-tribes .student-event-row {
+    grid-template-columns: 1fr;
+  }
+
   .tribe-meeting-grid {
     grid-template-columns: 1fr;
   }
@@ -654,5 +764,10 @@
   .tribe-panel h2 {
     font-size: 1.05rem;
     margin-bottom: 12px;
+  }
+
+  .student-events-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

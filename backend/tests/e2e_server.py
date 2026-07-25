@@ -38,6 +38,10 @@ def seed_data():
     ShiftBlock = app_module.ShiftBlock
     Signup = app_module.Signup
     StudentPenalty = app_module.StudentPenalty
+    Student = app_module.Student
+    StudentEvent = app_module.StudentEvent
+    TribeEvent = app_module.TribeEvent
+    PenaltyHistory = app_module.PenaltyHistory
 
     with app_module.app.app_context():
         app_module.db.session.remove()
@@ -115,7 +119,31 @@ def seed_data():
         app_module.db.session.commit()
 
         app_module.db.session.add(Signup(block_id=block.id, user_id=volunteer.id))
-        app_module.db.session.add(StudentPenalty(
+        pending_penalty = StudentPenalty(
+            student_name='monetang',
+            volunteer_id=volunteer.id,
+            volunteer_name=volunteer.name,
+            hours=2,
+            multiplier=1,
+            workoff_status='pending',
+            description='Не залочил арм',
+            database_entry_marked=True,
+            database_entry_marked_by=admin.id,
+            database_entry_marked_at=app_module._naive_utcnow(),
+            pool_id=pool.id,
+        )
+        awaiting_penalty = StudentPenalty(
+            student_name='kindraka',
+            volunteer_id=volunteer.id,
+            volunteer_name=volunteer.name,
+            hours=2,
+            multiplier=1,
+            workoff_status='awaiting_unlock',
+            description='Отошёл от арма и не выключил его',
+            date_worked_off=app_module._naive_utcnow(),
+            pool_id=pool.id,
+        )
+        completed_penalty = StudentPenalty(
             student_name='completed_student',
             volunteer_id=volunteer.id,
             volunteer_name=volunteer.name,
@@ -125,7 +153,74 @@ def seed_data():
             description='E2E завершённая пенальти',
             date_worked_off=app_module._naive_utcnow(),
             pool_id=pool.id,
+        )
+        app_module.db.session.add_all([pending_penalty, awaiting_penalty, completed_penalty])
+        app_module.db.session.flush()
+        app_module.db.session.add(PenaltyHistory(
+            penalty_id=pending_penalty.id,
+            old_status=None,
+            new_status='pending',
+            old_hours=2,
+            new_hours=2,
+            actor_id=admin.id,
+            actor_nick=admin.nick,
+            comment='Передан в базу',
         ))
+
+        students = [
+            Student(nick='lanachun', name='Лана', tribe='Ленты', pool_id=pool.id),
+            Student(nick='gerioncl', name='Герион', tribe='Короны', pool_id=pool.id),
+            Student(nick='emrylaw', name='Эмри', tribe='Олени', pool_id=pool.id),
+        ]
+        app_module.db.session.add_all(students)
+        app_module.db.session.flush()
+        app_module.db.session.add_all([
+            StudentEvent(
+                student_id=students[0].id,
+                event_type='entertainment',
+                event_date=date.today(),
+                post_url='https://example.com/post',
+                points=0,
+                status='pending',
+                created_by=tribe_master.id,
+            ),
+            StudentEvent(
+                student_id=students[1].id,
+                event_type='entertainment',
+                event_date=date.today(),
+                post_url='https://example.com/post',
+                points=2,
+                status='confirmed',
+                created_by=tribe_master.id,
+            ),
+            StudentEvent(
+                student_id=students[2].id,
+                event_type='education',
+                event_date=date.today(),
+                post_url='https://example.com/post',
+                points=0,
+                status='pending',
+                created_by=tribe_master.id,
+            ),
+            TribeEvent(
+                pool_id=pool.id,
+                tribe='Ленты',
+                title='Рефлексия',
+                event_date=date.today(),
+                time_start='17:15',
+                location='10 этаж',
+                created_by=admin.id,
+            ),
+            TribeEvent(
+                pool_id=pool.id,
+                tribe='Короны',
+                title='Разбор проектов',
+                event_date=date.today() + timedelta(days=1),
+                time_start='18:00',
+                location='Кампус',
+                created_by=admin.id,
+            ),
+        ])
         app_module.db.session.commit()
 
 

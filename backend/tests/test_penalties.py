@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 import app as app_module
 
 
@@ -295,6 +297,54 @@ def test_manual_penalty_status_to_awaiting_unlock_notifies_admins_and_cancels_pe
         penalty_id=penalty.id,
         new_status='awaiting_unlock',
     ).count() == 1
+
+
+def test_manual_penalty_unlock_notifies_volunteers_on_current_shift(client, factories, auth_headers, db_session, monkeypatch):
+    admin = factories.user('admin', role='admin', password='secret123')
+    volunteer = factories.user('shift_volunteer', role='volunteer', telegram='@shift_volunteer')
+    off_shift_volunteer = factories.user('off_shift', role='volunteer', telegram='@off_shift')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(admin, pool, pool_role='responsible_admin')
+    factories.assign(volunteer, pool)
+    factories.assign(off_shift_volunteer, pool)
+    block = factories.shift_block(pool, date(2026, 7, 25), start='10:00', end='18:00')
+    db_session.add(app_module.Signup(block_id=block.id, user_id=volunteer.id))
+    penalty = app_module.StudentPenalty(
+        student_name='Unlock Student',
+        volunteer_id=volunteer.id,
+        volunteer_name=volunteer.name,
+        pool_id=pool.id,
+        workoff_status='awaiting_unlock',
+    )
+    db_session.add(penalty)
+    db_session.commit()
+
+    dispatched_events = []
+    monkeypatch.setattr(app_module, '_moscow_now', lambda: datetime(2026, 7, 25, 12, 0, 0))
+    monkeypatch.setattr(
+        app_module,
+        'queue_notification_dispatch',
+        lambda events: dispatched_events.extend(events) or {'ok': True},
+    )
+
+    response = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(admin),
+        json={'workoff_status': 'unlocked'},
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(penalty)
+    assert penalty.workoff_status == 'unlocked'
+    events = db_session.query(app_module.NotificationEvent).filter_by(
+        type='penalty_student_unlocked',
+        source_entity='penalty',
+        source_entity_id=penalty.id,
+    ).all()
+    assert len(events) == 1
+    assert events[0].recipient_user_id == volunteer.id
+    assert off_shift_volunteer.id not in [event.recipient_user_id for event in events]
+    assert dispatched_events == events
 
 
 def test_penalty_notifications_go_only_to_pool_responsibles(client, factories, auth_headers, db_session):

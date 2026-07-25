@@ -7,13 +7,17 @@ import '../styles/Pages.css';
 import '../styles/MyTribe.css';
 import { moscowTodayIso } from '../utils/date';
 
+const TRIBE_ORDER = ['Ленты', 'Короны', 'Олени'];
+
 function todayIso() {
   return moscowTodayIso();
 }
 
 function MyTribe({ user }) {
+  const isStaff = user?.role === 'admin' || user?.role === 'team_lead';
   const [data, setData] = useState(null);
-  const [selectedTribe, setSelectedTribe] = useState(user?.tribe || '');
+  const [selectedTribe, setSelectedTribe] = useState(isStaff ? '' : user?.tribe || '');
+  const [activeEventTribes, setActiveEventTribes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -24,7 +28,9 @@ function MyTribe({ user }) {
       const query = tribe ? `?tribe=${encodeURIComponent(tribe)}` : '';
       const payload = await api.get(`/api/my-tribe${query}`);
       setData(payload);
-      setSelectedTribe(payload.tribe);
+      setSelectedTribe(payload.tribe || '');
+      const eventTribes = [...new Set((payload.student_events || []).map((event) => event.student_tribe).filter(Boolean))];
+      setActiveEventTribes(eventTribes);
     } catch (error) {
       setError(error.message);
     } finally {
@@ -82,13 +88,26 @@ function MyTribe({ user }) {
   }, []);
 
   if (loading && !data) return <Loader text="Загрузка трайба..." />;
-  const isStaff = user?.role === 'admin' || user?.role === 'team_lead';
   const isTribeMaster = user?.role === 'tribe_master';
   const canSwitchTribe = isStaff;
   const pageTitle = isStaff ? 'Трайбы' : '';
+  const allTribesView = isStaff && !selectedTribe;
   const selectedTribeIcon = selectedTribe
     ? <TribeLabel tribe={selectedTribe} size={18} showText={false} className="tribe-title-icon" />
     : null;
+  const studentEvents = data?.student_events || [];
+  const studentEventTribes = new Set(studentEvents.map((event) => event.student_tribe).filter(Boolean));
+  const visibleStudentEvents = allTribesView
+    ? studentEvents.filter((event) => activeEventTribes.includes(event.student_tribe))
+    : studentEvents;
+  const toggleEventTribe = (tribe) => {
+    if (!studentEventTribes.has(tribe)) return;
+    setActiveEventTribes((current) => (
+      current.includes(tribe)
+        ? current.filter((item) => item !== tribe)
+        : [...current, tribe]
+    ));
+  };
 
   return (
     <div className="page my-tribe-page">
@@ -126,6 +145,17 @@ function MyTribe({ user }) {
         <>
       <section className="tribe-panel">
         <h2><Trophy size={18} /> Рейтинг трайбов</h2>
+        {canSwitchTribe && (
+          <div className="tribe-view-switch">
+            <button
+              type="button"
+              className={`tribe-view-button ${allTribesView ? 'active' : ''}`}
+              onClick={() => load('')}
+            >
+              Все трайбы
+            </button>
+          </div>
+        )}
         {(data?.rankings || []).length === 0 ? (
           <p className="text-muted">Пока нет данных по трайбам.</p>
         ) : (
@@ -161,12 +191,14 @@ function MyTribe({ user }) {
         )}
       </section>
 
-      <TribeEventForm
-        tribe={selectedTribe}
-        tribeIcon={selectedTribeIcon}
-        onSuccess={() => load(selectedTribe)}
-        onGenerateStandard={generateStandardTribeEvents}
-      />
+      {!allTribesView && (
+        <TribeEventForm
+          tribe={selectedTribe}
+          tribeIcon={selectedTribeIcon}
+          onSuccess={() => load(selectedTribe)}
+          onGenerateStandard={generateStandardTribeEvents}
+        />
+      )}
 
       {isStaff && (
         <AllTribeMeetings events={data?.all_tribe_events || []} onDelete={deleteTribeEvent} tribeIcon={selectedTribeIcon} />
@@ -175,7 +207,7 @@ function MyTribe({ user }) {
       <StudentEventForm students={data?.students || []} onSuccess={() => load(selectedTribe)} />
 
       <section className="tribe-panel">
-        <h2>Топ учеников трайба {selectedTribeIcon}</h2>
+        <h2>{allTribesView ? 'Топ учеников' : <>Топ учеников трайба {selectedTribeIcon}</>}</h2>
         {(data?.top_students || []).length === 0 ? (
           <p className="text-muted">Пока нет подтвержденных мероприятий учеников.</p>
         ) : (
@@ -191,29 +223,58 @@ function MyTribe({ user }) {
       </section>
 
       <section className="tribe-panel">
-        <h2>Все заведённые мероприятия {selectedTribeIcon}</h2>
-        {(data?.student_events || []).length === 0 ? (
+        <div className="student-events-heading">
+          <h2>{allTribesView ? 'Все заведённые мероприятия всех трайбов' : <>Все заведённые мероприятия {selectedTribeIcon}</>}</h2>
+          {allTribesView && (
+            <div className="student-event-tribe-filter" aria-label="Наличие мероприятий по трайбам">
+              {TRIBE_ORDER.map((tribe) => {
+                const hasEvents = studentEventTribes.has(tribe);
+                const isActive = activeEventTribes.includes(tribe);
+                return (
+                  <button
+                    type="button"
+                    key={tribe}
+                    className={`student-event-tribe-toggle ${hasEvents ? 'has-events' : 'is-empty'} ${isActive ? 'active' : ''}`}
+                    onClick={() => toggleEventTribe(tribe)}
+                    disabled={!hasEvents}
+                    title={hasEvents ? `${tribe}: показать/скрыть мероприятия` : `${tribe}: мероприятий нет`}
+                    aria-pressed={hasEvents ? isActive : undefined}
+                  >
+                    <TribeLabel tribe={tribe} size={22} showText={false} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {studentEvents.length === 0 ? (
           <p className="text-muted">Пока нет добавленных мероприятий.</p>
         ) : (
-          <div className="student-event-table">
+          <div className={`student-event-table ${allTribesView ? 'is-all-tribes' : ''}`}>
             <div className="student-event-head">
               <span>Ник</span>
+              {allTribesView && <span className="student-event-tribe-head">Трайб</span>}
               <span>Мероприятие</span>
               <span>Статус</span>
               <span>Еще</span>
             </div>
             <div className="student-event-list">
-            {data.student_events.map((event) => (
+            {visibleStudentEvents.map((event) => (
               <div className="student-event-row" key={event.id}>
                 <div>
                   <strong>@{event.student_nick}</strong>
                 </div>
+                {allTribesView && (
+                  <div className="student-event-tribe">
+                    <TribeLabel tribe={event.student_tribe} size={20} showText={false} />
+                  </div>
+                )}
                 <div className="student-event-meta">
                   <span>{event.type === 'education' ? 'Обучающее' : 'Развлекательное'} · {event.date || 'без даты'} · {event.points || 0} балл.</span>
                 </div>
                 <div className="student-event-links">
                   <span className={`event-status ${event.status || 'pending'}`}>
-                    {event.status === 'confirmed' ? 'подтверждено' : event.status === 'rejected' ? 'отклонено' : 'ждет подтверждения АДМ'}
+                    {event.status === 'confirmed' ? 'подтверждено' : event.status === 'rejected' ? 'отклонено' : 'ожидание АДМ'}
                   </span>
                 </div>
                 <div className="student-event-admin">
@@ -249,15 +310,6 @@ function formatMeetingWeekday(value) {
   if (!value) return '';
   return new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU', {
     weekday: 'short',
-  });
-}
-
-function formatLongDate(value) {
-  if (!value) return '';
-  return new Date(`${value}T00:00:00`).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
   });
 }
 
@@ -323,7 +375,7 @@ function AllTribeMeetings({ events, onDelete, tribeIcon }) {
 }
 
 function StudentEventForm({ students, onSuccess }) {
-  const formatStudentOption = (student) => `@${student.nick} · ${student.name}`;
+  const formatStudentOption = (student) => `@${student.nick} · ${student.name}${student.tribe ? ` · ${student.tribe}` : ''}`;
   const [form, setForm] = useState({
     student_id: '',
     event_type: 'entertainment',
@@ -448,7 +500,6 @@ function StudentEventForm({ students, onSuccess }) {
         <label>
           Дата
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
-          {form.event_date && <span className="date-hint">{formatLongDate(form.event_date)}</span>}
         </label>
         <label>
           Ссылка на пост
@@ -497,7 +548,6 @@ function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard }) {
         <label>
           Дата
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
-          {form.event_date && <span className="date-hint">{formatLongDate(form.event_date)}</span>}
         </label>
         <label>
           Время

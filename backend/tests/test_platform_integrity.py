@@ -398,6 +398,48 @@ def test_google_sheets_student_event_statuses_match_sheet_validation(factories, 
     assert exported_statuses == ['Ожидает', 'Готово', 'FAKE']
 
 
+def test_staff_my_tribe_defaults_to_all_student_events(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool('Active', active=True, start_date=date(2026, 7, 20))
+    ribbon = app_module.Student(nick='ribbon_student', name='Ribbon', tribe='Ленты', pool_id=pool.id)
+    crown = app_module.Student(nick='crown_student', name='Crown', tribe='Короны', pool_id=pool.id)
+    db_session.add_all([ribbon, crown])
+    db_session.flush()
+    db_session.add_all([
+        app_module.StudentEvent(
+            student_id=ribbon.id,
+            event_type='entertainment',
+            event_date=date(2026, 7, 24),
+            created_by=admin.id,
+            status='pending',
+        ),
+        app_module.StudentEvent(
+            student_id=crown.id,
+            event_type='education',
+            event_date=date(2026, 7, 24),
+            created_by=admin.id,
+            status='pending',
+        ),
+    ])
+    db_session.commit()
+
+    all_response = client.get('/api/my-tribe', headers=auth_headers(admin))
+    filtered_response = client.get('/api/my-tribe?tribe=Короны', headers=auth_headers(admin))
+
+    assert all_response.status_code == 200
+    all_payload = all_response.get_json()
+    assert all_payload['all_tribes_view'] is True
+    assert all_payload['tribe'] == ''
+    assert {event['student_nick'] for event in all_payload['student_events']} == {'crown_student', 'ribbon_student'}
+    assert {event['student_tribe'] for event in all_payload['student_events']} == {'Ленты', 'Короны'}
+
+    assert filtered_response.status_code == 200
+    filtered_payload = filtered_response.get_json()
+    assert filtered_payload['all_tribes_view'] is False
+    assert filtered_payload['tribe'] == 'Короны'
+    assert [event['student_nick'] for event in filtered_payload['student_events']] == ['crown_student']
+
+
 def test_pool_google_sheets_configuration_is_staff_only(client, factories, auth_headers):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer')
