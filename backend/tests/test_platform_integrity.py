@@ -261,6 +261,31 @@ def test_only_staff_can_approve_student_event(client, factories, auth_headers, d
     assert event.points == app_module.STUDENT_EVENT_POINTS['education']
 
 
+def test_created_student_event_is_confirmed_for_tribe_master(client, factories, auth_headers, db_session):
+    tribe_master = factories.user('master')
+    pool = factories.pool('Active', active=True)
+    factories.assign(tribe_master, pool, pool_role='tribe_master', tribe='Короны')
+    student = app_module.Student(nick='student', name='Student', tribe='Короны', pool_id=pool.id)
+    db_session.add(student)
+    db_session.commit()
+
+    response = client.post(
+        f'/api/students/{student.id}/events',
+        headers=auth_headers(tribe_master),
+        json={
+            'event_type': 'education',
+            'event_date': '2026-07-28',
+            'comment': 'Разбор задач',
+        },
+    )
+
+    assert response.status_code == 201
+    event = app_module.StudentEvent.query.filter_by(student_id=student.id).one()
+    assert event.status == 'confirmed'
+    assert event.points == app_module.STUDENT_EVENT_POINTS['education']
+    assert 'начислено' in response.get_json()['message']
+
+
 def test_stale_pool_note_and_broadcast_cannot_be_modified(client, factories, auth_headers, db_session):
     admin = factories.user('admin', role='admin', password='secret123')
     old_pool = factories.pool('Old', active=False)
