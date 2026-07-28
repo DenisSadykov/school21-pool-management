@@ -291,7 +291,7 @@ function Students({ user }) {
         <section className="event-copy-filter" aria-labelledby="event-copy-filter-title">
           <div className="event-copy-filter-heading">
             <div>
-              <h2 id="event-copy-filter-title">Списки для базы</h2>
+              <h2 id="event-copy-filter-title">Мероприятия учеников</h2>
               <p>Выберите период и скопируйте ники учеников одной колонкой.</p>
             </div>
           </div>
