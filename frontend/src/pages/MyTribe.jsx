@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarPlus, ChevronDown, Link as LinkIcon, Plus, Trash2, Trophy } from 'lucide-react';
+import { CalendarPlus, Check, ChevronDown, Copy, Plus, Trash2, Trophy } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
@@ -8,6 +8,62 @@ import '../styles/MyTribe.css';
 import { moscowTodayIso } from '../utils/date';
 
 const TRIBE_ORDER = ['Ленты', 'Короны', 'Олени'];
+const STUDENT_EVENT_STATUS_LABELS = {
+  confirmed: 'начислено',
+  pending: 'ожидание',
+  rejected: 'отклонено',
+};
+
+function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function CopyableStudentNick({ nick }) {
+  const [copied, setCopied] = useState(false);
+  const displayNick = nick?.startsWith('@') ? nick : `@${nick}`;
+
+  const handleCopy = async () => {
+    if (!nick) return;
+    try {
+      await copyTextToClipboard(nick.replace(/^@/, ''));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch (error) {
+      alert('Не удалось скопировать ник');
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`copyable-student-nick ${copied ? 'is-copied' : ''}`}
+      onClick={handleCopy}
+      title={`Скопировать ник ${displayNick}`}
+      aria-label={`Скопировать ник ${displayNick}`}
+    >
+      <strong>{displayNick}</strong>
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
+  );
+}
 
 function todayIso() {
   return moscowTodayIso();
@@ -214,7 +270,9 @@ function MyTribe({ user }) {
           <div className="tribe-list">
             {data.top_students.map((student, index) => (
               <div className="tribe-row" key={student.id}>
-                <span>{index + 1}. @{student.nick}</span>
+                <span className="top-student-nick">
+                  {index + 1}. <CopyableStudentNick nick={student.nick} />
+                </span>
                 <strong>{student.points || 0}</strong>
               </div>
             ))}
@@ -262,7 +320,7 @@ function MyTribe({ user }) {
             {visibleStudentEvents.map((event) => (
               <div className="student-event-row" key={event.id}>
                 <div>
-                  <strong>@{event.student_nick}</strong>
+                  <CopyableStudentNick nick={event.student_nick} />
                 </div>
                 {allTribesView && (
                   <div className="student-event-tribe">
@@ -274,14 +332,22 @@ function MyTribe({ user }) {
                 </div>
                 <div className="student-event-links">
                   <span className={`event-status ${event.status || 'pending'}`}>
-                    {event.status === 'confirmed' ? 'подтверждено' : event.status === 'rejected' ? 'отклонено' : 'ожидание АДМ'}
+                    {STUDENT_EVENT_STATUS_LABELS[event.status || 'pending']}
                   </span>
                 </div>
                 <div className="student-event-admin">
-                  {event.post_url && <a href={event.post_url} target="_blank" rel="noreferrer">Пост</a>}
-                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'confirmed')}>Подтвердить</button>}
-                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'pending')}>Ждет АДМ</button>}
-                  {isStaff && <button type="button" onClick={() => updateStudentEventStatus(event, 'rejected')}>Отклонить</button>}
+                  {isStaff && (
+                    <select
+                      className="student-event-status-select"
+                      value={event.status || 'pending'}
+                      onChange={(e) => updateStudentEventStatus(event, e.target.value)}
+                      aria-label={`Статус мероприятия ${event.student_nick}`}
+                    >
+                      <option value="confirmed">Начислено</option>
+                      <option value="pending">Ожидание</option>
+                      <option value="rejected">Отклонено</option>
+                    </select>
+                  )}
                   <button className="btn-icon danger" type="button" onClick={() => deleteStudentEvent(event)} title="Удалить">
                     <Trash2 size={18} />
                   </button>
@@ -380,7 +446,6 @@ function StudentEventForm({ students, onSuccess }) {
     student_id: '',
     event_type: 'entertainment',
     event_date: todayIso(),
-    post_url: '',
     comment: '',
   });
   const [studentInput, setStudentInput] = useState('');
@@ -431,7 +496,7 @@ function StudentEventForm({ students, onSuccess }) {
       ...form,
       student_id: matchedStudent.id,
     });
-    setForm({ ...form, student_id: matchedStudent.id, post_url: '', comment: '' });
+    setForm({ ...form, student_id: matchedStudent.id, comment: '' });
     setStudentInput(formatStudentOption(matchedStudent));
     onSuccess();
   };
@@ -502,14 +567,10 @@ function StudentEventForm({ students, onSuccess }) {
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
         </label>
         <label>
-          Ссылка на пост
-          <input value={form.post_url} onChange={(e) => setForm({ ...form, post_url: e.target.value })} placeholder="https://..." />
-        </label>
-        <label>
           Комментарий
           <input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} placeholder="Коротко" />
         </label>
-        <button className="btn-primary compact-submit" type="submit"><LinkIcon size={16} /> Добавить</button>
+        <button className="btn-primary compact-submit" type="submit"><Plus size={16} /> Добавить</button>
       </div>
     </form>
   );

@@ -123,7 +123,7 @@
 
 .student-event-compact-grid {
   display: grid;
-  grid-template-columns: minmax(250px, 1.45fr) 170px 135px minmax(180px, 1.15fr) minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(250px, 1.45fr) 170px 135px minmax(180px, 1fr) auto;
   gap: var(--spacing-sm);
   align-items: end;
 }
@@ -415,7 +415,7 @@
 
 .student-event-table.is-all-tribes .student-event-head,
 .student-event-table.is-all-tribes .student-event-row {
-  grid-template-columns: minmax(100px, 0.5fr) minmax(54px, 0.28fr) minmax(230px, 1.08fr) minmax(150px, 0.7fr) minmax(390px, 1.55fr);
+  grid-template-columns: minmax(120px, 0.75fr) minmax(54px, 0.3fr) minmax(250px, 1.45fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr);
 }
 
 .student-event-head span {
@@ -521,22 +521,81 @@
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 8px;
   white-space: nowrap;
 }
 
-.student-event-admin button {
+.student-event-admin button,
+.student-event-status-select {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background-color: var(--bg-card);
   color: var(--text-primary);
   padding: 5px 8px;
+  min-height: 32px;
+  font: inherit;
+}
+
+.student-event-admin button {
   cursor: pointer;
 }
 
-.student-event-admin button:hover {
+.student-event-status-select {
+  min-width: 126px;
+  cursor: pointer;
+}
+
+.student-event-admin button:hover,
+.student-event-status-select:hover {
   border-color: var(--text-secondary);
   color: var(--text-primary);
+}
+
+.copyable-student-nick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.copyable-student-nick strong {
+  color: inherit;
+}
+
+.copyable-student-nick svg {
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-2px);
+  transition: opacity var(--transition), transform var(--transition), color var(--transition);
+}
+
+.copyable-student-nick:hover svg,
+.copyable-student-nick:focus-visible svg,
+.copyable-student-nick.is-copied svg {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.copyable-student-nick:hover,
+.copyable-student-nick:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.copyable-student-nick.is-copied {
+  color: var(--success);
+}
+
+.top-student-nick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .tribe-meetings-schedule {
