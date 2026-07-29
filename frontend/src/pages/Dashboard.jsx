@@ -318,14 +318,14 @@ function TribeMasterDashboard({ data, scripts }) {
           icon={Users}
           label={tribe.tribe ? (
             <span className="stat-tribe-label">
-              <span>Ученики трайба</span>
+              <span>Пиры трайба</span>
               <TribeLabel tribe={tribe.tribe} size={16} />
             </span>
-          ) : 'Ученики трайба'}
+          ) : 'Пиры трайба'}
           value={tribe.students_count || 0}
           tone="users"
         />
-        <StatCard icon={CalendarClock} label="Мероприятий учеников" value={tribe.events_total || 0} tone="upcoming" />
+        <StatCard icon={CalendarClock} label="Мероприятий пиров" value={tribe.events_total || 0} tone="upcoming" />
         <StatCard icon={PartyPopper} label="Развлекательные" value={tribe.entertainment_events || 0} tone="upcoming" />
         <StatCard icon={BookOpenCheck} label="Обучающие" value={tribe.education_events || 0} tone="calendar" />
         <StatCard icon={Trophy} label="Место среди трайбов" value={tribe.rank ? `${tribe.rank}/3` : '—'} tone="coins" />
@@ -380,7 +380,7 @@ function TribeMasterDashboard({ data, scripts }) {
         </section>
 
         <section className="info-section">
-          <SectionTitle icon={Trophy} title="Топ учеников по мероприятиям" />
+          <SectionTitle icon={Trophy} title="Топ пиров по мероприятиям" />
           <TopStudents students={tribe.top_students || []} />
         </section>
       </div>

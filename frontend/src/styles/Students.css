@@ -1097,12 +1097,12 @@
     font-weight: 600;
   }
 
-  .students-table td[data-label="Ученик"],
+  .students-table td[data-label="Пир"],
   .students-table td[data-label="Управление"] {
     grid-column: 1 / -1;
   }
 
-  .students-table td[data-label="Ученик"] {
+  .students-table td[data-label="Пир"] {
     padding: 0 64px 14px 0;
     background: transparent;
     border: none;
@@ -1113,7 +1113,7 @@
     margin-bottom: 6px;
   }
 
-  .students-table td[data-label="Ученик"]::before,
+  .students-table td[data-label="Пир"]::before,
   .students-table td[data-label="Управление"]::before {
     display: none;
   }

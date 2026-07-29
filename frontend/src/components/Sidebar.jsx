@@ -33,7 +33,7 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
     { path: '/', label: 'Дашборд', icon: Home, tone: 'home' },
     { path: '/schedule', label: 'График смен', icon: Calendar, tone: 'schedule' },
     { path: '/penalties', label: 'Штрафы', icon: AlertCircle, tone: 'penalties' },
-    { path: '/students', label: 'Ученики', icon: BookOpen, tone: 'students' },
+    { path: '/students', label: 'Пиры', icon: BookOpen, tone: 'students' },
     ...(canUseTribe ? [{ path: '/my-tribe', label: isStaff ? 'Трайбы' : 'Мой трайб', icon: Trophy, tone: 'tribe' }] : []),
     ...(user?.role === 'tribe_master' ? [{
       path: '/tribe-scripts',

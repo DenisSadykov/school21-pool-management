@@ -152,7 +152,7 @@ function Penalties({ user }) {
     <div className="page penalties-page">
       <div className="page-header">
         <div className="penalties-title-wrap">
-          <h1>Штрафы учеников</h1>
+          <h1>Штрафы пиров</h1>
           <button
             type="button"
             className="penalties-info-trigger"
@@ -481,7 +481,7 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry,
 
   const handleMarkOverdue = async () => {
     const newHours = penalty.total_hours * 2;
-    if (!window.confirm(`Ученик не пришёл на отработку?\n${penalty.total_hours}h → ${newHours}h`)) return;
+    if (!window.confirm(`Пир не пришёл на отработку?\n${penalty.total_hours}h → ${newHours}h`)) return;
 
     await runAction(() => api.patch(
       `/api/penalties/${penalty.id}`,
@@ -530,7 +530,7 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry,
           type="button"
           className={`penalty-student-copy ${copiedNick ? 'is-copied' : ''}`}
           onClick={handleCopyStudentNick}
-          title="Скопировать ник ученика"
+          title="Скопировать ник пира"
           aria-label={`Скопировать ник ${penalty.student_name}`}
         >
           <span>{penalty.student_name}</span>
@@ -684,7 +684,7 @@ function PenaltyForm({ students, onClose, onSuccess }) {
     e.preventDefault();
     if (submitting) return;
     if (!form.student_id) {
-      alert('Выберите ученика из списка активного бассейна');
+      alert('Выберите пира из списка активного бассейна');
       return;
     }
 

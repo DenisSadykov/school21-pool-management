@@ -173,18 +173,18 @@ function Students({ user }) {
       setCopiedEventPoints(points);
       window.setTimeout(() => setCopiedEventPoints(null), 1600);
     } catch (copyError) {
-      console.error('Ошибка копирования списка учеников:', copyError);
+      console.error('Ошибка копирования списка пиров:', copyError);
       alert('Не удалось скопировать список. Разрешите доступ к буферу обмена и повторите попытку.');
     }
   };
 
-  if (loading) return <Loader text="Загрузка учеников..." />;
+  if (loading) return <Loader text="Загрузка пиров..." />;
 
   return (
     <div className="page students-page">
       <div className="page-header">
         <div>
-          <h1>Ученики бассейна</h1>
+          <h1>Пиры бассейна</h1>
         </div>
         {isStaff && (
           <div className="page-actions">
@@ -206,7 +206,7 @@ function Students({ user }) {
               <FileUp size={20} /> Загрузить файлом
             </button>
             <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-              <Plus size={20} /> Добавить ученика
+              <Plus size={20} /> Добавить пира
             </button>
           </div>
         )}
@@ -242,7 +242,7 @@ function Students({ user }) {
 
       <div className="students-stats">
         <div className="stat">
-          <span>Всего учеников:</span>
+          <span>Всего пиров:</span>
           <strong>{students.length}</strong>
         </div>
         <div className="stat">
@@ -291,8 +291,8 @@ function Students({ user }) {
         <section className="event-copy-filter" aria-labelledby="event-copy-filter-title">
           <div className="event-copy-filter-heading">
             <div>
-              <h2 id="event-copy-filter-title">Мероприятия учеников</h2>
-              <p>Выберите период и скопируйте ники учеников одной колонкой.</p>
+              <h2 id="event-copy-filter-title">Мероприятия пиров</h2>
+              <p>Выберите период и скопируйте ники пиров одной колонкой.</p>
             </div>
           </div>
           <div className="event-copy-filter-controls">
@@ -340,13 +340,13 @@ function Students({ user }) {
       <div className="students-table-wrap">
         {filteredStudents.length === 0 ? (
           <div className="empty-state">
-            <p>Нет учеников под выбранные фильтры.</p>
+            <p>Нет пиров под выбранные фильтры.</p>
           </div>
         ) : (
           <table className="students-table">
             <thead>
               <tr>
-                <th>Ученик</th>
+                <th>Пир</th>
                 <th>Трайб</th>
                 <th>Мероприятия</th>
                 <th>Статус</th>
@@ -427,7 +427,7 @@ function StudentsImport({ tribes, onClose, onSuccess }) {
 
   return (
     <section className="student-form import-form">
-      <h2>Загрузить учеников из файла</h2>
+      <h2>Загрузить пиров из файла</h2>
       <div className="import-help">
         <strong>Формат:</strong> лучше скачать XLSX-шаблон. Также поддерживается CSV/TXT: <code>nick,tribe</code>.
         {tribes.length > 0 && <span> В шаблоне трайб выбирается из списка: {tribes.join(', ')}.</span>}
@@ -555,7 +555,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
   }, [penaltiesOpen]);
 
   const handleDelete = async () => {
-    if (!window.confirm(`Удалить ученика @${student.nick}?`)) return;
+    if (!window.confirm(`Удалить пира @${student.nick}?`)) return;
 
     try {
       await api.del(`/api/students/${student.id}`);
@@ -637,7 +637,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
 
   return (
     <tr className={rowClass}>
-      <td data-label="Ученик">
+      <td data-label="Пир">
         <div className="student-person">
           <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
             <strong>{copied ? 'Скопировано' : student.nick}</strong>
@@ -662,7 +662,7 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
             type="button"
             className={`workoff-pill workoff-pill-button ${student.penalty_status || 'clean'}`}
             onClick={handleOpenPenaltyStatus}
-            title="Открыть штрафы ученика"
+            title="Открыть штрафы пира"
           >
             {PENALTY_STATUS_LABELS[student.penalty_status || 'clean'] || 'Все ок'}
           </button>
@@ -785,7 +785,7 @@ function StudentForm({ tribes, onClose, onSuccess }) {
 
   return (
     <form className="student-form" onSubmit={handleSubmit}>
-      <h2>➕ Добавить нового ученика</h2>
+      <h2>➕ Добавить нового пира</h2>
 
       <div className="form-row">
         <div className="form-group">
