@@ -12,7 +12,7 @@ function formatActionDetails(item) {
   if (payload.target_nick) details.push(`Ник: @${payload.target_nick}`);
   if (payload.role) details.push(`Роль: ${payload.role}`);
   if (payload.tribe) details.push(`Трайб: ${payload.tribe}`);
-  if (payload.student) details.push(`Ученик: ${payload.student}`);
+  if (payload.student) details.push(`Пир: ${payload.student}`);
   if (payload.volunteer) details.push(`Волонтёр: ${payload.volunteer}`);
   if (payload.description) details.push(`Причина: ${payload.description}`);
   if (payload.date) details.push(`Дата: ${payload.date}`);

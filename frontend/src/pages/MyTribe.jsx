@@ -263,9 +263,9 @@ function MyTribe({ user }) {
       <StudentEventForm students={data?.students || []} onSuccess={() => load(selectedTribe)} />
 
       <section className="tribe-panel">
-        <h2>{allTribesView ? 'Топ учеников' : <>Топ учеников трайба {selectedTribeIcon}</>}</h2>
+        <h2>{allTribesView ? 'Топ пиров' : <>Топ пиров трайба {selectedTribeIcon}</>}</h2>
         {(data?.top_students || []).length === 0 ? (
-          <p className="text-muted">Пока нет подтвержденных мероприятий учеников.</p>
+          <p className="text-muted">Пока нет подтвержденных мероприятий пиров.</p>
         ) : (
           <div className="tribe-list">
             {data.top_students.map((student, index) => (
@@ -489,7 +489,7 @@ function StudentEventForm({ students, onSuccess }) {
       : findStudentByInput(studentInput);
 
     if (!matchedStudent) {
-      alert('Выберите ученика');
+      alert('Выберите пира');
       return;
     }
     await api.post(`/api/students/${matchedStudent.id}/events`, {
@@ -503,10 +503,10 @@ function StudentEventForm({ students, onSuccess }) {
 
   return (
     <form className="tribe-panel student-event-form compact-form" onSubmit={submit}>
-      <h2><Plus size={18} /> Мероприятие ученика</h2>
+      <h2><Plus size={18} /> Мероприятие пира</h2>
       <div className="student-event-compact-grid">
         <label>
-          Ученик
+          Пир
           <div className="student-search" ref={dropdownRef}>
             <input
               value={studentInput}
@@ -526,7 +526,7 @@ function StudentEventForm({ students, onSuccess }) {
             <button
               type="button"
               className="student-search-toggle"
-              aria-label="Показать список учеников"
+              aria-label="Показать список пиров"
               onClick={() => setDropdownOpen((prev) => !prev)}
             >
               <ChevronDown size={16} />
