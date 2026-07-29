@@ -6438,8 +6438,6 @@ def update_penalty_status(penalty_id):
         return jsonify({'error': 'Отмечать разблокировку может только тимлид или админ'}), 403
     requested_total_hours = None
     if 'total_hours' in data:
-        if g.current_role not in ('admin', 'team_lead'):
-            return jsonify({'error': 'Менять часы штрафа может только тимлид или админ'}), 403
         try:
             requested_total_hours = int(data.get('total_hours'))
         except (TypeError, ValueError):

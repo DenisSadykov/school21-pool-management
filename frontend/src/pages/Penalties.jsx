@@ -284,7 +284,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
-                    canEditHours={isStaff}
+                    canEditHours={true}
                     canMarkDatabaseEntry={isStaff}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -311,7 +311,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
-                    canEditHours={isStaff}
+                    canEditHours={true}
                     isInWorkoff={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -338,7 +338,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
-                    canEditHours={isStaff}
+                    canEditHours={true}
                     isAwaitingUnlock={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -365,7 +365,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
-                    canEditHours={isStaff}
+                    canEditHours={true}
                     isOverdue={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}

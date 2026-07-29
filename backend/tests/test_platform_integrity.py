@@ -184,7 +184,7 @@ def test_admin_can_adjust_penalty_total_hours(client, factories, auth_headers, d
     assert penalty.multiplier == 3
 
 
-def test_volunteer_cannot_adjust_penalty_total_hours(client, factories, auth_headers, db_session):
+def test_volunteer_can_adjust_penalty_total_hours(client, factories, auth_headers, db_session):
     volunteer = factories.user('volunteer')
     pool = factories.pool('Active', active=True)
     factories.assign(volunteer, pool)
@@ -208,8 +208,9 @@ def test_volunteer_cannot_adjust_penalty_total_hours(client, factories, auth_hea
     )
 
     db_session.refresh(penalty)
-    assert response.status_code == 403
-    assert penalty.multiplier == 1
+    assert response.status_code == 200
+    assert response.get_json()['total_hours'] == 6
+    assert penalty.multiplier == 3
 
 
 def test_deleting_penalty_removes_history_and_cancels_pending_event(client, factories, auth_headers, db_session):
