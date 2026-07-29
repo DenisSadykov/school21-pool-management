@@ -6436,12 +6436,22 @@ def update_penalty_status(penalty_id):
         return jsonify({'error': 'Некорректный статус штрафа'}), 400
     if new_status == 'unlocked' and g.current_role not in ('admin', 'team_lead'):
         return jsonify({'error': 'Отмечать разблокировку может только тимлид или админ'}), 403
+    requested_total_hours = None
+    if 'total_hours' in data:
+        if g.current_role not in ('admin', 'team_lead'):
+            return jsonify({'error': 'Менять часы штрафа может только тимлид или админ'}), 403
+        try:
+            requested_total_hours = int(data.get('total_hours'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Часы штрафа должны быть числом'}), 400
+        if requested_total_hours < 2 or requested_total_hours > 12 or requested_total_hours % 2 != 0:
+            return jsonify({'error': 'Часы штрафа должны быть одним из значений: 2, 4, 6, 8, 10 или 12'}), 400
     _acquire_dedupe_lock('penalty-status', penalty.id)
     db.session.refresh(penalty)
     old_status = penalty.workoff_status
     old_hours = penalty.hours * penalty.multiplier
     critical_events = []
-    if new_status == old_status:
+    if new_status == old_status and requested_total_hours is None:
         db.session.commit()
         return jsonify({
             'message': 'Статус штрафа уже обновлён',
@@ -6464,12 +6474,17 @@ def update_penalty_status(penalty_id):
     penalty.workoff_status = new_status
     if new_status == 'overdue' and old_status == 'pending':
         penalty.multiplier *= 2
+    if new_status == 'pending' and old_status == 'overdue' and penalty.multiplier > 1:
+        penalty.multiplier = max(1, penalty.multiplier // 2)
     if new_status == 'in_workoff':
         penalty.date_worked_off = _utcnow()
     if new_status in ('done', 'awaiting_unlock'):
         penalty.date_worked_off = _utcnow()
     if new_status == 'pending':
         penalty.date_worked_off = None
+    if requested_total_hours is not None:
+        penalty.hours = 2
+        penalty.multiplier = max(1, requested_total_hours // 2)
     if new_status != old_status:
         if new_status == 'in_workoff':
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question'])
@@ -6502,6 +6517,9 @@ def update_penalty_status(penalty_id):
         'message': 'Штраф обновлён',
         'duplicate': False,
         'workoff_status': penalty.workoff_status,
+        'hours': penalty.hours,
+        'multiplier': penalty.multiplier,
+        'total_hours': penalty.hours * penalty.multiplier,
     })
 
 
