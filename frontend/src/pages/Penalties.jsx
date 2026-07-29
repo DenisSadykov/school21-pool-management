@@ -15,6 +15,8 @@ const STATUS_LABELS = {
   done: 'отработал',
 };
 
+const PENALTY_HOUR_OPTIONS = [2, 4, 6, 8, 10, 12];
+
 const getWorkoffNote = (penalty) => [...(penalty.history || [])]
   .reverse()
   .find(item => item.new_status === 'in_workoff' && item.comment)?.comment || '';
@@ -282,6 +284,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
+                    canEditHours={isStaff}
                     canMarkDatabaseEntry={isStaff}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -308,6 +311,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
+                    canEditHours={isStaff}
                     isInWorkoff={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -334,6 +338,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
+                    canEditHours={isStaff}
                     isAwaitingUnlock={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -360,6 +365,7 @@ function Penalties({ user }) {
                     penalty={penalty}
                     onStatusChange={() => fetchPenalties()}
                     canDelete={isStaff}
+                    canEditHours={isStaff}
                     isOverdue={true}
                     isTarget={highlightedPenaltyId === penalty.id}
                     registerRef={(node) => { penaltyRefs.current[penalty.id] = node; }}
@@ -423,7 +429,7 @@ function Penalties({ user }) {
   );
 }
 
-function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
+function PenaltyCard({ penalty, onStatusChange, canDelete, canEditHours, canMarkDatabaseEntry, isAwaitingUnlock, isOverdue, isInWorkoff, isTarget, registerRef }) {
   const workoffNote = getWorkoffNote(penalty);
   const [isUpdating, setIsUpdating] = useState(false);
   const [copiedNick, setCopiedNick] = useState(false);
@@ -502,6 +508,16 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry,
     ));
   };
 
+  const handleHoursChange = async (event) => {
+    const totalHours = Number(event.target.value);
+    if (!totalHours || totalHours === penalty.total_hours) return;
+
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      { total_hours: totalHours }
+    ));
+  };
+
   const handleCopyStudentNick = async () => {
     try {
       await navigator.clipboard.writeText(penalty.student_name);
@@ -536,9 +552,31 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canMarkDatabaseEntry,
           <span>{penalty.student_name}</span>
           {copiedNick ? <Check size={16} /> : <Copy size={16} />}
         </button>
-        <span className="penalty-hours">
-          {penalty.total_hours}h{penalty.multiplier > 1 && ` (×${penalty.multiplier})`}
-        </span>
+        {canEditHours ? (
+          <label className="penalty-hours-control" title="Изменить часы штрафа">
+            <span className="sr-only">Часы штрафа</span>
+            <select
+              className="penalty-hours penalty-hours-select"
+              value={PENALTY_HOUR_OPTIONS.includes(penalty.total_hours) ? penalty.total_hours : ''}
+              onChange={handleHoursChange}
+              disabled={isUpdating}
+              aria-label={`Изменить часы штрафа для ${penalty.student_name}`}
+            >
+              {!PENALTY_HOUR_OPTIONS.includes(penalty.total_hours) && (
+                <option value="">{penalty.total_hours}h</option>
+              )}
+              {PENALTY_HOUR_OPTIONS.map((hours) => (
+                <option value={hours} key={hours}>
+                  {hours}h{hours > 2 && ` (×${hours / 2})`}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="penalty-hours">
+            {penalty.total_hours}h{penalty.multiplier > 1 && ` (×${penalty.multiplier})`}
+          </span>
+        )}
       </div>
 
       <div className="penalty-body">

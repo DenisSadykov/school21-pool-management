@@ -114,6 +114,104 @@ def test_penalty_overdue_is_idempotent_and_status_is_validated(client, factories
     assert invalid.status_code == 400
 
 
+def test_penalty_return_from_overdue_rolls_back_multiplier_once(client, factories, auth_headers, db_session):
+    volunteer = factories.user('volunteer')
+    pool = factories.pool('Active', active=True)
+    factories.assign(volunteer, pool)
+    student = app_module.Student(nick='student', name='Student', pool_id=pool.id)
+    penalty = app_module.StudentPenalty(
+        student_name='student',
+        volunteer_id=volunteer.id,
+        pool_id=pool.id,
+        multiplier=1,
+        workoff_status='pending',
+    )
+    db_session.add_all([student, penalty])
+    db_session.flush()
+    penalty.student_id = student.id
+    db_session.commit()
+
+    first_overdue = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'workoff_status': 'overdue'},
+    )
+    back_to_pending = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'workoff_status': 'pending'},
+    )
+    second_overdue = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'workoff_status': 'overdue'},
+    )
+
+    db_session.refresh(penalty)
+    assert first_overdue.status_code == 200
+    assert back_to_pending.status_code == 200
+    assert second_overdue.status_code == 200
+    assert penalty.workoff_status == 'overdue'
+    assert penalty.multiplier == 2
+
+
+def test_admin_can_adjust_penalty_total_hours(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool('Active', active=True)
+    factories.assign(admin, pool)
+    student = app_module.Student(nick='student', name='Student', pool_id=pool.id)
+    penalty = app_module.StudentPenalty(
+        student_name='student',
+        pool_id=pool.id,
+        multiplier=1,
+        workoff_status='pending',
+    )
+    db_session.add_all([student, penalty])
+    db_session.flush()
+    penalty.student_id = student.id
+    db_session.commit()
+
+    response = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(admin),
+        json={'total_hours': 6},
+    )
+
+    db_session.refresh(penalty)
+    assert response.status_code == 200
+    assert response.get_json()['total_hours'] == 6
+    assert penalty.hours == 2
+    assert penalty.multiplier == 3
+
+
+def test_volunteer_cannot_adjust_penalty_total_hours(client, factories, auth_headers, db_session):
+    volunteer = factories.user('volunteer')
+    pool = factories.pool('Active', active=True)
+    factories.assign(volunteer, pool)
+    student = app_module.Student(nick='student', name='Student', pool_id=pool.id)
+    penalty = app_module.StudentPenalty(
+        student_name='student',
+        volunteer_id=volunteer.id,
+        pool_id=pool.id,
+        multiplier=1,
+        workoff_status='pending',
+    )
+    db_session.add_all([student, penalty])
+    db_session.flush()
+    penalty.student_id = student.id
+    db_session.commit()
+
+    response = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'total_hours': 6},
+    )
+
+    db_session.refresh(penalty)
+    assert response.status_code == 403
+    assert penalty.multiplier == 1
+
+
 def test_deleting_penalty_removes_history_and_cancels_pending_event(client, factories, auth_headers, db_session):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer')
