@@ -223,6 +223,51 @@ def test_manual_penalty_status_to_overdue_doubles_hours_and_cancels_questions(cl
     assert any(item.new_status == 'overdue' for item in history)
 
 
+def test_overdue_penalty_can_be_closed_as_not_worked_off(client, factories, auth_headers, db_session):
+    volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+
+    penalty = app_module.StudentPenalty(
+        student_name='Final Student',
+        volunteer_id=volunteer.id,
+        volunteer_name=volunteer.name,
+        pool_id=pool.id,
+        workoff_status='overdue',
+        hours=2,
+        multiplier=2,
+    )
+    db_session.add(penalty)
+    db_session.flush()
+    event = app_module.NotificationEvent(
+        type='penalty_method_question',
+        status='pending',
+        recipient_user_id=volunteer.id,
+        pool_id=pool.id,
+        source_entity='penalty',
+        source_entity_id=penalty.id,
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    response = client.patch(
+        f'/api/penalties/{penalty.id}',
+        headers=auth_headers(volunteer),
+        json={'workoff_status': 'not_worked_off', 'comment': 'Итог бассейна'},
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(penalty)
+    db_session.refresh(event)
+    assert penalty.workoff_status == 'not_worked_off'
+    assert penalty.date_worked_off is not None
+    assert penalty.hours * penalty.multiplier == 4
+    assert event.status == 'cancelled'
+
+    history = db_session.query(app_module.PenaltyHistory).filter_by(penalty_id=penalty.id).all()
+    assert any(item.new_status == 'not_worked_off' and item.comment == 'Итог бассейна' for item in history)
+
+
 def test_manual_penalty_status_to_awaiting_unlock_notifies_admins_and_cancels_pending(client, factories, auth_headers, db_session):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('volunteer1', role='volunteer', name='Волонтёр')

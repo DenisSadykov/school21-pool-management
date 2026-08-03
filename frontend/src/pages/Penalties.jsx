@@ -13,6 +13,7 @@ const STATUS_LABELS = {
   awaiting_unlock: 'ждёт разблокировки',
   unlocked: 'разблокирован',
   done: 'отработал',
+  not_worked_off: 'не отработано',
 };
 
 const PENALTY_HOUR_OPTIONS = [2, 4, 6, 8, 10, 12];
@@ -145,9 +146,9 @@ function Penalties({ user }) {
 
   if (loading) return <Loader text="Загрузка штрафов..." />;
   const isStaff = user?.role === 'admin' || user?.role === 'team_lead';
-  const activePenalties = penalties.filter((p) => p.workoff_status !== 'unlocked');
+  const activePenalties = penalties.filter((p) => !['unlocked', 'not_worked_off'].includes(p.workoff_status));
   const workedOffPenalties = penalties
-    .filter((p) => ['awaiting_unlock', 'unlocked', 'done'].includes(p.workoff_status) && p.date_worked_off)
+    .filter((p) => ['awaiting_unlock', 'unlocked', 'done', 'not_worked_off'].includes(p.workoff_status) && p.date_worked_off)
     .sort((a, b) => new Date(b.date_worked_off) - new Date(a.date_worked_off));
 
   return (
@@ -495,6 +496,18 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canEditHours, canMark
     ));
   };
 
+  const handleMarkNotWorkedOff = async () => {
+    if (!window.confirm(`Закрыть штраф для ${penalty.student_name} как не отработанный?\nОн уйдёт из переходящих в итоговый список со статусом «не отработано».`)) return;
+
+    await runAction(() => api.patch(
+      `/api/penalties/${penalty.id}`,
+      {
+        workoff_status: 'not_worked_off',
+        comment: 'Закрыто в итог как не отработано',
+      }
+    ));
+  };
+
   const handleDelete = async () => {
     if (!window.confirm(`Удалить штраф для ${penalty.student_name}?\nЭто действие нельзя отменить.`)) return;
 
@@ -668,12 +681,15 @@ function PenaltyCard({ penalty, onStatusChange, canDelete, canEditHours, canMark
       )}
 
       {isOverdue && (
-        <div className={`penalty-actions ${canDelete ? '' : 'no-delete'}`}>
+        <div className={`penalty-actions overdue-actions ${canDelete ? '' : 'no-delete'}`}>
           <button className="btn-done" onClick={handleStartWorkoff} title="Начал отработку" disabled={isUpdating}>
             <Check size={18} /> Начал отработку
           </button>
           <button className="btn-cancel" onClick={handleMarkPending} title="Вернуть в ожидание" disabled={isUpdating}>
             ↶ В ожидание
+          </button>
+          <button className="btn-overdue-final" onClick={handleMarkNotWorkedOff} title="Закрыть как не отработано" disabled={isUpdating}>
+            <X size={18} /> Не отработано
           </button>
           {canDelete && (
             <button className="btn-delete" onClick={handleDelete} title="Удалить штраф" disabled={isUpdating}>

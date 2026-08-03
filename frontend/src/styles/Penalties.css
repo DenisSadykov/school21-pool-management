@@ -216,8 +216,6 @@
   font-size: 1.1rem;
   margin-bottom: var(--spacing-lg);
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: var(--spacing-md);
 }
 
 .penalties-list {
@@ -647,8 +645,17 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.penalty-actions.overdue-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 42px;
+}
+
+.penalty-actions.overdue-actions.no-delete {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .btn-done,
 .btn-overdue,
+.btn-overdue-final,
 .btn-delete {
   min-width: 0;
   padding: 0 var(--control-padding-x);
@@ -685,6 +692,16 @@
 
 .btn-overdue:hover {
   background: rgba(154, 103, 0, 0.18);
+}
+
+.btn-overdue-final {
+  background: rgba(207, 34, 46, 0.1);
+  color: var(--danger);
+  border-color: rgba(207, 34, 46, 0.24);
+}
+
+.btn-overdue-final:hover {
+  background: rgba(207, 34, 46, 0.16);
 }
 
 .btn-delete {
@@ -949,6 +966,7 @@
 
   .btn-done,
   .btn-overdue,
+  .btn-overdue-final,
   .btn-cancel,
   .btn-delete {
     width: 100%;

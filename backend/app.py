@@ -126,7 +126,7 @@ STUDENT_EVENT_POINTS = {
     'education': 4,
 }
 STUDENT_EVENT_STATUSES = {'pending', 'confirmed', 'rejected'}
-PENALTY_STATUSES = {'pending', 'in_workoff', 'overdue', 'awaiting_unlock', 'unlocked', 'done'}
+PENALTY_STATUSES = {'pending', 'in_workoff', 'overdue', 'awaiting_unlock', 'unlocked', 'done', 'not_worked_off'}
 PENALTY_DUPLICATE_WINDOW = timedelta(minutes=3)
 ANNOUNCEMENT_DUPLICATE_WINDOW = timedelta(minutes=1)
 TIME_VALUE_RE = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$')
@@ -1648,7 +1648,7 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
     penalty.workoff_status = new_status
     if new_status == 'in_workoff':
         penalty.date_worked_off = _utcnow()
-    if new_status in ('done', 'awaiting_unlock'):
+    if new_status in ('done', 'awaiting_unlock', 'not_worked_off'):
         penalty.date_worked_off = _utcnow()
     if new_status == 'pending':
         penalty.date_worked_off = None
@@ -5608,7 +5608,7 @@ def _student_list_payload(pool_id):
         total_hours = sum(
             p.hours * p.multiplier
             for p in penalties
-            if p.workoff_status not in ('done', 'awaiting_unlock', 'unlocked')
+            if p.workoff_status not in ('done', 'awaiting_unlock', 'unlocked', 'not_worked_off')
         )
         pending_count = len([p for p in penalties if p.workoff_status == 'pending'])
         overdue_count = len([p for p in penalties if p.workoff_status == 'overdue'])
@@ -6531,7 +6531,7 @@ def update_penalty_status(penalty_id):
         penalty.multiplier = max(1, penalty.multiplier // 2)
     if new_status == 'in_workoff':
         penalty.date_worked_off = _utcnow()
-    if new_status in ('done', 'awaiting_unlock'):
+    if new_status in ('done', 'awaiting_unlock', 'not_worked_off'):
         penalty.date_worked_off = _utcnow()
     if new_status == 'pending':
         penalty.date_worked_off = None
@@ -6546,7 +6546,7 @@ def update_penalty_status(penalty_id):
             critical_events = _notify_admins_penalty_awaiting_unlock(penalty)
         if new_status == 'unlocked':
             critical_events = _notify_shift_volunteers_penalty_unlocked(penalty)
-        if new_status in ('pending', 'overdue', 'unlocked', 'done'):
+        if new_status in ('pending', 'overdue', 'unlocked', 'done', 'not_worked_off'):
             _cancel_pending_notifications('penalty', penalty.id, ['penalty_method_question', 'penalty_workoff_check'])
     if old_status != new_status or old_hours != penalty.hours * penalty.multiplier:
         add_penalty_history(penalty, old_status, new_status, old_hours, data.get('comment') or '')
@@ -6630,6 +6630,7 @@ STATUS_EXPORT_LABELS = {
     'awaiting_unlock': 'Ждёт разблокировки',
     'unlocked': 'Разблокирован',
     'done': 'Отработано',
+    'not_worked_off': 'Не отработано',
 }
 
 STUDENT_EVENT_STATUS_EXPORT_LABELS = {
@@ -7034,6 +7035,8 @@ GOOGLE_TEMPLATE_SHEETS = ['volunteers', 'shifts', 'penalty', 'tribe_event', 'tri
 def _template_penalty_status(status):
     if status in {'done', 'unlocked'}:
         return 'Отработано'
+    if status == 'not_worked_off':
+        return 'Не отработано'
     if status in {'in_workoff', 'awaiting_unlock'}:
         return 'Назначено'
     return 'Ожидает'
