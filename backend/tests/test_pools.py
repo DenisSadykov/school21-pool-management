@@ -1,5 +1,7 @@
 from datetime import date, timedelta
+from io import BytesIO
 
+from openpyxl import load_workbook
 import app as app_module
 
 
@@ -201,6 +203,53 @@ def test_responsibles_are_not_shown_in_pool_volunteers_list(client, factories, a
     nicks = [item['nick'] for item in response.get_json()]
     assert 'volunteer1' in nicks
     assert 'lead' not in nicks
+
+
+def test_responsible_team_lead_is_shown_in_rewards_with_default_coins(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    team_lead = factories.user('lead', role='team_lead', password='lead1234')
+    pool = factories.pool('Pool', active=True)
+
+    factories.assign(team_lead, pool, pool_role='responsible_team_lead')
+
+    response = client.get(f'/api/volunteers?pool_id={pool.id}', headers=auth_headers(admin))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    lead = next(item for item in payload if item['nick'] == 'lead')
+    assert lead['role'] == 'team_lead'
+    assert lead['coins'] == 450
+    assert any(
+        item['type'] == 'team_lead'
+        and item['label'] == 'Тимлид команды волонтёров'
+        and item['coins'] == 450
+        for item in lead['coin_breakdown']
+    )
+
+
+def test_volunteer_coins_export_contains_nick_and_coins(client, factories, auth_headers, db_session):
+    admin = factories.user('admin', role='admin', password='secret123')
+    team_lead = factories.user('lead', role='team_lead', password='lead1234')
+    volunteer = factories.user('volunteer1', role='volunteer')
+    pool = factories.pool('Pool', active=True)
+
+    factories.assign(team_lead, pool, pool_role='responsible_team_lead')
+    relation = factories.assign(volunteer, pool, pool_role='volunteer')
+    relation.coins_adjustment = 25
+    db_session.commit()
+
+    response = client.get(
+        f'/api/volunteers/export-coins.xlsx?pool_id={pool.id}',
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.data))
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == ('Ник', 'Коины')
+    assert ('lead', 450) in rows
+    assert ('volunteer1', 25) in rows
 
 
 def test_manual_broadcast_targets_only_users_linked_to_pool(client, factories, auth_headers, db_session):

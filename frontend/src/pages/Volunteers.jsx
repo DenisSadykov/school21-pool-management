@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, Plus } from 'lucide-react';
-import { api } from '../api';
+import { Download, MoreHorizontal, Plus } from 'lucide-react';
+import { api, downloadFile } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
@@ -68,7 +68,7 @@ function Volunteers({ user }) {
 
     const volList = await api.get(`/api/volunteers?pool_id=${poolId}`);
     const filtered = (volList || []).filter((v) =>
-      ['volunteer', 'tribe_master'].includes(v.role)
+      ['team_lead', 'volunteer', 'tribe_master'].includes(v.role)
     );
     setAllVols(filtered);
   }, []);
@@ -113,6 +113,17 @@ function Volunteers({ user }) {
     }
   };
 
+  const downloadCoins = async () => {
+    try {
+      await downloadFile(
+        `/api/volunteers/export-coins.xlsx?pool_id=${activePool?.id}`,
+        `volunteer-coins-${activePool?.start_date || 'pool'}.xlsx`,
+      );
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   if (loading) return <Loader text="Загрузка волонтёров..." />;
 
   if (!activePool) {
@@ -129,6 +140,7 @@ function Volunteers({ user }) {
     );
   }
 
+  const teamLeads = allVols.filter((v) => v.role === 'team_lead');
   const tribeMasters = allVols.filter((v) => v.role === 'tribe_master');
   const volunteers   = allVols.filter((v) => v.role === 'volunteer');
   const tribeNames = tribes.map((t) => t.name);
@@ -137,6 +149,13 @@ function Volunteers({ user }) {
     <div className="page volunteers-page">
       <div className="page-header">
         <h1>Волонтёры</h1>
+        {isStaff && (
+          <div className="page-actions">
+            <button type="button" className="btn-secondary" onClick={downloadCoins}>
+              <Download size={16} /> Скачать ник — коины
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -153,6 +172,35 @@ function Volunteers({ user }) {
           <p>На бассейн ещё не назначено волонтёров.</p>
           {isStaff && <Link to="/manage">Настройки бассейна →</Link>}
         </div>
+      )}
+
+      {/* Тимлид */}
+      {!error && teamLeads.length > 0 && (
+        <section className="volunteer-group volunteer-group-team-leads">
+          <div className="group-title-row">
+            <span className="group-title-label">Тимлид</span>
+            <strong>{teamLeads.length}</strong>
+          </div>
+          <div className="volunteer-table-wrap">
+            <table className="volunteer-table">
+              <thead>
+                <tr>
+                  <th>Волонтёр</th>
+                  <th>Имя</th>
+                  <th>Смены</th>
+                  <th>Дополнения</th>
+                  <th>Коины</th>
+                  {isStaff && <th>Управление</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {teamLeads.map((v) => (
+                  <TeamLeadRow key={v.id} volunteer={v} isStaff={isStaff} onUpdate={updateVolunteer} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* Трайб-мастера */}
@@ -538,6 +586,27 @@ function VolunteerRow({ volunteer: v, isStaff, onUpdate }) {
           <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} />
         </td>
       )}
+    </tr>
+  );
+}
+
+function TeamLeadRow({ volunteer: v, isStaff, onUpdate }) {
+  return (
+    <tr>
+      <td data-label="Волонтёр">
+        <PersonIdentity person={v} />
+      </td>
+      <td data-label="Имя">{v.name}</td>
+      <td data-label="Смены">{v.shifts_count ?? '—'}</td>
+      <td data-label="Дополнения">
+        <div className="status-list">
+          <span className="status-pill role-team_lead">Тимлид</span>
+          {v.is_group_reviewer && <span className="status-pill group">Групповой</span>}
+          {v.has_confession && <span className="status-pill confession">Исповедь</span>}
+        </div>
+      </td>
+      <td data-label="Коины"><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
+      {isStaff && <td data-label="Управление">—</td>}
     </tr>
   );
 }

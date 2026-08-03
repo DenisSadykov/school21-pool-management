@@ -3950,6 +3950,10 @@ def get_volunteers():
         for user in users:
             pv = pv_map[user.id]
             role = pv.pool_role or 'volunteer'
+            if role == 'responsible_admin':
+                continue
+            if role == 'responsible_team_lead':
+                role = 'team_lead'
             has_conf = bool(pv.has_confession)
             adj = pv.coins_adjustment or 0
             group_cnt = group_counts.get(user.id, 0)
@@ -3969,6 +3973,8 @@ def get_volunteers():
                         tribe_events_count,
                         tribe_events_count * REWARD_RATES['tribe_master_event'],
                     )
+            if role == 'team_lead':
+                _add_reward(buckets, 'team_lead', 'Тимлид команды волонтёров', 1, REWARD_RATES['team_lead'])
             for event in reward_events_by_user.get(user.id, []):
                 meta = REWARD_EVENT_TYPES.get(event.event_type, {'label': event.event_type})
                 _add_reward(buckets, event.event_type, meta['label'], event.quantity or 1, event.coins)
@@ -4023,6 +4029,53 @@ def get_volunteers():
     order = {'team_lead': 0, 'tribe_master': 1, 'volunteer': 2}
     result.sort(key=lambda x: (order.get(x['role'], 9), x['nick']))
     return jsonify(result)
+
+
+def _build_volunteer_coins_export(rows):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Ник - коины'
+    ws.append(['Ник', 'Коины'])
+
+    header_fill = PatternFill('solid', fgColor='F3F4F6')
+    header_font = Font(bold=True, color='111827')
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    for row in rows:
+        ws.append([row.get('nick') or '', row.get('coins') or 0])
+
+    ws.column_dimensions['A'].width = 24
+    ws.column_dimensions['B'].width = 14
+    for column in ('A', 'B'):
+        for cell in ws[column]:
+            cell.alignment = Alignment(horizontal='left' if column == 'A' else 'center')
+
+    return wb
+
+
+@app.route('/api/volunteers/export-coins.xlsx', methods=['GET'])
+@require_role('team_lead', 'admin')
+def export_volunteer_coins():
+    response = get_volunteers()
+    if isinstance(response, tuple):
+        return response
+    rows = response.get_json() or []
+    workbook = _build_volunteer_coins_export(rows)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f'volunteer-coins-{_utcnow().strftime("%Y-%m-%d-%H%M")}.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 def _parse_time(value):
@@ -4135,6 +4188,8 @@ def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool
                 tribe_events_count,
                 tribe_events_count * REWARD_RATES['tribe_master_event'],
             )
+    if pool_role == 'team_lead' or pool_role == 'responsible_team_lead':
+        _add_reward(buckets, 'team_lead', 'Тимлид команды волонтёров', 1, REWARD_RATES['team_lead'])
 
     events = RewardEvent.query.filter(
         RewardEvent.user_id == user.id,
