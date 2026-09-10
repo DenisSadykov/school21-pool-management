@@ -3,8 +3,12 @@ import { useEffect, useState } from 'react';
 const THEME_STORAGE_KEY = 'uiTheme';
 
 function getPreferredTheme() {
-  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-  if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+  try {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+  } catch (error) {
+    /* storage can be unavailable in private browsing */
+  }
 
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -23,7 +27,11 @@ export default function useTheme() {
 
   useEffect(() => {
     applyTheme(theme);
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (error) {
+      /* storage can be unavailable in private browsing */
+    }
   }, [theme]);
 
   const toggleTheme = () => {
