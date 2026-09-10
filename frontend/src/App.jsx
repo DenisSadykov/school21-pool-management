@@ -23,7 +23,7 @@ import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
 import ThemeToggle from './components/ThemeToggle';
-import { api, getToken, getUser, isPoolsChangedStorageEvent, POOLS_CHANGED_EVENT, setSession } from './api';
+import { api, clearSession, getToken, getUser, isPoolsChangedStorageEvent, POOLS_CHANGED_EVENT, setSession } from './api';
 import useTheme from './hooks/useTheme';
 
 import './styles/App.css';
@@ -71,7 +71,11 @@ function App() {
           || previousUser.tribe !== freshUser.tribe;
       } catch (error) {
         if (!alive) return;
-        setUser(getUser());
+        // Cached user data is not enough to enter the app. If session
+        // validation fails (including a stalled API request), show login
+        // instead of leaving the global loader on screen forever.
+        clearSession();
+        setUser(null);
       } finally {
         if (alive) setLoading(false);
       }
