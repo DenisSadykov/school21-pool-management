@@ -1,6 +1,7 @@
 // Единый клиент API: базовый URL, токен авторизации, обработка ошибок.
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const REQUEST_TIMEOUT_MS = 15000;
+export const SESSION_INVALIDATED_EVENT = 'app:session-invalidated';
 
 export function getToken() {
   try {
@@ -28,8 +29,12 @@ export function getUser() {
 }
 
 export function setSession(token, user) {
-  localStorage.setItem('token', token);
-  localStorage.setItem('user', JSON.stringify(user));
+  try {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+  } catch (error) {
+    /* the current in-memory session can still be used */
+  }
 }
 
 export function clearSession() {
@@ -38,6 +43,13 @@ export function clearSession() {
     localStorage.removeItem('user');
   } catch (error) {
     /* storage can be unavailable in private browsing */
+  }
+}
+
+function invalidateSession() {
+  clearSession();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT));
   }
 }
 
@@ -88,9 +100,8 @@ async function request(path, { method = 'GET', body } = {}) {
   }
 
   if (res.status === 401) {
-    clearSession();
-    window.location.reload();
-    return null;
+    invalidateSession();
+    throw new Error((data && data.error) || 'Сессия истекла. Войди заново.');
   }
   if (!res.ok) {
     throw new Error((data && data.error) || `Ошибка ${res.status}`);
@@ -130,9 +141,8 @@ async function upload(path, formData) {
   }
 
   if (res.status === 401) {
-    clearSession();
-    window.location.reload();
-    return null;
+    invalidateSession();
+    throw new Error((data && data.error) || 'Сессия истекла. Войди заново.');
   }
   if (!res.ok) {
     throw new Error((data && data.error) || `Ошибка ${res.status}`);
@@ -159,9 +169,8 @@ async function download(path) {
     window.clearTimeout(timeoutId);
   }
   if (res.status === 401) {
-    clearSession();
-    window.location.reload();
-    return null;
+    invalidateSession();
+    throw new Error('Сессия истекла. Войди заново.');
   }
   if (!res.ok) {
     let data = null;

@@ -23,7 +23,16 @@ import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
 import ThemeToggle from './components/ThemeToggle';
-import { api, clearSession, getToken, getUser, isPoolsChangedStorageEvent, POOLS_CHANGED_EVENT, setSession } from './api';
+import {
+  api,
+  clearSession,
+  getToken,
+  getUser,
+  isPoolsChangedStorageEvent,
+  POOLS_CHANGED_EVENT,
+  SESSION_INVALIDATED_EVENT,
+  setSession,
+} from './api';
 import useTheme from './hooks/useTheme';
 
 import './styles/App.css';
@@ -33,23 +42,42 @@ const ACCENT_SCHEMES = new Set(['cobalt', 'jade', 'amber']);
 
 function App() {
   const [user, setUser] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(() => Boolean(getToken()));
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [poolContextVersion, setPoolContextVersion] = React.useState(0);
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    if (!loading) return undefined;
+    const safetyTimer = window.setTimeout(() => {
+      clearSession();
+      setUser(null);
+      setLoading(false);
+    }, 16000);
+    return () => window.clearTimeout(safetyTimer);
+  }, [loading]);
 
   useEffect(() => {
     let alive = true;
     const root = document.documentElement;
     const params = new URLSearchParams(window.location.search);
     const accentFromUrl = params.get('accent');
-    const accentFromStorage = localStorage.getItem('uiAccentScheme');
+    let accentFromStorage = null;
+    try {
+      accentFromStorage = localStorage.getItem('uiAccentScheme');
+    } catch (error) {
+      /* storage can be unavailable in private browsing */
+    }
     const accentScheme = ACCENT_SCHEMES.has(accentFromUrl)
       ? accentFromUrl
       : (ACCENT_SCHEMES.has(accentFromStorage) ? accentFromStorage : 'cobalt');
 
     root.setAttribute('data-accent-scheme', accentScheme);
-    localStorage.setItem('uiAccentScheme', accentScheme);
+    try {
+      localStorage.setItem('uiAccentScheme', accentScheme);
+    } catch (error) {
+      /* storage can be unavailable in private browsing */
+    }
 
     const sessionUser = getUser();
     setUser(sessionUser);
@@ -90,6 +118,12 @@ function App() {
       if (isPoolsChangedStorageEvent(event)) handlePoolsChanged();
     };
 
+    const handleSessionInvalidated = () => {
+      if (!alive) return;
+      setUser(null);
+      setLoading(false);
+    };
+
     const pollContext = async () => {
       const changed = await syncUser();
       if (alive && changed) setPoolContextVersion((version) => version + 1);
@@ -98,11 +132,13 @@ function App() {
     syncUser();
     const pollTimer = window.setInterval(pollContext, 30000);
     window.addEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
+    window.addEventListener(SESSION_INVALIDATED_EVENT, handleSessionInvalidated);
     window.addEventListener('storage', handleStorage);
     return () => {
       alive = false;
       window.clearInterval(pollTimer);
       window.removeEventListener(POOLS_CHANGED_EVENT, handlePoolsChanged);
+      window.removeEventListener(SESSION_INVALIDATED_EVENT, handleSessionInvalidated);
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
