@@ -1,5 +1,6 @@
 // Единый клиент API: базовый URL, токен авторизации, обработка ошибок.
 export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const REQUEST_TIMEOUT_MS = 15000;
 
 export function getToken() {
   return localStorage.getItem('token');
@@ -40,11 +41,24 @@ async function request(path, { method = 'GET', body } = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   let data = null;
   try {
@@ -69,11 +83,24 @@ async function upload(path, formData) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   let data = null;
   try {
@@ -98,7 +125,19 @@ async function download(path) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}${path}`, { headers });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers, signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
   if (res.status === 401) {
     clearSession();
     window.location.reload();
