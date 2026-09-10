@@ -3,12 +3,28 @@ export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const REQUEST_TIMEOUT_MS = 15000;
 
 export function getToken() {
-  return localStorage.getItem('token');
+  try {
+    return localStorage.getItem('token');
+  } catch (error) {
+    return null;
+  }
 }
 
 export function getUser() {
-  const u = localStorage.getItem('user');
-  return u ? JSON.parse(u) : null;
+  try {
+    const u = localStorage.getItem('user');
+    if (!u) return null;
+    return JSON.parse(u);
+  } catch (error) {
+    // A broken cached session must never block the app before login renders.
+    try {
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+    } catch (storageError) {
+      /* storage can be unavailable in private browsing */
+    }
+    return null;
+  }
 }
 
 export function setSession(token, user) {
@@ -17,8 +33,12 @@ export function setSession(token, user) {
 }
 
 export function clearSession() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  try {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  } catch (error) {
+    /* storage can be unavailable in private browsing */
+  }
 }
 
 export const POOLS_CHANGED_EVENT = 'app:pools-changed';
