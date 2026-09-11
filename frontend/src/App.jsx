@@ -188,7 +188,7 @@ function AppRoutes({
   }
 
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
-  const canUseTribe = user.role === 'tribe_master' || isStaff;
+  const canUseTribe = ['tribe_master', 'tribe_assistant'].includes(user.role) || isStaff;
   const canUseGroupReviews = isStaff;
 
   return (

@@ -11,7 +11,7 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
   const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
-  const canUseTribe = user?.role === 'tribe_master' || isStaff;
+  const canUseTribe = ['tribe_master', 'tribe_assistant'].includes(user?.role) || isStaff;
   const canUseGroupReviews = isStaff;
   const tribeConnectorTone = {
     'Ленты': 'tribe-ribbons',
@@ -78,7 +78,7 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
             <span className="nav-icon-slot">
               {item.tribeChild ? (
                 <span className={`tribe-child-connector ${tribeConnectorTone}`} aria-hidden="true" />
-              ) : item.path === '/my-tribe' && user?.role === 'tribe_master' && user?.tribe ? (
+              ) : item.path === '/my-tribe' && ['tribe_master', 'tribe_assistant'].includes(user?.role) && user?.tribe ? (
                 <TribeLabel tribe={user.tribe} size={16} showText={false} className="sidebar-tribe-icon sidebar-tribe-icon-leading" />
               ) : (
                 <item.icon size={20} />

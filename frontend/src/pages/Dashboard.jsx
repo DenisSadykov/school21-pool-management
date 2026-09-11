@@ -176,7 +176,7 @@ function Dashboard({ user }) {
       </div>
 
       {isOps && <OpsDashboard data={data} />}
-      {role === 'tribe_master' && <TribeMasterDashboard data={data} scripts={tribeScripts} />}
+      {['tribe_master', 'tribe_assistant'].includes(role) && <TribeMasterDashboard data={data} scripts={tribeScripts} />}
       {role === 'volunteer' && <VolunteerDashboard data={data} user={user} />}
     </div>
   );

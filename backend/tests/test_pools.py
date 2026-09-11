@@ -65,6 +65,64 @@ def test_active_pool_switch_changes_volunteer_role_and_tribe(client, factories, 
     assert after.get_json()['tribe'] is None
 
 
+def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+):
+    admin = factories.user('admin', role='admin', password='secret123')
+    assistant = factories.user('assistant')
+    second_assistant = factories.user('second-assistant')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(assistant, pool, pool_role='tribe_assistant', tribe='Короны')
+    factories.assign(second_assistant, pool, pool_role='volunteer')
+    own_student = app_module.Student(nick='own-student', name='Own', tribe='Короны', pool_id=pool.id)
+    other_student = app_module.Student(nick='other-student', name='Other', tribe='Олени', pool_id=pool.id)
+    tribe_event = app_module.TribeEvent(
+        pool_id=pool.id,
+        tribe='Короны',
+        title='Встреча',
+        event_date=date.today() + timedelta(days=1),
+    )
+    db_session.add_all([own_student, other_student, tribe_event])
+    db_session.commit()
+
+    session = client.get('/api/auth/me', headers=auth_headers(assistant))
+    tribe = client.get('/api/my-tribe', headers=auth_headers(assistant))
+    own_event = client.post(
+        f'/api/students/{own_student.id}/events',
+        headers=auth_headers(assistant),
+        json={'event_type': 'education'},
+    )
+    other_event = client.post(
+        f'/api/students/{other_student.id}/events',
+        headers=auth_headers(assistant),
+        json={'event_type': 'education'},
+    )
+    assign_second = client.patch(
+        f'/api/volunteers/{second_assistant.id}',
+        headers=auth_headers(admin),
+        json={'pool_id': pool.id, 'role': 'tribe_assistant', 'tribe': 'Короны'},
+    )
+    volunteers = client.get(
+        f'/api/volunteers?pool_id={pool.id}',
+        headers=auth_headers(admin),
+    ).get_json()
+    assistant_row = next(row for row in volunteers if row['id'] == assistant.id)
+
+    assert session.status_code == 200
+    assert session.get_json()['role'] == 'tribe_assistant'
+    assert session.get_json()['tribe'] == 'Короны'
+    assert tribe.status_code == 200
+    assert [student['nick'] for student in tribe.get_json()['students']] == ['own-student']
+    assert own_event.status_code == 201
+    assert other_event.status_code == 403
+    assert assign_second.status_code == 200
+    assert assistant_row['role'] == 'tribe_assistant'
+    assert not any(item['type'] == 'tribe_master_event' for item in assistant_row['coin_breakdown'])
+
+
 def test_old_pool_schedule_and_actions_are_rejected(client, factories, auth_headers):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('active_only', role='volunteer')

@@ -373,6 +373,7 @@ function Notifications() {
                   <option value="">Без фильтра по роли</option>
                   <option value="volunteer">Волонтеры</option>
                   <option value="tribe_master">Трайб-мастера</option>
+                  <option value="tribe_assistant">Помощники трайб-мастеров</option>
                   <option value="team_lead">Team Lead</option>
                   <option value="admin">Администраторы</option>
                 </select>
@@ -699,6 +700,7 @@ function formatRole(role) {
   const labels = {
     volunteer: 'волонтер',
     tribe_master: 'трайб-мастер',
+    tribe_assistant: 'помощник трайб-мастера',
     team_lead: 'team lead',
     admin: 'администратор',
   };

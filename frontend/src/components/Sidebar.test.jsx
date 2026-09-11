@@ -22,4 +22,19 @@ describe('Sidebar tribe scripts relationship', () => {
     expect(scriptsLink.querySelector('.tribe-child-connector.tribe-ribbons')).toBeInTheDocument();
     expect(scriptsLink.querySelector('svg')).not.toBeInTheDocument();
   });
+
+  it('shows My Tribe but keeps scripts restricted for a tribe assistant', () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Sidebar
+          user={{ role: 'tribe_assistant', tribe: 'Короны' }}
+          mobileOpen={false}
+          onMobileClose={jest.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Мой трайб' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Скрипты трайба' })).not.toBeInTheDocument();
+  });
 });

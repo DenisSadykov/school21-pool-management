@@ -10,6 +10,16 @@ def test_vercel_numeric_flag_is_treated_as_production(monkeypatch):
     assert app_module.should_auto_init_db() is False
 
 
+def test_render_runtime_is_treated_as_production(monkeypatch):
+    monkeypatch.delenv('VERCEL', raising=False)
+    monkeypatch.setenv('RENDER', 'true')
+    monkeypatch.delenv('FLASK_ENV', raising=False)
+    monkeypatch.delenv('AUTO_INIT_DB', raising=False)
+
+    assert app_module._is_production_runtime() is True
+    assert app_module.should_auto_init_db() is False
+
+
 def test_auto_init_accepts_numeric_boolean(monkeypatch):
     monkeypatch.setenv('AUTO_INIT_DB', '1')
 
