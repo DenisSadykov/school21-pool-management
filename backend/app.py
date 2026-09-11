@@ -28,7 +28,13 @@ def _env_flag(name, default='false'):
 
 
 def _is_production_runtime():
-    return _env_flag('VERCEL') or os.getenv('FLASK_ENV', '').lower() == 'production'
+    # Render exposes RENDER=true automatically.  Keep an explicit FLASK_ENV
+    # check as well so the same safety defaults apply to other hosted runtimes.
+    return (
+        _env_flag('VERCEL')
+        or _env_flag('RENDER')
+        or os.getenv('FLASK_ENV', '').lower() == 'production'
+    )
 
 
 load_dotenv()
@@ -107,6 +113,8 @@ serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='auth')
 ROLES_WITH_PASSWORD = {'team_lead', 'admin'}
 ALL_ROLES = {'volunteer', 'tribe_master', 'team_lead', 'admin'}
 VOLUNTEER_PROFILE_ROLES = {'volunteer', 'tribe_master', 'team_lead'}
+POOL_VOLUNTEER_ROLES = {'volunteer', 'tribe_master', 'tribe_assistant'}
+TRIBE_ACCESS_ROLES = {'tribe_master', 'tribe_assistant'}
 TRIBES = ['Ленты', 'Короны', 'Олени']
 TRIBE_ALIASES = {
     '1': 'Ленты',
@@ -1215,7 +1223,7 @@ def _tribe_masters_for_pool(pool_id, tribe):
         .filter(
             User.active.is_(True),
             PoolVolunteer.pool_id == pool_id,
-            PoolVolunteer.pool_role == 'tribe_master',
+            PoolVolunteer.pool_role.in_(list(TRIBE_ACCESS_ROLES)),
             PoolVolunteer.tribe == normalized_tribe,
         )
         .order_by(User.nick)
@@ -2319,7 +2327,7 @@ def _effective_access_role(user, pool_id=None):
     if user.role in {'team_lead', 'admin'}:
         return user.role
     membership = _pool_membership_for_user(user, pool_id)
-    if membership and membership.pool_role in {'volunteer', 'tribe_master'}:
+    if membership and membership.pool_role in POOL_VOLUNTEER_ROLES:
         return membership.pool_role
     return 'volunteer'
 
@@ -2328,7 +2336,7 @@ def _effective_access_tribe(user, pool_id=None):
     if user.role in {'team_lead', 'admin'}:
         return user.tribe
     membership = _pool_membership_for_user(user, pool_id)
-    if membership and membership.pool_role == 'tribe_master' and membership.tribe:
+    if membership and membership.pool_role in TRIBE_ACCESS_ROLES and membership.tribe:
         return membership.tribe
     return None
 
@@ -3295,12 +3303,12 @@ def save_pool_volunteer_rows(rows, pool_id):
                 pool_id=pool_id,
                 user_id=user.id,
                 pool_role=role,
-                tribe=tribe if role == 'tribe_master' else None,
+                tribe=tribe if role in TRIBE_ACCESS_ROLES else None,
             ))
             assigned += 1
         else:
             membership.pool_role = role
-            membership.tribe = tribe if role == 'tribe_master' else None
+            membership.tribe = tribe if role in TRIBE_ACCESS_ROLES else None
     db.session.commit()
     return {
         'created': created, 'updated': updated, 'assigned': assigned, 'skipped': skipped,
@@ -3998,7 +4006,7 @@ def get_volunteers():
                 'coins_adjustment': adj,
                 'coin_breakdown': breakdown,
             })
-        order = {'team_lead': 0, 'tribe_master': 1, 'volunteer': 2}
+        order = {'team_lead': 0, 'tribe_master': 1, 'tribe_assistant': 2, 'volunteer': 3}
         result.sort(key=lambda x: (order.get(x['role'], 9), x['nick']))
         return jsonify(result)
 
@@ -4209,8 +4217,8 @@ def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool
 
 def _volunteer_role_from_payload(data):
     role = data.get('role') or 'volunteer'
-    if role not in ('volunteer', 'tribe_master'):
-        raise ValueError('Во вкладке волонтёров можно добавлять только волонтёров и трайб-мастеров')
+    if role not in POOL_VOLUNTEER_ROLES:
+        raise ValueError('Во вкладке волонтёров можно добавлять только волонтёров, трайб-мастеров и их помощников')
     return role
 
 
@@ -4508,14 +4516,16 @@ def update_volunteer_profile(user_id):
 
     if 'role' in data:
         new_role = data.get('role')
-        if new_role not in ('volunteer', 'tribe_master'):
-            return jsonify({'error': 'На этой странице можно выбрать только волонтёра или трайб-мастера'}), 400
+        if new_role not in POOL_VOLUNTEER_ROLES:
+            return jsonify({'error': 'На этой странице можно выбрать волонтёра, трайб-мастера или помощника'}), 400
         if user.role in ROLES_WITH_PASSWORD:
             return jsonify({'error': 'Тимлида или админа нельзя сделать трайб-мастером здесь'}), 403
         old = pv.pool_role or 'volunteer'
         if old != new_role:
             changes['role'] = {'from': old, 'to': new_role}
         pv.pool_role = new_role
+        if new_role == 'volunteer':
+            pv.tribe = None
 
     if 'name' in data:
         new_name = (data.get('name') or '').strip() or user.nick
@@ -4952,7 +4962,7 @@ def dashboard_summary():
             .all()
         ],
     }
-    if g.current_role == 'tribe_master' and pool_id:
+    if g.current_role in TRIBE_ACCESS_ROLES and pool_id:
         tribe = _resolve_user_tribe(g.user, pool_id)
         rankings = _tribe_rankings(pool_id)
         own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
@@ -5154,7 +5164,7 @@ def _broadcast_recipient_query(pool_id, filters):
     usernames = [normalize_tg_username(item) for item in ((filters or {}).get('usernames') or []) if item and item.strip()]
     usernames = [item for item in usernames if item]
     if role:
-        if role in ('volunteer', 'tribe_master') and pool_id:
+        if role in POOL_VOLUNTEER_ROLES and pool_id:
             role_user_ids = {
                 row.user_id
                 for row in PoolVolunteer.query.filter_by(pool_id=pool_id, pool_role=role)
@@ -5916,7 +5926,7 @@ def export_students_events():
 
 
 @app.route('/api/students/<int:student_id>/events', methods=['POST'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def create_student_event(student_id):
     student = get_model_or_404(Student, student_id)
     error = _active_entity_error(student.pool_id)
@@ -5924,7 +5934,7 @@ def create_student_event(student_id):
         return error
     data = request.json or {}
     if (
-        g.current_role == 'tribe_master'
+        g.current_role in TRIBE_ACCESS_ROLES
         and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe)
     ):
         return jsonify({'error': 'Можно добавлять мероприятия только ученикам своего трайба'}), 403
@@ -5976,14 +5986,14 @@ def update_student_event(event_id):
 
 
 @app.route('/api/student-events/<int:event_id>', methods=['DELETE'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def delete_student_event(event_id):
     event = get_model_or_404(StudentEvent, event_id)
     student = db.session.get(Student, event.student_id)
     error = _active_entity_error(student.pool_id if student else None)
     if error:
         return error
-    if g.current_role == 'tribe_master' and student and g.current_tribe and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe):
+    if g.current_role in TRIBE_ACCESS_ROLES and student and g.current_tribe and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно удалять мероприятия только своего трайба'}), 403
     db.session.delete(event)
     db.session.commit()
@@ -5991,7 +6001,7 @@ def delete_student_event(event_id):
 
 
 @app.route('/api/my-tribe', methods=['GET'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def my_tribe():
     pool_id, error = _active_pool_id_for_request(request.args.get('pool_id', type=int))
     if error:
@@ -6165,14 +6175,14 @@ def list_tribe_events():
 
 
 @app.route('/api/tribe-events', methods=['POST'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def create_tribe_event():
     data = request.json or {}
     pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
     if error:
         return error
     tribe = normalize_tribe(data.get('tribe') or g.current_tribe)
-    if g.current_role == 'tribe_master' and tribe != normalize_tribe(g.current_tribe):
+    if g.current_role in TRIBE_ACCESS_ROLES and tribe != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно создавать встречи только своего трайба'}), 403
     title = (data.get('title') or '').strip()
     if not tribe or not title or not data.get('event_date'):
@@ -6197,13 +6207,13 @@ def create_tribe_event():
 
 
 @app.route('/api/tribe-events/<int:event_id>', methods=['DELETE'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def delete_tribe_event(event_id):
     event = get_model_or_404(TribeEvent, event_id)
     error = _active_entity_error(event.pool_id)
     if error:
         return error
-    if g.current_role == 'tribe_master' and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
+    if g.current_role in TRIBE_ACCESS_ROLES and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
         return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
     _cancel_pending_notifications('tribe_event', event.id, ['tribe_event_tomorrow', 'tribe_event_first_day_shift'])
     db.session.delete(event)
@@ -6212,7 +6222,7 @@ def delete_tribe_event(event_id):
 
 
 @app.route('/api/tribe-events/generate-standard', methods=['POST'])
-@require_role('tribe_master', 'team_lead', 'admin')
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def generate_standard_tribe_events():
     data = request.json or {}
     pool_id = active_pool_id()
@@ -6223,7 +6233,7 @@ def generate_standard_tribe_events():
     available_tribes = _tribes_for_pool(pool_id)
     user_tribe = normalize_tribe(g.current_tribe)
     requested_tribe = normalize_tribe(data.get('tribe'))
-    if g.current_role == 'tribe_master':
+    if g.current_role in TRIBE_ACCESS_ROLES:
         tribes = [user_tribe]
     elif requested_tribe:
         if requested_tribe not in available_tribes:
@@ -6646,6 +6656,7 @@ EVENT_TYPE_EXPORT_LABELS = {
 ROLE_EXPORT_LABELS = {
     'volunteer': 'Волонтёр',
     'tribe_master': 'Трайб-мастер',
+    'tribe_assistant': 'Помощник трайб-мастера',
     'team_lead': 'Тимлид',
     'admin': 'Админ',
 }
@@ -7064,7 +7075,7 @@ def build_google_sheets_template_payload(pool_id):
         'is_group_reviewer': bool(user.is_group_reviewer),
     }
         for membership, user in memberships
-        if membership.pool_role in {'volunteer', 'tribe_master'}
+        if membership.pool_role in POOL_VOLUNTEER_ROLES
     ), key=lambda item: item['nick'].lower())
     block_rows = ShiftBlock.query.filter_by(pool_id=pool_id).order_by(
         ShiftBlock.date,

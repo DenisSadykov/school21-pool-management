@@ -7,7 +7,13 @@ services:
     startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT wsgi:app
     plan: free
     envVars:
+      - key: FLASK_ENV
+        value: "production"
       - key: FLASK_DEBUG
+        value: "false"
+      - key: AUTO_INIT_DB
+        value: "false"
+      - key: RUN_SCHEMA_MIGRATIONS
         value: "false"
       - key: AUTO_START_WORKERS
         value: "true"

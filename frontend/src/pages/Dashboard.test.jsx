@@ -60,4 +60,16 @@ describe('Tribe-master dashboard scripts reminder', () => {
     expect(screen.getByRole('link', { name: 'Открыть скрипты' })).toHaveAttribute('href', '/tribe-scripts?today=1');
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/tribe-scripts'));
   });
+
+  it('shows tribe work to an assistant without loading master scripts', async () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Dashboard user={{ role: 'tribe_assistant' }} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Работа с трайбом' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/dashboard');
+    expect(api.get).not.toHaveBeenCalledWith('/api/tribe-scripts');
+  });
 });

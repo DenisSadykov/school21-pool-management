@@ -68,7 +68,7 @@ function Volunteers({ user }) {
 
     const volList = await api.get(`/api/volunteers?pool_id=${poolId}`);
     const filtered = (volList || []).filter((v) =>
-      ['team_lead', 'volunteer', 'tribe_master'].includes(v.role)
+      ['team_lead', 'volunteer', 'tribe_master', 'tribe_assistant'].includes(v.role)
     );
     setAllVols(filtered);
   }, []);
@@ -142,6 +142,7 @@ function Volunteers({ user }) {
 
   const teamLeads = allVols.filter((v) => v.role === 'team_lead');
   const tribeMasters = allVols.filter((v) => v.role === 'tribe_master');
+  const tribeAssistants = allVols.filter((v) => v.role === 'tribe_assistant');
   const volunteers   = allVols.filter((v) => v.role === 'volunteer');
   const tribeNames = tribes.map((t) => t.name);
 
@@ -210,7 +211,11 @@ function Volunteers({ user }) {
             <span className="group-title-label">Трайб-мастера</span>
             <strong>{tribeMasters.length}</strong>
             {isStaff && volunteers.length > 0 && (
-              <AddTribeMasterInline volunteers={volunteers} onAdd={(id) => updateVolunteer(id, { role: 'tribe_master' })} />
+              <AddTribeRoleInline
+                volunteers={volunteers}
+                placeholder="Добавить трайб-мастера"
+                onAdd={(id) => updateVolunteer(id, { role: 'tribe_master' })}
+              />
             )}
           </div>
           {tribeMasters.length > 0 && (
@@ -229,7 +234,47 @@ function Volunteers({ user }) {
                 </thead>
                 <tbody>
                   {tribeMasters.map((v) => (
-                    <TribeMasterRow key={v.id} volunteer={v} tribes={tribeNames}
+                    <TribeRoleRow key={v.id} volunteer={v} tribes={tribeNames}
+                      isStaff={isStaff} onUpdate={updateVolunteer} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Помощники трайб-мастеров — необязательная роль */}
+      {!error && (tribeAssistants.length > 0 || (isStaff && volunteers.length > 0)) && (
+        <section className="volunteer-group volunteer-group-masters">
+          <div className="group-title-row">
+            <span className="group-title-label">Помощники трайб-мастеров</span>
+            <strong>{tribeAssistants.length}</strong>
+            {isStaff && volunteers.length > 0 && (
+              <AddTribeRoleInline
+                volunteers={volunteers}
+                placeholder="Добавить помощника"
+                onAdd={(id) => updateVolunteer(id, { role: 'tribe_assistant' })}
+              />
+            )}
+          </div>
+          {tribeAssistants.length > 0 && (
+            <div className="volunteer-table-wrap">
+              <table className="volunteer-table">
+                <thead>
+                  <tr>
+                    <th>Волонтёр</th>
+                    <th>Имя</th>
+                    <th>Трайб</th>
+                    <th>Смены</th>
+                    <th>Дополнения</th>
+                    <th>Коины</th>
+                    {isStaff && <th>Управление</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tribeAssistants.map((v) => (
+                    <TribeRoleRow key={v.id} volunteer={v} tribes={tribeNames}
                       isStaff={isStaff} onUpdate={updateVolunteer} />
                   ))}
                 </tbody>
@@ -271,12 +316,12 @@ function Volunteers({ user }) {
   );
 }
 
-function AddTribeMasterInline({ volunteers, onAdd }) {
+function AddTribeRoleInline({ volunteers, placeholder, onAdd }) {
   const [userId, setUserId] = useState('');
   return (
     <div className="add-tm-inline">
       <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-        <option value="">Добавить трайб-мастера</option>
+        <option value="">{placeholder}</option>
         {volunteers.map((v) => (
           <option key={v.id} value={v.id}>@{v.nick} {v.name ? `· ${v.name}` : ''}</option>
         ))}
@@ -520,6 +565,7 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
           >
             <option value="volunteer">Волонтёр</option>
             <option value="tribe_master">Трайб-мастер</option>
+            <option value="tribe_assistant">Помощник трайб-мастера</option>
           </select>
         </div>,
         document.body,
@@ -528,7 +574,7 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
   );
 }
 
-function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
+function TribeRoleRow({ volunteer: v, tribes, isStaff, onUpdate }) {
   return (
     <tr>
       <td data-label="Волонтёр">
@@ -553,6 +599,7 @@ function TribeMasterRow({ volunteer: v, tribes, isStaff, onUpdate }) {
       <td data-label="Смены">{v.shifts_count ?? '—'}</td>
       <td data-label="Дополнения">
         <div className="status-list">
+          {v.role === 'tribe_assistant' && <span className="status-pill role-tribe_assistant">Помощник</span>}
           {v.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
       </td>

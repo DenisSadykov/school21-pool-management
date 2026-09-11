@@ -9,6 +9,7 @@ import '../styles/Navbar.css';
 const ROLE_LABELS = {
   volunteer: 'Волонтёр',
   tribe_master: 'Трайб-мастер',
+  tribe_assistant: 'Помощник трайб-мастера',
   team_lead: 'Тимлид',
   admin: 'Админ',
 };

@@ -6,6 +6,7 @@ import '../styles/Login.css';
 const ROLE_OPTIONS = [
   { value: 'volunteer', label: 'Волонтер' },
   { value: 'tribe_master', label: 'Трайб-мастер' },
+  { value: 'tribe_assistant', label: 'Помощник трайб-мастера' },
   { value: 'team_lead', label: 'Тимлид' },
   { value: 'admin', label: 'Админ' },
 ];

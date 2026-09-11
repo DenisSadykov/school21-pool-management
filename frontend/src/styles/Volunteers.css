@@ -465,6 +465,12 @@
   border-color: rgba(56, 189, 248, 0.32);
 }
 
+.status-pill.role-tribe_assistant {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: var(--focus-ring);
+}
+
 .status-pill.role-volunteer {
   color: var(--success);
   border-color: var(--success);
