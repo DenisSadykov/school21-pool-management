@@ -25,7 +25,6 @@ import PoolInvite from './pages/PoolInvite';
 import ThemeToggle from './components/ThemeToggle';
 import {
   api,
-  clearSession,
   getToken,
   getUser,
   isPoolsChangedStorageEvent,
@@ -50,8 +49,9 @@ function App() {
   useEffect(() => {
     if (!loading) return undefined;
     const safetyTimer = window.setTimeout(() => {
-      clearSession();
-      setUser(null);
+      // A slow or temporarily unavailable API is not proof that the token is
+      // invalid. Keep the cached session and let a real 401 invalidate it.
+      setUser((currentUser) => currentUser || getUser());
       setLoading(false);
     }, 16000);
     return () => window.clearTimeout(safetyTimer);
@@ -99,11 +99,9 @@ function App() {
           || previousUser.tribe !== freshUser.tribe;
       } catch (error) {
         if (!alive) return;
-        // Cached user data is not enough to enter the app. If session
-        // validation fails (including a stalled API request), show login
-        // instead of leaving the global loader on screen forever.
-        clearSession();
-        setUser(null);
+        // api.js removes the token only after a confirmed 401. Network
+        // failures, timeouts and server errors must preserve the cached user.
+        if (!getToken()) setUser(null);
       } finally {
         if (alive) setLoading(false);
       }
