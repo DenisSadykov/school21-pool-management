@@ -156,6 +156,9 @@ function MyTribe({ user }) {
   const visibleStudentEvents = allTribesView
     ? studentEvents.filter((event) => activeEventTribes.includes(event.student_tribe))
     : studentEvents;
+  const visibleTribeMeetings = allTribesView
+    ? (data?.all_tribe_events || [])
+    : (data?.tribe_events || []);
   const toggleEventTribe = (tribe) => {
     if (!studentEventTribes.has(tribe)) return;
     setActiveEventTribes((current) => (
@@ -256,9 +259,7 @@ function MyTribe({ user }) {
         />
       )}
 
-      {isStaff && (
-        <AllTribeMeetings events={data?.all_tribe_events || []} onDelete={deleteTribeEvent} tribeIcon={selectedTribeIcon} />
-      )}
+      <AllTribeMeetings events={visibleTribeMeetings} onDelete={deleteTribeEvent} tribeIcon={selectedTribeIcon} />
 
       <StudentEventForm students={data?.students || []} onSuccess={() => load(selectedTribe)} />
 
