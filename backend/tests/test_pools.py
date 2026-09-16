@@ -123,6 +123,50 @@ def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
     assert not any(item['type'] == 'tribe_master_event' for item in assistant_row['coin_breakdown'])
 
 
+def test_tribe_master_can_edit_only_own_tribe_meetings(client, factories, auth_headers, db_session):
+    master = factories.user('meeting-master')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(master, pool, pool_role='tribe_master', tribe='Короны')
+    own_event = app_module.TribeEvent(
+        pool_id=pool.id,
+        tribe='Короны',
+        title='Старая встреча',
+        event_date=date.today() + timedelta(days=1),
+        time_start='18:30',
+    )
+    other_event = app_module.TribeEvent(
+        pool_id=pool.id,
+        tribe='Олени',
+        title='Чужая встреча',
+        event_date=date.today() + timedelta(days=1),
+    )
+    db_session.add_all([own_event, other_event])
+    db_session.commit()
+
+    updated = client.patch(
+        f'/api/tribe-events/{own_event.id}',
+        headers=auth_headers(master),
+        json={
+            'title': 'Новая встреча',
+            'event_date': (date.today() + timedelta(days=2)).isoformat(),
+            'time_start': '19:00',
+            'location': 'Кампус',
+            'comment': 'Новый комментарий',
+        },
+    )
+    forbidden = client.patch(
+        f'/api/tribe-events/{other_event.id}',
+        headers=auth_headers(master),
+        json={'title': 'Нельзя менять'},
+    )
+
+    assert updated.status_code == 200
+    assert updated.get_json()['title'] == 'Новая встреча'
+    assert updated.get_json()['time_start'] == '19:00'
+    assert updated.get_json()['location'] == 'Кампус'
+    assert forbidden.status_code == 403
+
+
 def test_old_pool_schedule_and_actions_are_rejected(client, factories, auth_headers):
     admin = factories.user('admin', role='admin', password='secret123')
     volunteer = factories.user('active_only', role='volunteer')

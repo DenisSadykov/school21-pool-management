@@ -703,7 +703,7 @@
   font-size: 0.74rem;
 }
 
-.meeting-delete {
+.meeting-action {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
@@ -718,10 +718,126 @@
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 
+.meeting-action:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
 .meeting-delete:hover {
   background: rgba(207, 34, 46, 0.08);
   color: var(--danger);
   border-color: rgba(207, 34, 46, 0.22);
+}
+
+.tribe-event-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.tribe-event-modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.tribe-event-modal-head,
+.tribe-event-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.tribe-event-modal-head {
+  border-bottom: 1px solid var(--border);
+}
+
+.tribe-event-modal-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.tribe-event-modal-close {
+  width: var(--control-height);
+  height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tribe-event-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.tribe-event-modal-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.tribe-event-modal-body input,
+.tribe-event-modal-body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.tribe-event-modal-body input {
+  min-height: var(--control-height);
+  padding: 0 var(--control-padding-x);
+}
+
+.tribe-event-modal-body textarea {
+  min-height: 92px;
+  padding: 10px var(--control-padding-x);
+  resize: vertical;
+}
+
+.tribe-event-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.tribe-event-modal-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+.tribe-event-modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
 }
 
 .meeting-tribe {
@@ -800,6 +916,10 @@
     width: 100%;
     min-height: var(--control-height);
     justify-content: center;
+  }
+
+  .tribe-event-modal-row {
+    grid-template-columns: 1fr;
   }
 
   .ranking-row {
