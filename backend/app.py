@@ -6221,6 +6221,41 @@ def delete_tribe_event(event_id):
     return jsonify({'message': 'Встреча трайба удалена'})
 
 
+@app.route('/api/tribe-events/<int:event_id>', methods=['PATCH'])
+@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
+def update_tribe_event(event_id):
+    event = get_model_or_404(TribeEvent, event_id)
+    error = _active_entity_error(event.pool_id)
+    if error:
+        return error
+    if g.current_role in TRIBE_ACCESS_ROLES and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
+        return jsonify({'error': 'Можно редактировать встречи только своего трайба'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if 'title' in data:
+        title = (data.get('title') or '').strip()
+        if not title:
+            return jsonify({'error': 'Укажите название встречи'}), 400
+        event.title = title
+    if 'event_date' in data:
+        try:
+            event.event_date = datetime.fromisoformat(data.get('event_date') or '').date()
+        except ValueError:
+            return jsonify({'error': 'Некорректная дата'}), 400
+    if 'time_start' in data:
+        time_start = (data.get('time_start') or '').strip()
+        if time_start and not TIME_VALUE_RE.match(time_start):
+            return jsonify({'error': 'Некорректное время'}), 400
+        event.time_start = time_start
+    if 'location' in data:
+        event.location = (data.get('location') or '').strip()
+    if 'comment' in data:
+        event.comment = (data.get('comment') or '').strip()
+
+    db.session.commit()
+    return jsonify(_tribe_event_to_dict(event))
+
+
 @app.route('/api/tribe-events/generate-standard', methods=['POST'])
 @require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
 def generate_standard_tribe_events():

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarPlus, Check, ChevronDown, Copy, Plus, Trash2, Trophy } from 'lucide-react';
+import { CalendarPlus, Check, ChevronDown, Copy, Pencil, Plus, Trash2, Trophy, X } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
@@ -74,6 +74,7 @@ function MyTribe({ user }) {
   const [data, setData] = useState(null);
   const [selectedTribe, setSelectedTribe] = useState(isStaff ? '' : user?.tribe || '');
   const [activeEventTribes, setActiveEventTribes] = useState([]);
+  const [editingTribeEvent, setEditingTribeEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -136,6 +137,12 @@ function MyTribe({ user }) {
     } catch (error) {
       alert('Ошибка: ' + error.message);
     }
+  };
+
+  const updateTribeEvent = async (eventId, values) => {
+    await api.patch(`/api/tribe-events/${eventId}`, values);
+    setEditingTribeEvent(null);
+    await load(selectedTribe);
   };
 
   useEffect(() => {
@@ -259,7 +266,12 @@ function MyTribe({ user }) {
         />
       )}
 
-      <AllTribeMeetings events={visibleTribeMeetings} onDelete={deleteTribeEvent} tribeIcon={selectedTribeIcon} />
+      <AllTribeMeetings
+        events={visibleTribeMeetings}
+        onDelete={deleteTribeEvent}
+        onEdit={setEditingTribeEvent}
+        tribeIcon={selectedTribeIcon}
+      />
 
       <StudentEventForm students={data?.students || []} onSuccess={() => load(selectedTribe)} />
 
@@ -361,6 +373,13 @@ function MyTribe({ user }) {
       </section>
         </>
       )}
+      {editingTribeEvent && (
+        <TribeEventEditModal
+          event={editingTribeEvent}
+          onClose={() => setEditingTribeEvent(null)}
+          onSave={updateTribeEvent}
+        />
+      )}
     </div>
   );
 }
@@ -386,7 +405,7 @@ function buildMeetingDays(events) {
   return [...new Set(sorted.map((event) => event.date))];
 }
 
-function AllTribeMeetings({ events, onDelete, tribeIcon }) {
+function AllTribeMeetings({ events, onDelete, onEdit, tribeIcon }) {
   const sortedEvents = [...events].sort((a, b) => `${a.date} ${a.time_start || ''}`.localeCompare(`${b.date} ${b.time_start || ''}`));
   const days = buildMeetingDays(sortedEvents);
 
@@ -417,7 +436,16 @@ function AllTribeMeetings({ events, onDelete, tribeIcon }) {
                             <span className="meeting-tribe"><TribeLabel tribe={event.tribe} size={14} /></span>
                             <button
                               type="button"
-                              className="meeting-delete"
+                              className="meeting-action"
+                              onClick={() => onEdit(event)}
+                              title="Редактировать встречу"
+                              aria-label={`Редактировать встречу ${event.title}`}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="meeting-action meeting-delete"
                               onClick={() => onDelete(event)}
                               title="Удалить встречу"
                               aria-label={`Удалить встречу ${event.title}`}
@@ -438,6 +466,85 @@ function AllTribeMeetings({ events, onDelete, tribeIcon }) {
         </div>
       )}
     </section>
+  );
+}
+
+function TribeEventEditModal({ event, onClose, onSave }) {
+  const [form, setForm] = useState({
+    title: event.title || '',
+    event_date: event.date || todayIso(),
+    time_start: event.time_start || '',
+    location: event.location || '',
+    comment: event.comment || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setError('Введите название встречи');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(event.id, form);
+    } catch (submitError) {
+      setError(submitError.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="tribe-event-modal-backdrop" onClick={onClose}>
+      <form
+        className="tribe-event-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tribe-event-edit-title"
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="tribe-event-modal-head">
+          <h2 id="tribe-event-edit-title"><Pencil size={17} /> Редактировать встречу</h2>
+          <button type="button" className="tribe-event-modal-close" onClick={onClose} aria-label="Закрыть">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="tribe-event-modal-body">
+          <label>
+            Название
+            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus />
+          </label>
+          <div className="tribe-event-modal-row">
+            <label>
+              Дата
+              <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
+            </label>
+            <label>
+              Время
+              <input type="time" value={form.time_start} onChange={(e) => setForm({ ...form, time_start: e.target.value })} />
+            </label>
+          </div>
+          <label>
+            Место
+            <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+          </label>
+          <label>
+            Комментарий
+            <textarea value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+          </label>
+          {error && <p className="tribe-event-modal-error">{error}</p>}
+        </div>
+        <div className="tribe-event-modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Отмена</button>
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? 'Сохраняем…' : 'Сохранить'}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

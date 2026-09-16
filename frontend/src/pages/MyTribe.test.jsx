@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MyTribe from './MyTribe';
 import { api } from '../api';
 
@@ -40,5 +40,42 @@ describe('MyTribe meetings', () => {
     await waitFor(() => expect(screen.getByText('Вечерняя встреча')).toBeInTheDocument());
     expect(screen.getByText('18:30')).toBeInTheDocument();
     expect(screen.getByText('Кампус')).toBeInTheDocument();
+  });
+
+  it('allows a tribe master to edit a meeting', async () => {
+    api.get.mockResolvedValue({
+      tribe: 'Короны',
+      rankings: [],
+      students: [],
+      student_events: [],
+      top_students: [],
+      tribe_events: [{
+        id: 42,
+        tribe: 'Короны',
+        title: 'Старая встреча',
+        date: '2099-09-16',
+        time_start: '18:30',
+        location: 'Кампус',
+        comment: '',
+      }],
+      all_tribe_events: [],
+    });
+    api.patch.mockResolvedValue({ id: 42 });
+
+    render(<MyTribe user={{ role: 'tribe_master', tribe: 'Короны' }} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать встречу Старая встреча' }));
+    const dialog = screen.getByRole('dialog', { name: 'Редактировать встречу' });
+    fireEvent.change(within(dialog).getByLabelText('Название'), { target: { value: 'Новая встреча' } });
+    fireEvent.change(within(dialog).getByLabelText('Время'), { target: { value: '19:00' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/tribe-events/42', {
+      title: 'Новая встреча',
+      event_date: '2099-09-16',
+      time_start: '19:00',
+      location: 'Кампус',
+      comment: '',
+    }));
   });
 });
