@@ -84,16 +84,38 @@ describe('MyTribe meetings', () => {
       tribe: '',
       rankings: [],
       students: [],
-      student_events: [{
-        id: 17,
-        student_nick: 'peer',
-        student_name: 'Peer',
-        student_tribe: 'Короны',
-        type: 'education',
-        date: '2099-09-23',
-        points: 0,
-        status: 'pending',
-      }],
+      student_events: [
+        {
+          id: 17,
+          student_nick: 'peer',
+          student_name: 'Peer',
+          student_tribe: 'Короны',
+          type: 'education',
+          date: '2099-09-23',
+          points: 0,
+          status: 'pending',
+        },
+        {
+          id: 18,
+          student_nick: 'approved',
+          student_name: 'Approved',
+          student_tribe: 'Короны',
+          type: 'education',
+          date: '2099-09-23',
+          points: 4,
+          status: 'confirmed',
+        },
+        {
+          id: 19,
+          student_nick: 'declined',
+          student_name: 'Declined',
+          student_tribe: 'Короны',
+          type: 'education',
+          date: '2099-09-23',
+          points: 0,
+          status: 'rejected',
+        },
+      ],
       top_students: [],
       tribe_events: [],
       all_tribe_events: [],
@@ -108,5 +130,8 @@ describe('MyTribe meetings', () => {
     expect(cells[cells.length - 2]).toContainElement(statusSelect);
     expect(cells[cells.length - 1].querySelector('select')).toBeNull();
     expect(within(cells[cells.length - 1]).getByTitle('Удалить')).toBeInTheDocument();
+    expect(statusSelect).toHaveClass('pending');
+    expect(screen.getByRole('combobox', { name: 'Статус мероприятия approved' })).toHaveClass('confirmed');
+    expect(screen.getByRole('combobox', { name: 'Статус мероприятия declined' })).toHaveClass('rejected');
   });
 });
