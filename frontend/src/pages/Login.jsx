@@ -13,6 +13,12 @@ const ROLE_OPTIONS = [
 
 const PASSWORD_ROLES = new Set(['team_lead', 'admin']);
 
+function safeInternalPath(value) {
+  if (typeof value !== 'string') return '/';
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  return value;
+}
+
 function Login({ setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,7 +64,7 @@ function Login({ setUser }) {
       });
       setSession(data.token, data.user);
       setUser(data.user);
-      navigate(location.state?.from || '/', { replace: true });
+      navigate(safeInternalPath(location.state?.from), { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

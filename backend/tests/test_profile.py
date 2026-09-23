@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import app as app_module
 
 
@@ -38,3 +40,31 @@ def test_update_me_rejects_duplicate_nick(client, factories, auth_headers):
 
     assert response.status_code == 409
     assert response.get_json()['error'] == 'Такой ник уже есть'
+
+
+def test_avatar_upload_rejects_spoofed_image_content(client, factories, auth_headers):
+    user = factories.user('avatar-user')
+
+    response = client.post(
+        '/api/me/avatar',
+        headers=auth_headers(user),
+        data={'file': (BytesIO(b'<script>alert(1)</script>'), 'avatar.png', 'image/png')},
+        content_type='multipart/form-data',
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'Содержимое файла не соответствует формату изображения'
+
+
+def test_avatar_upload_accepts_matching_png_signature(client, factories, auth_headers):
+    user = factories.user('valid-avatar-user')
+    png = b'\x89PNG\r\n\x1a\n' + b'valid-test-payload'
+
+    response = client.post(
+        '/api/me/avatar',
+        headers=auth_headers(user),
+        data={'file': (BytesIO(png), 'avatar.png', 'image/png')},
+        content_type='multipart/form-data',
+    )
+
+    assert response.status_code == 200

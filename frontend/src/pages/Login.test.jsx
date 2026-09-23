@@ -66,4 +66,16 @@ describe('Login', () => {
     expect(setUser).toHaveBeenCalledWith(user);
     await waitFor(() => expect(screen.getByText('Главная')).toBeInTheDocument());
   });
+
+  it('rejects an external redirect hidden in navigation state', async () => {
+    const user = { id: 8, nick: 'volunteer', role: 'volunteer' };
+    api.post.mockResolvedValue({ token: 'secret-token', user });
+
+    renderLogin(jest.fn(), [{ pathname: '/login', state: { from: '//evil.example' } }]);
+
+    fireEvent.change(screen.getByLabelText('Твой ник'), { target: { value: 'volunteer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
+
+    await waitFor(() => expect(screen.getByText('Главная')).toBeInTheDocument());
+  });
 });
