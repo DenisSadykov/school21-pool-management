@@ -344,12 +344,7 @@ function MyTribe({ user }) {
                   <span>{event.type === 'education' ? 'Обучающее' : 'Развлекательное'} · {event.date || 'без даты'} · {event.points || 0} балл.</span>
                 </div>
                 <div className="student-event-links">
-                  <span className={`event-status ${event.status || 'pending'}`}>
-                    {STUDENT_EVENT_STATUS_LABELS[event.status || 'pending']}
-                  </span>
-                </div>
-                <div className="student-event-admin">
-                  {isStaff && (
+                  {isStaff ? (
                     <select
                       className="student-event-status-select"
                       value={event.status || 'pending'}
@@ -360,7 +355,13 @@ function MyTribe({ user }) {
                       <option value="pending">Ожидание</option>
                       <option value="rejected">Отклонено</option>
                     </select>
+                  ) : (
+                    <span className={`event-status ${event.status || 'pending'}`}>
+                      {STUDENT_EVENT_STATUS_LABELS[event.status || 'pending']}
+                    </span>
                   )}
+                </div>
+                <div className="student-event-admin">
                   <button className="btn-icon danger" type="button" onClick={() => deleteStudentEvent(event)} title="Удалить">
                     <Trash2 size={18} />
                   </button>

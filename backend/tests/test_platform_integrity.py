@@ -360,7 +360,7 @@ def test_only_staff_can_approve_student_event(client, factories, auth_headers, d
     assert event.points == app_module.STUDENT_EVENT_POINTS['education']
 
 
-def test_created_student_event_is_confirmed_for_tribe_master(client, factories, auth_headers, db_session):
+def test_created_student_event_is_pending_for_tribe_master(client, factories, auth_headers, db_session):
     tribe_master = factories.user('master')
     pool = factories.pool('Active', active=True)
     factories.assign(tribe_master, pool, pool_role='tribe_master', tribe='Короны')
@@ -380,9 +380,9 @@ def test_created_student_event_is_confirmed_for_tribe_master(client, factories, 
 
     assert response.status_code == 201
     event = app_module.StudentEvent.query.filter_by(student_id=student.id).one()
-    assert event.status == 'confirmed'
-    assert event.points == app_module.STUDENT_EVENT_POINTS['education']
-    assert 'начислено' in response.get_json()['message']
+    assert event.status == 'pending'
+    assert event.points == 0
+    assert 'ожидает подтверждения' in response.get_json()['message']
 
 
 def test_stale_pool_note_and_broadcast_cannot_be_modified(client, factories, auth_headers, db_session):

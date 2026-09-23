@@ -78,4 +78,35 @@ describe('MyTribe meetings', () => {
       comment: '',
     }));
   });
+
+  it('keeps status control in the status column and only delete in more', async () => {
+    api.get.mockResolvedValue({
+      tribe: '',
+      rankings: [],
+      students: [],
+      student_events: [{
+        id: 17,
+        student_nick: 'peer',
+        student_name: 'Peer',
+        student_tribe: 'Короны',
+        type: 'education',
+        date: '2099-09-23',
+        points: 0,
+        status: 'pending',
+      }],
+      top_students: [],
+      tribe_events: [],
+      all_tribe_events: [],
+    });
+
+    render(<MyTribe user={{ role: 'team_lead' }} />);
+
+    const statusSelect = await screen.findByRole('combobox', { name: 'Статус мероприятия peer' });
+    const row = statusSelect.closest('.student-event-row');
+    const cells = row.querySelectorAll(':scope > div');
+
+    expect(cells[cells.length - 2]).toContainElement(statusSelect);
+    expect(cells[cells.length - 1].querySelector('select')).toBeNull();
+    expect(within(cells[cells.length - 1]).getByTitle('Удалить')).toBeInTheDocument();
+  });
 });

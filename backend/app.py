@@ -5941,7 +5941,7 @@ def create_student_event(student_id):
     event_type = data.get('event_type')
     if event_type not in ('entertainment', 'education'):
         return jsonify({'error': 'Тип мероприятия должен быть entertainment или education'}), 400
-    status = 'confirmed'
+    status = 'pending'
 
     event_date = None
     if data.get('event_date'):
@@ -5956,7 +5956,7 @@ def create_student_event(student_id):
         event_date=event_date,
         post_url=(data.get('post_url') or '').strip(),
         proof_url=(data.get('proof_url') or '').strip(),
-        points=STUDENT_EVENT_POINTS[event_type] if status == 'confirmed' else 0,
+        points=0,
         status=status,
         comment=(data.get('comment') or '').strip(),
         created_by=g.user.id,
@@ -5964,7 +5964,7 @@ def create_student_event(student_id):
     db.session.add(event)
     db.session.commit()
     label = 'развлекательное' if event_type == 'entertainment' else 'обучающее'
-    return jsonify({'id': event.id, 'message': f'Добавлено {label} мероприятие для @{student.nick} и начислено'}), 201
+    return jsonify({'id': event.id, 'message': f'Добавлено {label} мероприятие для @{student.nick}, ожидает подтверждения'}), 201
 
 
 @app.route('/api/student-events/<int:event_id>', methods=['PATCH'])
