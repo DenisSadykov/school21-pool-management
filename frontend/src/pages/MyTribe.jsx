@@ -346,7 +346,7 @@ function MyTribe({ user }) {
                 <div className="student-event-links">
                   {isStaff ? (
                     <select
-                      className="student-event-status-select"
+                      className={`student-event-status-select ${event.status || 'pending'}`}
                       value={event.status || 'pending'}
                       onChange={(e) => updateStudentEventStatus(event, e.target.value)}
                       aria-label={`Статус мероприятия ${event.student_nick}`}
