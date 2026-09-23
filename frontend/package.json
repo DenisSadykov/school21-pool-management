@@ -9,7 +9,7 @@
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.8.0",
+    "react-router-dom": "^7.18.4",
     "react-toastify": "^9.1.1",
     "zustand": "^4.3.2"
   },
@@ -34,6 +34,11 @@
     "extends": [
       "react-app"
     ]
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^react-router/dom$": "<rootDir>/node_modules/react-router/dist/development/dom-export.js"
+    }
   },
   "browserslist": {
     "production": [

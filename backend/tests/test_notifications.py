@@ -30,6 +30,12 @@ def test_dispatch_requires_internal_secret(client):
     assert response.get_json()['error'] == 'Недостаточно прав для dispatch'
 
 
+def test_dispatch_rejects_internal_secret_in_query_string(client):
+    response = client.post('/api/notifications/dispatch?secret=test-internal-secret')
+
+    assert response.status_code == 403
+
+
 def test_dispatch_accepts_internal_secret(client, monkeypatch):
     captured = {}
 

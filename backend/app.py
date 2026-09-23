@@ -6,7 +6,6 @@ import secrets
 import re
 import hashlib
 import zipfile
-import xml.etree.ElementTree as ET
 from html import escape as html_escape
 from collections import defaultdict
 from io import BytesIO
@@ -16,6 +15,7 @@ from datetime import datetime, date, timedelta, timezone
 from flask import Flask, jsonify, request, g, send_file, abort
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from defusedxml import ElementTree as ET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
@@ -72,6 +72,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = database_engine_options()
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 app.config['TESTING'] = _env_flag('TESTING', 'false')
+app.config['MAX_CONTENT_LENGTH'] = max(
+    1024,
+    int(os.getenv('MAX_REQUEST_BYTES', str(8 * 1024 * 1024))),
+)
 
 frontend_urls = [
     value.strip()
@@ -95,6 +99,10 @@ CORS(
 def add_api_cors_headers(response):
     if not request.path.startswith('/api/'):
         return response
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'no-referrer'
     origin = request.headers.get('Origin', '')
     if not origin:
         return response
@@ -105,6 +113,11 @@ def add_api_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, DELETE, OPTIONS'
     response.headers['Vary'] = 'Origin'
     return response
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return jsonify({'error': 'Запрос слишком большой'}), 413
 
 db = SQLAlchemy(app)
 serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='auth')
@@ -138,6 +151,8 @@ PENALTY_STATUSES = {'pending', 'in_workoff', 'overdue', 'awaiting_unlock', 'unlo
 PENALTY_DUPLICATE_WINDOW = timedelta(minutes=3)
 ANNOUNCEMENT_DUPLICATE_WINDOW = timedelta(minutes=1)
 TIME_VALUE_RE = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+MAX_XLSX_FILES = 1000
+MAX_XLSX_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
 REWARD_RATES = {
     'first_day_hour': 15,
     'exam_hour': 15,
@@ -795,6 +810,16 @@ def _download_telegram_photo_bytes(account):
     response.raise_for_status()
     account.photo_url = file_path
     return response.content, response.headers.get('Content-Type') or 'image/jpeg'
+
+
+def _detected_image_mime(content):
+    if content.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    if content.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    if len(content) >= 12 and content.startswith(b'RIFF') and content[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
 
 
 def _telegram_link_status(user):
@@ -2303,8 +2328,10 @@ def verify_internal_api_secret():
     auth = request.headers.get('Authorization', '')
     bearer = auth[7:] if auth.startswith('Bearer ') else ''
     alt = request.headers.get('X-Internal-Secret', '')
-    query_secret = request.args.get('secret', '')
-    return INTERNAL_API_SECRET in {bearer, alt, query_secret}
+    return any(
+        candidate and secrets.compare_digest(INTERNAL_API_SECRET, candidate)
+        for candidate in (bearer, alt)
+    )
 
 
 # ==================== Авторизация ====================
@@ -2394,11 +2421,9 @@ def _bind_request_user(user, pool_id=None):
 
 def load_user_from_request():
     auth = request.headers.get('Authorization', '')
-    token = request.args.get('token')
-    if not token:
-        if not auth.startswith('Bearer '):
-            return None
-        token = auth[7:]
+    if not auth.startswith('Bearer '):
+        return None
+    token = auth[7:]
     try:
         data = serializer.loads(token, max_age=60 * 60 * 24 * 30)  # 30 дней
     except BadSignature:
@@ -2556,6 +2581,9 @@ def upload_my_avatar():
         return jsonify({'error': 'Файл пустой'}), 400
     if len(content) > 3 * 1024 * 1024:
         return jsonify({'error': 'Файл слишком большой. Максимум 3 МБ'}), 400
+    normalized_mime = 'image/jpeg' if mime == 'image/jpg' else mime
+    if _detected_image_mime(content) != normalized_mime:
+        return jsonify({'error': 'Содержимое файла не соответствует формату изображения'}), 400
     import base64
     user = g.user
     account = _telegram_account_any(user.id)
@@ -2568,7 +2596,7 @@ def upload_my_avatar():
         )
         db.session.add(account)
     account.photo_file_id = None
-    account.photo_url = f'data:{mime};base64,{base64.b64encode(content).decode("ascii")}'
+    account.photo_url = f'data:{normalized_mime};base64,{base64.b64encode(content).decode("ascii")}'
     account.last_photo_sync_at = _utcnow()
     db.session.commit()
     log_action('upload', 'profile_avatar', user.id, 'Пользователь загрузил фото профиля', actor=user)
@@ -2796,7 +2824,10 @@ def create_pool():
         return jsonify({'error': 'Укажите название бассейна'}), 400
     start_date = None
     if data.get('start_date'):
-        start_date = datetime.fromisoformat(data['start_date']).date()
+        try:
+            start_date = datetime.fromisoformat(data['start_date']).date()
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Некорректная дата начала'}), 400
     pool = Pool(name=name, start_date=start_date, active=False)
     db.session.add(pool)
     db.session.commit()
@@ -2813,7 +2844,10 @@ def update_pool(pool_id):
         return jsonify({'error': 'Укажите название бассейна'}), 400
     pool.name = name
     if 'start_date' in data:
-        pool.start_date = datetime.fromisoformat(data['start_date']).date() if data.get('start_date') else None
+        try:
+            pool.start_date = datetime.fromisoformat(data['start_date']).date() if data.get('start_date') else None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Некорректная дата начала'}), 400
     db.session.commit()
     return jsonify(pool.to_dict())
 
@@ -2968,7 +3002,11 @@ def add_pool_responsible(pool_id):
     user_id = data.get('user_id')
     if not user_id:
         return jsonify({'error': 'Укажите user_id'}), 400
-    user = get_model_or_404(User, int(user_id))
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Некорректный user_id'}), 400
+    user = get_model_or_404(User, user_id)
     if user.role not in ('admin', 'team_lead'):
         return jsonify({'error': 'Ответственным может быть только админ или тимлид'}), 400
     pool_role = 'responsible_admin' if user.role == 'admin' else 'responsible_team_lead'
@@ -3523,7 +3561,10 @@ def patch_block_capacity(block_id):
             return jsonify({'error': 'Вместимость не может быть меньше числа записанных'}), 409
         block.capacity = next_capacity
     else:
-        delta = int(data.get('delta', 1))
+        try:
+            delta = int(data.get('delta', 1))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Изменение вместимости должно быть целым числом'}), 400
         base = block.capacity if block.capacity is not None else Signup.query.filter_by(block_id=block.id).count()
         new_cap = base + delta
         if delta < 0:
@@ -4237,6 +4278,12 @@ def parse_xlsx_rows(file_storage):
     """Прочитать первый лист .xlsx в список строк. Достаточно для простых импорт-шаблонов."""
     ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
     with zipfile.ZipFile(file_storage) as archive:
+        files = archive.infolist()
+        uncompressed_size = sum(item.file_size for item in files)
+        if len(files) > MAX_XLSX_FILES or uncompressed_size > MAX_XLSX_UNCOMPRESSED_BYTES:
+            raise ValueError('Файл .xlsx слишком большой после распаковки')
+        if any(item.flag_bits & 0x1 for item in files):
+            raise ValueError('Зашифрованные .xlsx не поддерживаются')
         shared = []
         if 'xl/sharedStrings.xml' in archive.namelist():
             root = ET.fromstring(archive.read('xl/sharedStrings.xml'))
@@ -4714,8 +4761,13 @@ def _active_pool_id_for_request(requested_pool_id=None):
     pool_id = active_pool_id()
     if not pool_id:
         return None, (jsonify({'error': 'Нет активного бассейна'}), 400)
-    if requested_pool_id is not None and int(requested_pool_id) != pool_id:
-        return None, (jsonify({'error': 'Данные можно изменять только в активном бассейне'}), 409)
+    if requested_pool_id is not None:
+        try:
+            requested_pool_id = int(requested_pool_id)
+        except (TypeError, ValueError):
+            return None, (jsonify({'error': 'Некорректный pool_id'}), 400)
+        if requested_pool_id != pool_id:
+            return None, (jsonify({'error': 'Данные можно изменять только в активном бассейне'}), 409)
     request_user = getattr(g, 'user', None)
     if request_user and not _can_access_pool_id(request_user, pool_id):
         return None, (jsonify({'error': 'У тебя нет доступа к активному бассейну'}), 403)
@@ -4835,11 +4887,7 @@ def _tribes_for_pool(pool_id):
 
 
 def _resolve_user_tribe(user, pool_id):
-    effective_tribe = _effective_access_tribe(user, pool_id)
-    if effective_tribe:
-        return effective_tribe
-    tribes = _tribes_for_pool(pool_id)
-    return tribes[0] if tribes else TRIBES[0]
+    return _effective_access_tribe(user, pool_id)
 
 
 def _tribe_metrics(pool_id, tribe):
@@ -4963,7 +5011,9 @@ def dashboard_summary():
         ],
     }
     if g.current_role in TRIBE_ACCESS_ROLES and pool_id:
-        tribe = _resolve_user_tribe(g.user, pool_id)
+        tribe = normalize_tribe(_resolve_user_tribe(g.user, pool_id))
+        if not tribe:
+            return jsonify({'error': 'Для этой роли не указан трайб'}), 403
         rankings = _tribe_rankings(pool_id)
         own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
         next_events = (
@@ -5039,7 +5089,7 @@ def telegram_webhook():
         return jsonify({'error': 'TELEGRAM_WEBHOOK_SECRET обязателен в production'}), 503
     if TELEGRAM_WEBHOOK_SECRET:
         incoming_secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
-        if incoming_secret != TELEGRAM_WEBHOOK_SECRET:
+        if not incoming_secret or not secrets.compare_digest(incoming_secret, TELEGRAM_WEBHOOK_SECRET):
             return jsonify({'error': 'Неверный webhook secret'}), 403
     payload = request.get_json(silent=True) or {}
     message = payload.get('message')
@@ -5052,7 +5102,8 @@ def telegram_webhook():
         return jsonify({'ok': True, 'result': result})
     except Exception as exc:
         db.session.rollback()
-        return jsonify({'error': str(exc)}), 500
+        app.logger.exception('Telegram webhook processing failed: %s', exc)
+        return jsonify({'error': 'Не удалось обработать Telegram webhook'}), 500
 
 
 @app.route('/api/telegram/webhook/register', methods=['POST'])
@@ -5933,11 +5984,10 @@ def create_student_event(student_id):
     if error:
         return error
     data = request.json or {}
-    if (
-        g.current_role in TRIBE_ACCESS_ROLES
-        and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe)
-    ):
-        return jsonify({'error': 'Можно добавлять мероприятия только ученикам своего трайба'}), 403
+    if g.current_role in TRIBE_ACCESS_ROLES:
+        own_tribe = normalize_tribe(g.current_tribe)
+        if not own_tribe or normalize_tribe(student.tribe) != own_tribe:
+            return jsonify({'error': 'Можно добавлять мероприятия только ученикам своего трайба'}), 403
     event_type = data.get('event_type')
     if event_type not in ('entertainment', 'education'):
         return jsonify({'error': 'Тип мероприятия должен быть entertainment или education'}), 400
@@ -5993,8 +6043,11 @@ def delete_student_event(event_id):
     error = _active_entity_error(student.pool_id if student else None)
     if error:
         return error
-    if g.current_role in TRIBE_ACCESS_ROLES and student and g.current_tribe and normalize_tribe(student.tribe) != normalize_tribe(g.current_tribe):
-        return jsonify({'error': 'Можно удалять мероприятия только своего трайба'}), 403
+    if g.current_role in TRIBE_ACCESS_ROLES:
+        own_tribe = normalize_tribe(g.current_tribe)
+        student_tribe = normalize_tribe(student.tribe) if student else None
+        if not own_tribe or student_tribe != own_tribe:
+            return jsonify({'error': 'Можно удалять мероприятия только своего трайба'}), 403
     db.session.delete(event)
     db.session.commit()
     return jsonify({'message': 'Мероприятие ученика удалено'})
@@ -6011,7 +6064,13 @@ def my_tribe():
     if g.current_role in ('team_lead', 'admin'):
         tribe = normalize_tribe(requested_tribe) if requested_tribe is not None else ''
     else:
-        tribe = normalize_tribe(requested_tribe) or _resolve_user_tribe(g.user, pool_id)
+        own_tribe = normalize_tribe(_effective_access_tribe(g.user, pool_id))
+        requested_tribe = normalize_tribe(requested_tribe)
+        if not own_tribe:
+            return jsonify({'error': 'Для этой роли не указан трайб'}), 403
+        if requested_tribe and requested_tribe != own_tribe:
+            return jsonify({'error': 'Можно просматривать данные только своего трайба'}), 403
+        tribe = own_tribe
     students_query = Student.query.filter_by(pool_id=pool_id)
     if tribe:
         students_query = students_query.filter_by(tribe=tribe)
@@ -6169,7 +6228,11 @@ def list_tribe_events():
     start = request.args.get('start')
     query = TribeEvent.query.filter_by(pool_id=pool_id)
     if start:
-        query = query.filter(TribeEvent.event_date >= datetime.fromisoformat(start).date())
+        try:
+            start_date = datetime.fromisoformat(start).date()
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Некорректная дата начала'}), 400
+        query = query.filter(TribeEvent.event_date >= start_date)
     events = query.order_by(TribeEvent.event_date, TribeEvent.time_start).all()
     return jsonify([_tribe_event_to_dict(event) for event in events])
 
@@ -6213,8 +6276,10 @@ def delete_tribe_event(event_id):
     error = _active_entity_error(event.pool_id)
     if error:
         return error
-    if g.current_role in TRIBE_ACCESS_ROLES and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
-        return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
+    if g.current_role in TRIBE_ACCESS_ROLES:
+        own_tribe = normalize_tribe(g.current_tribe)
+        if not own_tribe or normalize_tribe(event.tribe) != own_tribe:
+            return jsonify({'error': 'Можно удалять встречи только своего трайба'}), 403
     _cancel_pending_notifications('tribe_event', event.id, ['tribe_event_tomorrow', 'tribe_event_first_day_shift'])
     db.session.delete(event)
     db.session.commit()
@@ -6228,8 +6293,10 @@ def update_tribe_event(event_id):
     error = _active_entity_error(event.pool_id)
     if error:
         return error
-    if g.current_role in TRIBE_ACCESS_ROLES and normalize_tribe(event.tribe) != normalize_tribe(g.current_tribe):
-        return jsonify({'error': 'Можно редактировать встречи только своего трайба'}), 403
+    if g.current_role in TRIBE_ACCESS_ROLES:
+        own_tribe = normalize_tribe(g.current_tribe)
+        if not own_tribe or normalize_tribe(event.tribe) != own_tribe:
+            return jsonify({'error': 'Можно редактировать встречи только своего трайба'}), 403
 
     data = request.get_json(silent=True) or {}
     if 'title' in data:
@@ -7893,9 +7960,10 @@ def ensure_user_profile_columns():
             conn.exec_driver_sql('UPDATE broadcasts SET pool_id = ? WHERE pool_id IS NULL', (active_pool_id_value,))
         for table in ('users', 'students', 'tribe_events'):
             if table in tables:
-                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
-                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Короны' WHERE lower(tribe) IN ('b', '2')")
-                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Олени' WHERE lower(tribe) IN ('c', '3')")
+                # The table name comes from the fixed tuple above, never from request data.
+                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")  # nosec B608
+                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Короны' WHERE lower(tribe) IN ('b', '2')")  # nosec B608
+                conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Олени' WHERE lower(tribe) IN ('c', '3')")  # nosec B608
         conn.commit()
 
 
@@ -8040,9 +8108,10 @@ def ensure_postgres_profile_columns():
         """)
 
         for table in ('users', 'students', 'tribe_events'):
-            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")
-            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Короны' WHERE lower(tribe) IN ('b', '2')")
-            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Олени' WHERE lower(tribe) IN ('c', '3')")
+            # The table name comes from the fixed tuple above, never from request data.
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Ленты' WHERE lower(tribe) IN ('a', '1')")  # nosec B608
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Короны' WHERE lower(tribe) IN ('b', '2')")  # nosec B608
+            conn.exec_driver_sql(f"UPDATE {table} SET tribe = 'Олени' WHERE lower(tribe) IN ('c', '3')")  # nosec B608
         conn.commit()
 
 
@@ -8171,4 +8240,5 @@ if __name__ == '__main__':
     # поэтому стартуем только в дочернем процессе reloader или когда debug выключен
     if should_start_runtime_services() and (not debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'):
         start_runtime_services()
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # Local/Docker entrypoint only; production runs the WSGI app.
+    app.run(host='0.0.0.0', port=port, debug=debug)  # nosec B104

@@ -90,6 +90,7 @@ def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
 
     session = client.get('/api/auth/me', headers=auth_headers(assistant))
     tribe = client.get('/api/my-tribe', headers=auth_headers(assistant))
+    foreign_tribe = client.get('/api/my-tribe?tribe=Олени', headers=auth_headers(assistant))
     own_event = client.post(
         f'/api/students/{own_student.id}/events',
         headers=auth_headers(assistant),
@@ -116,11 +117,91 @@ def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
     assert session.get_json()['tribe'] == 'Короны'
     assert tribe.status_code == 200
     assert [student['nick'] for student in tribe.get_json()['students']] == ['own-student']
+    assert foreign_tribe.status_code == 403
     assert own_event.status_code == 201
     assert other_event.status_code == 403
     assert assign_second.status_code == 200
     assert assistant_row['role'] == 'tribe_assistant'
     assert not any(item['type'] == 'tribe_master_event' for item in assistant_row['coin_breakdown'])
+
+
+def test_tribe_role_without_tribe_cannot_manage_student_events(
+    client,
+    factories,
+    auth_headers,
+    db_session,
+):
+    malformed_master = factories.user('malformed-master')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(malformed_master, pool, pool_role='tribe_master', tribe=None)
+    student = app_module.Student(nick='student', name='Student', tribe=None, pool_id=pool.id)
+    db_session.add(student)
+    db_session.flush()
+    event = app_module.StudentEvent(student_id=student.id, event_type='education')
+    db_session.add(event)
+    db_session.commit()
+
+    overview = client.get('/api/my-tribe', headers=auth_headers(malformed_master))
+    dashboard = client.get('/api/dashboard', headers=auth_headers(malformed_master))
+    create = client.post(
+        f'/api/students/{student.id}/events',
+        headers=auth_headers(malformed_master),
+        json={'event_type': 'education'},
+    )
+    delete = client.delete(
+        f'/api/student-events/{event.id}',
+        headers=auth_headers(malformed_master),
+    )
+
+    assert overview.status_code == 403
+    assert dashboard.status_code == 403
+    assert create.status_code == 403
+    assert delete.status_code == 403
+
+
+def test_invalid_pool_inputs_return_validation_errors(client, factories, auth_headers):
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool('Active pool', active=True)
+    block = factories.shift_block(pool, date.today() + timedelta(days=1))
+
+    create_pool = client.post(
+        '/api/pools',
+        headers=auth_headers(admin),
+        json={'name': 'Broken date', 'start_date': 'not-a-date'},
+    )
+    update_pool = client.patch(
+        f'/api/pools/{pool.id}',
+        headers=auth_headers(admin),
+        json={'name': pool.name, 'start_date': 'not-a-date'},
+    )
+    change_capacity = client.patch(
+        f'/api/blocks/{block.id}/capacity',
+        headers=auth_headers(admin),
+        json={'delta': 'not-a-number'},
+    )
+    invalid_pool_id = client.post(
+        '/api/blocks',
+        headers=auth_headers(admin),
+        json={'pool_id': 'not-a-number', 'date': date.today().isoformat()},
+    )
+
+    assert create_pool.status_code == 400
+    assert update_pool.status_code == 400
+    assert change_capacity.status_code == 400
+    assert invalid_pool_id.status_code == 400
+
+
+def test_invalid_tribe_event_start_date_returns_validation_error(client, factories, auth_headers):
+    volunteer = factories.user('volunteer')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
+
+    response = client.get(
+        '/api/tribe-events?start=not-a-date',
+        headers=auth_headers(volunteer),
+    )
+
+    assert response.status_code == 400
 
 
 def test_tribe_master_can_edit_only_own_tribe_meetings(client, factories, auth_headers, db_session):

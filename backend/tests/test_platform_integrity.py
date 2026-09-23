@@ -1,6 +1,9 @@
 from datetime import date, datetime, time, timedelta
+from io import BytesIO
+import zipfile
 
 import app as app_module
+import pytest
 
 
 def test_deactivated_user_existing_token_is_rejected(client, factories, auth_headers, db_session):
@@ -12,6 +15,17 @@ def test_deactivated_user_existing_token_is_rejected(client, factories, auth_hea
     response = client.get('/api/auth/me', headers=headers)
 
     assert response.status_code == 401
+
+
+def test_xlsx_parser_rejects_large_uncompressed_archive(monkeypatch):
+    monkeypatch.setattr(app_module, 'MAX_XLSX_UNCOMPRESSED_BYTES', 10)
+    payload = BytesIO()
+    with zipfile.ZipFile(payload, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('xl/worksheets/sheet1.xml', b'x' * 11)
+    payload.seek(0)
+
+    with pytest.raises(ValueError, match='слишком большой после распаковки'):
+        app_module.parse_xlsx_rows(payload)
 
 
 def test_active_pool_cannot_be_archived(client, factories, auth_headers):

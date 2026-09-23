@@ -1,3 +1,6 @@
+import app as app_module
+
+
 def test_health_returns_ok(client):
     response = client.get('/api/health')
 
@@ -38,3 +41,40 @@ def test_auth_me_requires_valid_token(client, factories, auth_headers):
     payload = response.get_json()
     assert payload['nick'] == 'lead'
     assert payload['role'] == 'team_lead'
+
+
+def test_auth_token_is_rejected_in_query_string(client, factories):
+    user = factories.user('query-token-user')
+    token = app_module.make_token(user)
+
+    response = client.get(f'/api/auth/me?token={token}')
+
+    assert response.status_code == 401
+
+
+def test_api_responses_disable_shared_caching_and_sniffing(client):
+    response = client.get('/api/health')
+
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert response.headers['X-Content-Type-Options'] == 'nosniff'
+    assert response.headers['X-Frame-Options'] == 'DENY'
+    assert response.headers['Referrer-Policy'] == 'no-referrer'
+
+
+def test_cors_rejects_untrusted_origin(client):
+    response = client.get('/api/health', headers={'Origin': 'https://evil.example'})
+
+    assert 'Access-Control-Allow-Origin' not in response.headers
+
+
+def test_oversized_request_returns_json_error(client, app, monkeypatch):
+    monkeypatch.setitem(app.config, 'MAX_CONTENT_LENGTH', 64)
+
+    response = client.post(
+        '/api/auth/login',
+        data=b'{"nick":"' + (b'x' * 100) + b'"}',
+        content_type='application/json',
+    )
+
+    assert response.status_code == 413
+    assert response.get_json()['error'] == 'Запрос слишком большой'
