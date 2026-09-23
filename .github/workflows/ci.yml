@@ -62,7 +62,12 @@ jobs:
           npm audit --omit=dev --audit-level=moderate
           cd ../backend
           .venv/bin/python -m pip_audit -r requirements.txt
-          .venv/bin/python -m bandit -r . -x tests,.venv -ll -ii
+          find . -type f -name '*.py' \
+            -not -path './tests/*' \
+            -not -path './.venv/*' \
+            -not -path './venv/*' \
+            -print0 \
+            | xargs -0 .venv/bin/python -m bandit -ll -ii
 
       - name: Run daily quality checks
         run: ./scripts/daily_check.sh
