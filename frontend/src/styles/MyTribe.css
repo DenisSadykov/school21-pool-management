@@ -405,7 +405,7 @@
 
 .student-event-head {
   display: grid;
-  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) minmax(390px, 1.45fr);
+  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) 72px;
   gap: var(--spacing-md);
   align-items: center;
   padding: 10px var(--spacing-md);
@@ -415,7 +415,7 @@
 
 .student-event-table.is-all-tribes .student-event-head,
 .student-event-table.is-all-tribes .student-event-row {
-  grid-template-columns: minmax(120px, 0.75fr) minmax(54px, 0.3fr) minmax(250px, 1.45fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr);
+  grid-template-columns: minmax(120px, 0.75fr) minmax(54px, 0.3fr) minmax(250px, 1.45fr) minmax(150px, 0.8fr) 72px;
 }
 
 .student-event-head span {
@@ -435,7 +435,7 @@
 
 .student-event-row {
   display: grid;
-  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) minmax(390px, 1.45fr);
+  grid-template-columns: minmax(130px, 0.75fr) minmax(230px, 1.05fr) minmax(150px, 0.75fr) 72px;
   gap: var(--spacing-md);
   align-items: center;
   padding: var(--spacing-md);
