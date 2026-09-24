@@ -210,6 +210,23 @@
   white-space: nowrap;
 }
 
+.student-event-submit-message {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+}
+
+.student-event-submit-message.success {
+  color: var(--success, #16803c);
+}
+
+.student-event-submit-message.error {
+  color: var(--danger, #c62828);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
