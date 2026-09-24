@@ -559,7 +559,15 @@ function StudentEventForm({ students, onSuccess }) {
   });
   const [studentInput, setStudentInput] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState(null);
+  const submitLock = useRef(false);
   const dropdownRef = useRef(null);
+
+  const updateForm = (patch) => {
+    setForm((current) => ({ ...current, ...patch }));
+    setSubmitMessage(null);
+  };
 
   const findStudentByInput = (value) => {
     const normalized = value.trim().toLowerCase();
@@ -593,21 +601,34 @@ function StudentEventForm({ students, onSuccess }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (submitLock.current) return;
     const matchedStudent = form.student_id
       ? students.find((student) => String(student.id) === String(form.student_id))
       : findStudentByInput(studentInput);
 
     if (!matchedStudent) {
-      alert('Выберите пира');
+      setSubmitMessage({ type: 'error', text: 'Выберите пира из списка.' });
       return;
     }
-    await api.post(`/api/students/${matchedStudent.id}/events`, {
-      ...form,
-      student_id: matchedStudent.id,
-    });
-    setForm({ ...form, student_id: matchedStudent.id, comment: '' });
-    setStudentInput(formatStudentOption(matchedStudent));
-    onSuccess();
+    submitLock.current = true;
+    setSubmitting(true);
+    setSubmitMessage(null);
+    try {
+      await api.post(`/api/students/${matchedStudent.id}/events`, {
+        ...form,
+        student_id: matchedStudent.id,
+      });
+      setForm((current) => ({ ...current, student_id: '', comment: '' }));
+      setStudentInput('');
+      setDropdownOpen(false);
+      setSubmitMessage({ type: 'success', text: `Мероприятие для ${formatStudentOption(matchedStudent)} добавлено.` });
+      onSuccess();
+    } catch (error) {
+      setSubmitMessage({ type: 'error', text: error.message || 'Не удалось добавить мероприятие. Попробуйте ещё раз.' });
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -625,10 +646,7 @@ function StudentEventForm({ students, onSuccess }) {
                 const matchedStudent = findStudentByInput(nextValue);
                 setStudentInput(nextValue);
                 setDropdownOpen(true);
-                setForm({
-                  ...form,
-                  student_id: matchedStudent ? matchedStudent.id : '',
-                });
+                updateForm({ student_id: matchedStudent ? matchedStudent.id : '' });
               }}
               placeholder="Ник или имя"
             />
@@ -650,7 +668,7 @@ function StudentEventForm({ students, onSuccess }) {
                       className="student-search-option"
                       onClick={() => {
                         setStudentInput(formatStudentOption(student));
-                        setForm({ ...form, student_id: student.id });
+                        updateForm({ student_id: student.id });
                         setDropdownOpen(false);
                       }}
                     >
@@ -666,20 +684,28 @@ function StudentEventForm({ students, onSuccess }) {
         </label>
         <label>
           Тип
-          <select value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })}>
+          <select value={form.event_type} onChange={(e) => updateForm({ event_type: e.target.value })}>
             <option value="entertainment">Развлекательное</option>
             <option value="education">Обучающее</option>
           </select>
         </label>
         <label>
           Дата
-          <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
+          <input type="date" value={form.event_date} onChange={(e) => updateForm({ event_date: e.target.value })} />
         </label>
         <label>
           Комментарий
-          <input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} placeholder="Коротко" />
+          <input value={form.comment} onChange={(e) => updateForm({ comment: e.target.value })} placeholder="Коротко" />
         </label>
-        <button className="btn-primary compact-submit" type="submit"><Plus size={16} /> Добавить</button>
+        <button className="btn-primary compact-submit" type="submit" disabled={submitting}>
+          {submitting ? 'Добавляем…' : <><Plus size={16} /> Добавить</>}
+        </button>
+        {submitMessage && (
+          <p className={`student-event-submit-message ${submitMessage.type}`} role={submitMessage.type === 'error' ? 'alert' : 'status'}>
+            {submitMessage.type === 'success' && <Check size={16} aria-hidden="true" />}
+            {submitMessage.text}
+          </p>
+        )}
       </div>
     </form>
   );
