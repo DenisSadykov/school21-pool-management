@@ -70,7 +70,9 @@ def test_daily_shift_notifications_at_14_include_coworkers_and_exam_brief(factor
     summary_text = _payload_text(staff_events[0])
     assert 'Кто дежурит завтра' in summary_text
     assert 'Денис (@DenisSadykov)' in summary_text
+    assert 'ник в Pool: odessabu' in summary_text
     assert 'Маша (@masha_tg)' in summary_text
+    assert 'ник в Pool: masha' in summary_text
 
 
 def test_daily_shift_notifications_do_not_run_before_14(factories, db_session, monkeypatch):
