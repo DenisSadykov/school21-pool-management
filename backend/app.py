@@ -50,6 +50,10 @@ def database_engine_options():
         'poolclass': NullPool,
         'connect_args': {
             'connect_timeout': max(1, int(os.getenv('DATABASE_CONNECT_TIMEOUT', '10'))),
+            # Vercel connects through a transaction pooler. Psycopg's automatic
+            # prepared statements are scoped to server sessions, which the
+            # pooler can reassign between client requests.
+            'prepare_threshold': None,
         },
     }
 

@@ -35,6 +35,7 @@ def test_serverless_runtime_uses_short_lived_database_connections(monkeypatch):
 
     assert options['poolclass'] is NullPool
     assert options['connect_args']['connect_timeout'] == 7
+    assert options['connect_args']['prepare_threshold'] is None
 
 
 def test_non_serverless_runtime_keeps_regular_pool(monkeypatch):
