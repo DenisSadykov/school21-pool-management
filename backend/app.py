@@ -2049,7 +2049,10 @@ def _schedule_daily_shift_notifications():
     summary_lines = []
     for block in blocks:
         volunteers = _signed_users_for_block(block)
-        people = ', '.join(f'{u.name or u.nick} ({_tg_link(u)})' for u in volunteers) or 'никто не записан'
+        people = ', '.join(
+            f'{u.name or u.nick} ({_tg_link(u)}) — ник в Pool: {u.nick}'
+            for u in volunteers
+        ) or 'никто не записан'
         summary_lines.append(f'• {_format_shift(block)}: {people}')
     for user in _pool_responsible_users(pool_id):
         _queue_notification(
