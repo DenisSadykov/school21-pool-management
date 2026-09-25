@@ -117,6 +117,10 @@ jobs:
 
   production-config:
     name: Production Config Guard
+    # This check validates the currently deployed service, not the proposed
+    # source. Running it on a PR (or a codex branch push) makes unrelated PRs
+    # fail whenever production is temporarily unavailable.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -176,7 +180,7 @@ jobs:
             const state =
               '${{ needs.quality.result }}' === 'success' &&
               '${{ needs.e2e.result }}' === 'success' &&
-              '${{ needs.production-config.result }}' === 'success'
+              ['success', 'skipped'].includes('${{ needs.production-config.result }}')
                 ? 'success'
                 : 'failure';
             const sha = context.eventName === 'pull_request'
@@ -190,7 +194,7 @@ jobs:
               state,
               context: 'CI',
               description: state === 'success'
-                ? 'Quality, e2e, and production config checks passed'
-                : 'Quality, e2e, or production config check failed',
+                ? 'Quality and e2e checks passed; production config guard ran when applicable'
+                : 'Quality, e2e, or applicable production config check failed',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });

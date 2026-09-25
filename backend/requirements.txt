@@ -6,6 +6,7 @@ defusedxml==0.7.1
 python-dotenv==1.2.3
 gunicorn==23.0.0
 psycopg2-binary==2.9.10
+psycopg[binary]>=3.2,<4
 google-auth==2.35.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
