@@ -484,7 +484,7 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
   );
 }
 
-function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
+function VolunteerActionsMenu({ volunteer: v, onUpdate, canChangeRole = true }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   const [dropdownStyle, setDropdownStyle] = useState(null);
@@ -555,18 +555,20 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate }) {
             />
             Исповедь
           </label>
-          <select
-            className="volunteer-role-select"
-            value={v.role}
-            onChange={(e) => {
-              onUpdate(v.id, { role: e.target.value });
-              setOpen(false);
-            }}
-          >
-            <option value="volunteer">Волонтёр</option>
-            <option value="tribe_master">Трайб-мастер</option>
-            <option value="tribe_assistant">Помощник трайб-мастера</option>
-          </select>
+          {canChangeRole && (
+            <select
+              className="volunteer-role-select"
+              value={v.role}
+              onChange={(e) => {
+                onUpdate(v.id, { role: e.target.value });
+                setOpen(false);
+              }}
+            >
+              <option value="volunteer">Волонтёр</option>
+              <option value="tribe_master">Трайб-мастер</option>
+              <option value="tribe_assistant">Помощник трайб-мастера</option>
+            </select>
+          )}
         </div>,
         document.body,
       )}
@@ -653,7 +655,11 @@ function TeamLeadRow({ volunteer: v, isStaff, onUpdate }) {
         </div>
       </td>
       <td data-label="Коины"><CoinsControl volunteer={v} canEdit={isStaff} onUpdate={onUpdate} /></td>
-      {isStaff && <td data-label="Управление">—</td>}
+      {isStaff && (
+        <td data-label="Управление">
+          <VolunteerActionsMenu volunteer={v} onUpdate={onUpdate} canChangeRole={false} />
+        </td>
+      )}
     </tr>
   );
 }

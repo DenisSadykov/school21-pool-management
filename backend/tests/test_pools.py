@@ -409,6 +409,19 @@ def test_responsible_team_lead_is_shown_in_rewards_with_default_coins(client, fa
         for item in lead['coin_breakdown']
     )
 
+    updated = client.patch(
+        f'/api/volunteers/{team_lead.id}',
+        json={'pool_id': pool.id, 'has_confession': True},
+        headers=auth_headers(admin),
+    )
+    assert updated.status_code == 200
+
+    response = client.get(f'/api/volunteers?pool_id={pool.id}', headers=auth_headers(admin))
+    lead = next(item for item in response.get_json() if item['nick'] == 'lead')
+    assert lead['has_confession'] is True
+    assert lead['coins'] == 475
+    assert any(item['type'] == 'confession' and item['coins'] == 25 for item in lead['coin_breakdown'])
+
 
 def test_volunteer_coins_export_contains_nick_and_coins(client, factories, auth_headers, db_session):
     admin = factories.user('admin', role='admin', password='secret123')
