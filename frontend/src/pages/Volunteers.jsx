@@ -439,7 +439,7 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
           {breakdown.length > 0 ? (
             <div className="coins-breakdown-list">
               {breakdown.map((item) => (
-                <span key={item.type}>{item.label}: {item.coins}</span>
+                <span key={item.type}>{item.label}{item.type === 'tribe_master_event' ? ` · ${item.count} меропр.` : ''}: {item.coins}</span>
               ))}
             </div>
           ) : (
@@ -486,8 +486,11 @@ function CoinsControl({ volunteer: v, canEdit, onUpdate }) {
 
 function VolunteerActionsMenu({ volunteer: v, onUpdate, canChangeRole = true }) {
   const [open, setOpen] = useState(false);
+  const [eventCount, setEventCount] = useState(String(v.tribe_event_count ?? 0));
   const menuRef = useRef(null);
   const [dropdownStyle, setDropdownStyle] = useState(null);
+
+  useEffect(() => { setEventCount(String(v.tribe_event_count ?? 0)); }, [v.tribe_event_count]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -555,6 +558,33 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate, canChangeRole = true }) 
             />
             Исповедь
           </label>
+          {['tribe_master', 'tribe_assistant'].includes(v.role) && v.tribe && (
+            <div className="tribe-event-editor">
+              <label htmlFor={`tribe-events-${v.id}`}>Трайб-мероприятия · 30 коинов за каждое</label>
+              <div className="tribe-event-editor-controls">
+                <input
+                  id={`tribe-events-${v.id}`}
+                  type="number"
+                  min="0"
+                  max="1000"
+                  step="1"
+                  value={eventCount}
+                  onChange={(e) => setEventCount(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!/^\d+$/.test(eventCount) || Number(eventCount) > 1000}
+                  onClick={() => onUpdate(v.id, { tribe_event_count_override: Number(eventCount) })}
+                >Сохранить</button>
+              </div>
+              {v.tribe_event_count_override !== null && v.tribe_event_count_override !== undefined && (
+                <button type="button" className="tribe-event-auto" onClick={() => onUpdate(v.id, { tribe_event_count_override: null })}>
+                  Считать автоматически по мероприятиям трайба
+                </button>
+              )}
+            </div>
+          )}
           {canChangeRole && (
             <select
               className="volunteer-role-select"
@@ -602,6 +632,7 @@ function TribeRoleRow({ volunteer: v, tribes, isStaff, onUpdate }) {
       <td data-label="Дополнения">
         <div className="status-list">
           {v.role === 'tribe_assistant' && <span className="status-pill role-tribe_assistant">Помощник</span>}
+          {v.tribe && <span className="status-pill group">Мероприятия: {v.tribe_event_count ?? 0}</span>}
           {v.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
       </td>

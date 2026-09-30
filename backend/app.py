@@ -358,6 +358,7 @@ class PoolVolunteer(db.Model):
     notifications_enabled = db.Column(db.Boolean, default=True, nullable=False)
     has_confession = db.Column(db.Boolean, default=False)
     coins_adjustment = db.Column(db.Integer, default=0)
+    tribe_event_count_override = db.Column(db.Integer)
     assigned_at = db.Column(db.DateTime, default=_naive_utcnow)
     __table_args__ = (db.UniqueConstraint('pool_id', 'user_id', name='uq_pool_volunteer'),)
 
@@ -4019,13 +4020,15 @@ def get_volunteers():
             if has_conf:
                 _add_reward(buckets, 'confession', 'Исповедь', 1, REWARD_RATES['confession'])
             normalized_tribe = normalize_tribe(pv.tribe) if pv.tribe else None
-            if role == 'tribe_master' and normalized_tribe:
-                tribe_events_count = tribe_event_counts.get(normalized_tribe, 0)
+            tribe_events_count = 0
+            if role in TRIBE_ACCESS_ROLES and normalized_tribe:
+                tribe_events_count = (pv.tribe_event_count_override if pv.tribe_event_count_override is not None
+                                      else tribe_event_counts.get(normalized_tribe, 0))
                 if tribe_events_count:
                     _add_reward(
                         buckets,
                         'tribe_master_event',
-                        'Трайб-мастерство',
+                        'Трайб-мастерство' if role == 'tribe_master' else 'Помощь трайб-мастеру',
                         tribe_events_count,
                         tribe_events_count * REWARD_RATES['tribe_master_event'],
                     )
@@ -4052,6 +4055,8 @@ def get_volunteers():
                 'shifts_count': shift_counts.get(user.id, 0),
                 'coins': total,
                 'coins_adjustment': adj,
+                'tribe_event_count': tribe_events_count,
+                'tribe_event_count_override': pv.tribe_event_count_override,
                 'coin_breakdown': breakdown,
             })
         order = {'team_lead': 0, 'tribe_master': 1, 'tribe_assistant': 2, 'volunteer': 3}
@@ -4208,7 +4213,7 @@ def calculate_user_rewards(user, manual_adjustment=0):
     return {'breakdown': breakdown, 'total': sum(item['coins'] for item in breakdown)}
 
 
-def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool_role, pv_tribe=None):
+def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool_role, pv_tribe=None, tribe_event_count_override=None):
     """Расчёт наград только в рамках одного бассейна."""
     pool = db.session.get(Pool, pool_id)
     buckets = {}
@@ -4234,13 +4239,14 @@ def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool
 
     if has_confession:
         _add_reward(buckets, 'confession', 'Исповедь', 1, REWARD_RATES['confession'])
-    if pool_role == 'tribe_master' and pv_tribe:
-        tribe_events_count = TribeEvent.query.filter_by(pool_id=pool_id, tribe=pv_tribe).count()
+    if pool_role in TRIBE_ACCESS_ROLES and pv_tribe:
+        tribe_events_count = (tribe_event_count_override if tribe_event_count_override is not None
+                              else TribeEvent.query.filter_by(pool_id=pool_id, tribe=pv_tribe).count())
         if tribe_events_count:
             _add_reward(
                 buckets,
                 'tribe_master_event',
-                'Трайб-мастерство',
+                'Трайб-мастерство' if pool_role == 'tribe_master' else 'Помощь трайб-мастеру',
                 tribe_events_count,
                 tribe_events_count * REWARD_RATES['tribe_master_event'],
             )
@@ -4556,7 +4562,7 @@ def update_volunteer_profile(user_id):
     data = request.json or {}
     changes = {}
 
-    pool_scoped_fields = {'role', 'has_confession', 'tribe', 'coins_adjustment'}
+    pool_scoped_fields = {'role', 'has_confession', 'tribe', 'coins_adjustment', 'tribe_event_count_override'}
     needs_pool_context = bool(pool_scoped_fields.intersection(data)) or data.get('pool_id') is not None
     pool_id = None
     pv = None
@@ -4580,6 +4586,7 @@ def update_volunteer_profile(user_id):
         pv.pool_role = new_role
         if new_role == 'volunteer':
             pv.tribe = None
+            pv.tribe_event_count_override = None
 
     if 'name' in data:
         new_name = (data.get('name') or '').strip() or user.nick
@@ -4631,13 +4638,25 @@ def update_volunteer_profile(user_id):
     if 'tribe' in data:
         new_tribe = normalize_tribe(data.get('tribe'))
         if pv:
-            if pv.tribe != new_tribe:
-                changes['tribe'] = {'from': pv.tribe, 'to': new_tribe}
+            old_tribe = pv.tribe
+            if old_tribe != new_tribe:
+                changes['tribe'] = {'from': old_tribe, 'to': new_tribe}
+                pv.tribe_event_count_override = None
             pv.tribe = new_tribe
         else:
             if user.tribe != new_tribe:
                 changes['tribe'] = {'from': user.tribe, 'to': new_tribe}
             user.tribe = new_tribe
+
+    if 'tribe_event_count_override' in data:
+        raw_count = data['tribe_event_count_override']
+        if raw_count is not None and (type(raw_count) is not int or raw_count < 0 or raw_count > 1000):
+            return jsonify({'error': 'Количество трайб-мероприятий должно быть целым числом от 0 до 1000'}), 400
+        if pv.pool_role not in TRIBE_ACCESS_ROLES or not pv.tribe:
+            return jsonify({'error': 'Укажите трайб-мастера или помощника и его трайб'}), 400
+        if pv.tribe_event_count_override != raw_count:
+            changes['tribe_event_count_override'] = {'from': pv.tribe_event_count_override, 'to': raw_count}
+        pv.tribe_event_count_override = raw_count
 
     if 'coins_adjustment' in data:
         try:
@@ -6959,6 +6978,7 @@ def build_export_sheets():
             ['Проверка групповых (1 проверка)', REWARD_RATES['group_review']],
             ['Участие в проведении экзамена (за 1 час)', REWARD_RATES['exam_hour']],
             ['Трайб мастер на отборочном интенсиве (1 мероприятие)', REWARD_RATES['tribe_master_event']],
+            ['Помощник трайб-мастера (1 мероприятие)', REWARD_RATES['tribe_master_event']],
             ['Тим лидер команды волонтеров', REWARD_RATES['team_lead']],
             ['Волонтерство в первый день отборочного интенсива (1 час)', REWARD_RATES['first_day_hour']],
             ['Участие в исповеди', REWARD_RATES['confession']],
@@ -7837,6 +7857,7 @@ def ensure_user_profile_columns():
                     notifications_enabled BOOLEAN DEFAULT 1 NOT NULL,
                     has_confession BOOLEAN DEFAULT 0,
                     coins_adjustment INTEGER DEFAULT 0,
+                    tribe_event_count_override INTEGER,
                     assigned_at DATETIME,
                     PRIMARY KEY (id),
                     FOREIGN KEY(pool_id) REFERENCES pools (id),
@@ -7854,6 +7875,8 @@ def ensure_user_profile_columns():
                 conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN has_confession BOOLEAN DEFAULT 0')
             if 'coins_adjustment' not in pv_cols:
                 conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN coins_adjustment INTEGER DEFAULT 0')
+            if 'tribe_event_count_override' not in pv_cols:
+                conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN tribe_event_count_override INTEGER')
         if 'pool_invite_links' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE pool_invite_links (
@@ -8016,6 +8039,7 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN DEFAULT TRUE NOT NULL')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
+        conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS tribe_event_count_override INTEGER')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS max_uses INTEGER')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP')
 
