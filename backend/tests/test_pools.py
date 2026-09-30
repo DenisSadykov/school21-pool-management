@@ -122,7 +122,63 @@ def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
     assert other_event.status_code == 403
     assert assign_second.status_code == 200
     assert assistant_row['role'] == 'tribe_assistant'
-    assert not any(item['type'] == 'tribe_master_event' for item in assistant_row['coin_breakdown'])
+    tribe_reward = next(item for item in assistant_row['coin_breakdown'] if item['type'] == 'tribe_master_event')
+    assert tribe_reward['count'] == 1
+    assert tribe_reward['coins'] == 30
+
+
+def test_tribe_event_reward_count_can_be_corrected_per_person_and_pool(
+    client, factories, auth_headers, db_session,
+):
+    admin = factories.user('admin', role='admin', password='secret123')
+    master = factories.user('tanya')
+    assistant = factories.user('assistant')
+    pool = factories.pool('Active pool', active=True)
+    other_pool = factories.pool('Other pool', active=False)
+    factories.assign(master, pool, pool_role='tribe_master', tribe='Олени')
+    factories.assign(master, other_pool, pool_role='tribe_master', tribe='Короны')
+    factories.assign(assistant, pool, pool_role='tribe_assistant', tribe='Олени')
+    db_session.add_all([
+        app_module.TribeEvent(pool_id=pool.id, tribe='Олени', title=f'Встреча {index}', event_date=date.today())
+        for index in range(8)
+    ])
+    db_session.commit()
+
+    def rows(pool_id):
+        response = client.get(f'/api/volunteers?pool_id={pool_id}', headers=auth_headers(admin))
+        assert response.status_code == 200
+        return {row['nick']: row for row in response.get_json()}
+
+    assert rows(pool.id)['tanya']['tribe_event_count'] == 8
+    assert rows(pool.id)['assistant']['tribe_event_count'] == 8
+    response = client.patch(
+        f'/api/volunteers/{master.id}', headers=auth_headers(admin),
+        json={'pool_id': pool.id, 'tribe_event_count_override': 3},
+    )
+    assert response.status_code == 200
+    corrected = rows(pool.id)
+    assert corrected['tanya']['tribe_event_count'] == 3
+    assert corrected['tanya']['tribe_event_count_override'] == 3
+    assert next(item for item in corrected['tanya']['coin_breakdown'] if item['type'] == 'tribe_master_event') == {
+        'type': 'tribe_master_event', 'label': 'Трайб-мастерство', 'count': 3, 'coins': 90,
+    }
+    assert corrected['assistant']['tribe_event_count'] == 8
+    assert app_module.PoolVolunteer.query.filter_by(pool_id=other_pool.id, user_id=master.id).one().tribe_event_count_override is None
+    assert app_module.TribeEvent.query.filter_by(pool_id=pool.id, tribe='Олени').count() == 8
+
+    invalid = client.patch(
+        f'/api/volunteers/{master.id}', headers=auth_headers(admin),
+        json={'pool_id': pool.id, 'tribe_event_count_override': -1},
+    )
+    assert invalid.status_code == 400
+    assert rows(pool.id)['tanya']['tribe_event_count'] == 3
+
+    reset = client.patch(
+        f'/api/volunteers/{master.id}', headers=auth_headers(admin),
+        json={'pool_id': pool.id, 'tribe_event_count_override': None},
+    )
+    assert reset.status_code == 200
+    assert rows(pool.id)['tanya']['tribe_event_count'] == 8
 
 
 def test_tribe_role_without_tribe_cannot_manage_student_events(

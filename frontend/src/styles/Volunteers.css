@@ -693,6 +693,39 @@
   z-index: 500;
 }
 
+.tribe-event-editor {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tribe-event-editor-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.tribe-event-editor-controls input {
+  width: 70px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.tribe-event-auto {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary, #0969da);
+  text-align: left;
+  cursor: pointer;
+}
+
 .volunteer-role-select {
   width: 100%;
   min-height: 30px;
