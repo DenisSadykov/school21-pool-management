@@ -79,6 +79,67 @@ describe('MyTribe meetings', () => {
     }));
   });
 
+  it('shows past meetings and allows a past meeting with the assistant marked present', async () => {
+    api.get.mockResolvedValue({
+      tribe: 'Олени', rankings: [], students: [], student_events: [], top_students: [],
+      assistants_by_tribe: { Олени: ['picklicy'] },
+      tribe_events: [
+        { id: 42, tribe: 'Олени', title: 'Старая встреча', date: '2020-09-16', assistant_attending: true },
+        { id: 43, tribe: 'Олени', title: 'Будущая встреча', date: '2099-09-16', assistant_attending: false },
+      ],
+      all_tribe_events: [],
+    });
+    api.post.mockResolvedValue({ id: 44 });
+    api.patch.mockResolvedValue({ id: 42 });
+
+    render(<MyTribe user={{ role: 'tribe_master', tribe: 'Олени' }} />);
+
+    expect(await screen.findByText('Старая встреча')).toBeInTheDocument();
+    expect(screen.getByText('Будущая встреча')).toBeInTheDocument();
+    expect(screen.getByText('Прошедшие')).toBeInTheDocument();
+    expect(screen.getByText('Предстоящие')).toBeInTheDocument();
+    expect(screen.getByText('Помощник был')).toBeInTheDocument();
+
+    const createForm = screen.getByText('Добавить встречу').closest('form');
+    fireEvent.change(within(createForm).getByLabelText('Название'), { target: { value: 'Вчерашняя встреча' } });
+    fireEvent.change(within(createForm).getByLabelText('Дата'), { target: { value: '2020-09-17' } });
+    fireEvent.click(within(createForm).getByRole('checkbox', { name: /Помощник трайб-мастера @picklicy/ }));
+    fireEvent.click(within(createForm).getByRole('button', { name: 'Добавить встречу' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/tribe-events', expect.objectContaining({
+      tribe: 'Олени', title: 'Вчерашняя встреча', event_date: '2020-09-17', assistant_attending: true,
+    })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать встречу Старая встреча' }));
+    const dialog = screen.getByRole('dialog', { name: 'Редактировать встречу' });
+    const attendance = within(dialog).getByRole('checkbox', { name: /Помощник трайб-мастера @picklicy/ });
+    expect(attendance).toBeChecked();
+    fireEvent.click(attendance);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/tribe-events/42', expect.objectContaining({
+      assistant_attending: false,
+    })));
+  });
+
+  it('shows an assistant whether their participation was marked', async () => {
+    api.get.mockResolvedValue({
+      tribe: 'Олени', rankings: [], students: [], student_events: [], top_students: [],
+      assistants_by_tribe: { Олени: ['picklicy'] },
+      tribe_events: [
+        { id: 42, tribe: 'Олени', title: 'Была', date: '2020-09-16', assistant_attending: true },
+        { id: 43, tribe: 'Олени', title: 'Не отмечена', date: '2099-09-16', assistant_attending: false },
+      ],
+      all_tribe_events: [],
+    });
+
+    render(<MyTribe user={{ role: 'tribe_assistant', tribe: 'Олени' }} />);
+
+    expect(await screen.findByText('Вы участвовали')).toBeInTheDocument();
+    expect(screen.getByText('Ваше участие не отмечено')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Помощник трайб-мастера/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Редактировать встречу/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Добавить встречу' })).not.toBeInTheDocument();
+  });
+
   it('keeps status control in the status column and only delete in more', async () => {
     api.get.mockResolvedValue({
       tribe: '',

@@ -83,7 +83,8 @@ def test_tribe_assistant_is_pool_scoped_and_can_work_with_own_tribe(
         pool_id=pool.id,
         tribe='Короны',
         title='Встреча',
-        event_date=date.today() + timedelta(days=1),
+        event_date=app_module._moscow_today() - timedelta(days=1),
+        assistant_attending=True,
     )
     db_session.add_all([own_student, other_student, tribe_event])
     db_session.commit()
@@ -150,7 +151,7 @@ def test_tribe_event_reward_count_can_be_corrected_per_person_and_pool(
         return {row['nick']: row for row in response.get_json()}
 
     assert rows(pool.id)['tanya']['tribe_event_count'] == 8
-    assert rows(pool.id)['assistant']['tribe_event_count'] == 8
+    assert rows(pool.id)['assistant']['tribe_event_count'] == 0
     response = client.patch(
         f'/api/volunteers/{master.id}', headers=auth_headers(admin),
         json={'pool_id': pool.id, 'tribe_event_count_override': 3},
@@ -162,7 +163,7 @@ def test_tribe_event_reward_count_can_be_corrected_per_person_and_pool(
     assert next(item for item in corrected['tanya']['coin_breakdown'] if item['type'] == 'tribe_master_event') == {
         'type': 'tribe_master_event', 'label': 'Трайб-мастерство', 'count': 3, 'coins': 90,
     }
-    assert corrected['assistant']['tribe_event_count'] == 8
+    assert corrected['assistant']['tribe_event_count'] == 0
     assert app_module.PoolVolunteer.query.filter_by(pool_id=other_pool.id, user_id=master.id).one().tribe_event_count_override is None
     assert app_module.TribeEvent.query.filter_by(pool_id=pool.id, tribe='Олени').count() == 8
 
@@ -302,6 +303,88 @@ def test_tribe_master_can_edit_only_own_tribe_meetings(client, factories, auth_h
     assert updated.get_json()['time_start'] == '19:00'
     assert updated.get_json()['location'] == 'Кампус'
     assert forbidden.status_code == 403
+
+
+def test_past_tribe_meeting_and_assistant_attendance_can_be_created_and_edited(
+    client, factories, auth_headers, db_session,
+):
+    master = factories.user('master')
+    assistant = factories.user('assistant')
+    admin = factories.user('admin', role='admin', password='secret123')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(master, pool, pool_role='tribe_master', tribe='Олени')
+    factories.assign(assistant, pool, pool_role='tribe_assistant', tribe='Олени')
+    past_date = (app_module._moscow_today() - timedelta(days=2)).isoformat()
+
+    created = client.post('/api/tribe-events', headers=auth_headers(master), json={
+        'tribe': 'Олени', 'title': 'Прошедшая встреча', 'event_date': past_date,
+        'assistant_attending': True,
+    })
+    assert created.status_code == 201
+    event = created.get_json()
+    assert event['date'] == past_date
+    assert event['assistant_attending'] is True
+    assistant_rewards = client.get(f'/api/volunteers?pool_id={pool.id}', headers=auth_headers(admin)).get_json()
+    assistant_row = next(row for row in assistant_rewards if row['nick'] == 'assistant')
+    assert assistant_row['tribe_event_count'] == 1
+    assert next(item for item in assistant_row['coin_breakdown'] if item['type'] == 'tribe_master_event')['coins'] == 30
+
+    future = client.post('/api/tribe-events', headers=auth_headers(master), json={
+        'tribe': 'Олени', 'title': 'Будущая встреча',
+        'event_date': (app_module._moscow_today() + timedelta(days=2)).isoformat(),
+        'assistant_attending': True,
+    })
+    assert future.status_code == 201
+    assistant_rewards = client.get(f'/api/volunteers?pool_id={pool.id}', headers=auth_headers(admin)).get_json()
+    assistant_row = next(row for row in assistant_rewards if row['nick'] == 'assistant')
+    assert assistant_row['tribe_event_count'] == 1
+
+    own_view = client.get('/api/my-tribe', headers=auth_headers(master)).get_json()
+    assert {row['id'] for row in own_view['tribe_events']} == {event['id'], future.get_json()['id']}
+    assert own_view['assistants_by_tribe']['Олени'] == ['assistant']
+    staff_view = client.get('/api/my-tribe', headers=auth_headers(admin)).get_json()
+    assert event['id'] in [row['id'] for row in staff_view['all_tribe_events']]
+
+    removed = client.patch(f"/api/tribe-events/{event['id']}", headers=auth_headers(master), json={
+        'assistant_attending': False,
+    })
+    assert removed.status_code == 200
+    assert removed.get_json()['assistant_attending'] is False
+    assert db_session.get(app_module.TribeEvent, event['id']).assistant_attending is False
+    assistant_rewards = client.get(f'/api/volunteers?pool_id={pool.id}', headers=auth_headers(admin)).get_json()
+    assistant_row = next(row for row in assistant_rewards if row['nick'] == 'assistant')
+    assert assistant_row['tribe_event_count'] == 0
+    master_row = next(row for row in assistant_rewards if row['nick'] == 'master')
+    assert master_row['tribe_event_count'] == 2
+
+    self_mark = client.patch(f"/api/tribe-events/{event['id']}", headers=auth_headers(assistant), json={
+        'assistant_attending': True,
+    })
+    assert self_mark.status_code == 403
+    self_create = client.post('/api/tribe-events', headers=auth_headers(assistant), json={
+        'tribe': 'Олени', 'title': 'Дубликат', 'event_date': past_date,
+    })
+    assert self_create.status_code == 403
+    self_delete = client.delete(f"/api/tribe-events/{event['id']}", headers=auth_headers(assistant))
+    assert self_delete.status_code == 403
+    assert db_session.get(app_module.TribeEvent, event['id']) is not None
+    invalid = client.patch(f"/api/tribe-events/{event['id']}", headers=auth_headers(master), json={
+        'assistant_attending': 'yes',
+    })
+    assert invalid.status_code == 400
+
+
+def test_cannot_mark_assistant_attendance_without_assigned_assistant(client, factories, auth_headers):
+    master = factories.user('master')
+    pool = factories.pool('Active pool', active=True)
+    factories.assign(master, pool, pool_role='tribe_master', tribe='Короны')
+
+    response = client.post('/api/tribe-events', headers=auth_headers(master), json={
+        'tribe': 'Короны', 'title': 'Встреча', 'event_date': app_module._moscow_today().isoformat(),
+        'assistant_attending': True,
+    })
+    assert response.status_code == 400
+    assert app_module.TribeEvent.query.filter_by(pool_id=pool.id).count() == 0
 
 
 def test_old_pool_schedule_and_actions_are_rejected(client, factories, auth_headers):

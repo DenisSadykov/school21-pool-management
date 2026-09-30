@@ -465,6 +465,7 @@ class TribeEvent(db.Model):
     time_start = db.Column(db.String(5))
     location = db.Column(db.String(200))
     comment = db.Column(db.Text)
+    assistant_attending = db.Column(db.Boolean, nullable=False, default=False)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
 
@@ -3988,6 +3989,17 @@ def get_volunteers():
             .all()
         )
         tribe_event_counts = {normalize_tribe(tribe): int(total or 0) for tribe, total in tribe_event_rows if tribe}
+        assistant_event_rows = (
+            db.session.query(TribeEvent.tribe, db.func.count(TribeEvent.id))
+            .filter(
+                TribeEvent.pool_id == pool_id,
+                TribeEvent.assistant_attending.is_(True),
+                TribeEvent.event_date < _moscow_today(),
+            )
+            .group_by(TribeEvent.tribe)
+            .all()
+        )
+        assistant_event_counts = {normalize_tribe(tribe): int(total or 0) for tribe, total in assistant_event_rows if tribe}
 
         reward_events = (
             RewardEvent.query
@@ -4022,8 +4034,9 @@ def get_volunteers():
             normalized_tribe = normalize_tribe(pv.tribe) if pv.tribe else None
             tribe_events_count = 0
             if role in TRIBE_ACCESS_ROLES and normalized_tribe:
+                automatic_counts = tribe_event_counts if role == 'tribe_master' else assistant_event_counts
                 tribe_events_count = (pv.tribe_event_count_override if pv.tribe_event_count_override is not None
-                                      else tribe_event_counts.get(normalized_tribe, 0))
+                                      else automatic_counts.get(normalized_tribe, 0))
                 if tribe_events_count:
                     _add_reward(
                         buckets,
@@ -4240,8 +4253,14 @@ def calculate_pool_rewards(user, pool_id, has_confession, coins_adjustment, pool
     if has_confession:
         _add_reward(buckets, 'confession', 'Исповедь', 1, REWARD_RATES['confession'])
     if pool_role in TRIBE_ACCESS_ROLES and pv_tribe:
+        event_query = TribeEvent.query.filter_by(pool_id=pool_id, tribe=pv_tribe)
+        if pool_role == 'tribe_assistant':
+            event_query = event_query.filter(
+                TribeEvent.assistant_attending.is_(True),
+                TribeEvent.event_date < _moscow_today(),
+            )
         tribe_events_count = (tribe_event_count_override if tribe_event_count_override is not None
-                              else TribeEvent.query.filter_by(pool_id=pool_id, tribe=pv_tribe).count())
+                              else event_query.count())
         if tribe_events_count:
             _add_reward(
                 buckets,
@@ -5001,6 +5020,7 @@ def _tribe_event_to_dict(event):
         'time_start': event.time_start or '',
         'location': event.location or '',
         'comment': event.comment or '',
+        'assistant_attending': bool(event.assistant_attending),
         'created_by': _user_public_dict(creator) if creator else None,
     }
 
@@ -6103,13 +6123,10 @@ def my_tribe():
     students = students_query.order_by(Student.tribe, Student.nick).all()
     rankings = _tribe_rankings(pool_id)
     own_rank = next((row['rank'] for row in rankings if row['tribe'] == tribe), None)
-    next_events_query = TribeEvent.query.filter(
-        TribeEvent.pool_id == pool_id,
-        TribeEvent.event_date >= _moscow_today(),
-    )
+    meetings_query = TribeEvent.query.filter(TribeEvent.pool_id == pool_id)
     if tribe:
-        next_events_query = next_events_query.filter(TribeEvent.tribe == tribe)
-    next_events = next_events_query.order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe).all()
+        meetings_query = meetings_query.filter(TribeEvent.tribe == tribe)
+    meetings = meetings_query.order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe).all()
     student_ids = [student.id for student in students]
     event_rows = (
         db.session.query(StudentEvent, Student)
@@ -6121,11 +6138,22 @@ def my_tribe():
     )
     all_tribe_events = (
         TribeEvent.query
-        .filter(TribeEvent.pool_id == pool_id, TribeEvent.event_date >= _moscow_today())
+        .filter(TribeEvent.pool_id == pool_id)
         .order_by(TribeEvent.event_date, TribeEvent.time_start, TribeEvent.tribe)
         .all()
         if g.current_role in ('team_lead', 'admin') else []
     )
+    assistant_query = (
+        db.session.query(PoolVolunteer.tribe, User.nick)
+        .join(User, User.id == PoolVolunteer.user_id)
+        .filter(PoolVolunteer.pool_id == pool_id, PoolVolunteer.pool_role == 'tribe_assistant')
+    )
+    if g.current_role in TRIBE_ACCESS_ROLES:
+        assistant_query = assistant_query.filter(PoolVolunteer.tribe == tribe)
+    assistants_by_tribe = defaultdict(list)
+    for assistant_tribe, assistant_nick in assistant_query.all():
+        if assistant_tribe:
+            assistants_by_tribe[normalize_tribe(assistant_tribe)].append(assistant_nick)
     return jsonify({
         **_tribe_metrics(pool_id, tribe),
         'all_tribes_view': not bool(tribe),
@@ -6152,8 +6180,9 @@ def my_tribe():
             'status': event.status or 'pending',
             'comment': event.comment or '',
         } for event, student in event_rows],
-        'tribe_events': [_tribe_event_to_dict(event) for event in next_events],
+        'tribe_events': [_tribe_event_to_dict(event) for event in meetings],
         'all_tribe_events': [_tribe_event_to_dict(event) for event in all_tribe_events],
+        'assistants_by_tribe': assistants_by_tribe,
     })
 
 
@@ -6264,7 +6293,7 @@ def list_tribe_events():
 
 
 @app.route('/api/tribe-events', methods=['POST'])
-@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def create_tribe_event():
     data = request.json or {}
     pool_id, error = _active_pool_id_for_request(data.get('pool_id'))
@@ -6280,6 +6309,13 @@ def create_tribe_event():
         event_date = datetime.fromisoformat(data['event_date']).date()
     except ValueError:
         return jsonify({'error': 'Некорректная дата'}), 400
+    if 'assistant_attending' in data:
+        if type(data['assistant_attending']) is not bool:
+            return jsonify({'error': 'assistant_attending должен быть логическим значением'}), 400
+        if data['assistant_attending'] and not PoolVolunteer.query.filter_by(
+            pool_id=pool_id, pool_role='tribe_assistant', tribe=tribe,
+        ).first():
+            return jsonify({'error': 'В этом трайбе не назначен помощник трайб-мастера'}), 400
     event = TribeEvent(
         pool_id=pool_id,
         tribe=tribe,
@@ -6288,6 +6324,7 @@ def create_tribe_event():
         time_start=(data.get('time_start') or '').strip(),
         location=(data.get('location') or '').strip(),
         comment=(data.get('comment') or '').strip(),
+        assistant_attending=data.get('assistant_attending', False),
         created_by=g.user.id,
     )
     db.session.add(event)
@@ -6296,7 +6333,7 @@ def create_tribe_event():
 
 
 @app.route('/api/tribe-events/<int:event_id>', methods=['DELETE'])
-@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def delete_tribe_event(event_id):
     event = get_model_or_404(TribeEvent, event_id)
     error = _active_entity_error(event.pool_id)
@@ -6313,7 +6350,7 @@ def delete_tribe_event(event_id):
 
 
 @app.route('/api/tribe-events/<int:event_id>', methods=['PATCH'])
-@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def update_tribe_event(event_id):
     event = get_model_or_404(TribeEvent, event_id)
     error = _active_entity_error(event.pool_id)
@@ -6325,6 +6362,14 @@ def update_tribe_event(event_id):
             return jsonify({'error': 'Можно редактировать встречи только своего трайба'}), 403
 
     data = request.get_json(silent=True) or {}
+    if 'assistant_attending' in data:
+        if type(data['assistant_attending']) is not bool:
+            return jsonify({'error': 'assistant_attending должен быть логическим значением'}), 400
+        if data['assistant_attending'] and not event.assistant_attending and not PoolVolunteer.query.filter_by(
+            pool_id=event.pool_id, pool_role='tribe_assistant', tribe=event.tribe,
+        ).first():
+            return jsonify({'error': 'В этом трайбе не назначен помощник трайб-мастера'}), 400
+        event.assistant_attending = data['assistant_attending']
     if 'title' in data:
         title = (data.get('title') or '').strip()
         if not title:
@@ -6350,7 +6395,7 @@ def update_tribe_event(event_id):
 
 
 @app.route('/api/tribe-events/generate-standard', methods=['POST'])
-@require_role('tribe_master', 'tribe_assistant', 'team_lead', 'admin')
+@require_role('tribe_master', 'team_lead', 'admin')
 def generate_standard_tribe_events():
     data = request.json or {}
     pool_id = active_pool_id()
@@ -7628,12 +7673,17 @@ def ensure_user_profile_columns():
                     time_start VARCHAR(5),
                     location VARCHAR(200),
                     comment TEXT,
+                    assistant_attending BOOLEAN NOT NULL DEFAULT 0,
                     created_by INTEGER,
                     created_at DATETIME,
                     PRIMARY KEY (id),
                     FOREIGN KEY(created_by) REFERENCES users (id)
                 )
             """)
+        else:
+            tribe_event_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(tribe_events)').fetchall()}
+            if 'assistant_attending' not in tribe_event_cols:
+                conn.exec_driver_sql('ALTER TABLE tribe_events ADD COLUMN assistant_attending BOOLEAN NOT NULL DEFAULT 0')
         if 'schedule_generations' not in tables:
             conn.exec_driver_sql("""
                 CREATE TABLE schedule_generations (
@@ -8040,6 +8090,7 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS has_confession BOOLEAN DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS coins_adjustment INTEGER DEFAULT 0')
         conn.exec_driver_sql('ALTER TABLE pool_volunteers ADD COLUMN IF NOT EXISTS tribe_event_count_override INTEGER')
+        conn.exec_driver_sql('ALTER TABLE tribe_events ADD COLUMN IF NOT EXISTS assistant_attending BOOLEAN NOT NULL DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS max_uses INTEGER')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP')
 

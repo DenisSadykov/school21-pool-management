@@ -61,12 +61,12 @@ it('lets staff set and reset a tribe assistant event count', async () => {
   render(<MemoryRouter><Volunteers user={{ role: 'admin' }} /></MemoryRouter>);
 
   fireEvent.click(await screen.findByRole('button', { name: 'Управление @assistant' }));
-  fireEvent.change(screen.getByRole('spinbutton', { name: /Трайб-мероприятия/ }), { target: { value: '3' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: /Прошедшие встречи с отметкой/ }), { target: { value: '3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/volunteers/53', {
     pool_id: 13, tribe_event_count_override: 3,
   }));
-  fireEvent.click(screen.getByRole('button', { name: 'Считать автоматически по мероприятиям трайба' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Считать автоматически по встречам с отметкой помощника' }));
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/volunteers/53', {
     pool_id: 13, tribe_event_count_override: null,
   }));
