@@ -699,6 +699,22 @@
   padding: 8px;
 }
 
+.meeting-period + .meeting-period {
+  margin-top: 24px;
+}
+
+.meeting-period h3 {
+  margin: 12px 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.meeting-assistant-badge {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
 .meeting-empty {
   min-height: 30px;
   display: flex;
@@ -846,6 +862,26 @@
   gap: 6px;
   color: var(--text-secondary);
   font-size: 0.875rem;
+}
+
+.meeting-assistant-checkbox,
+.tribe-event-modal-body .meeting-assistant-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.meeting-assistant-checkbox input[type="checkbox"],
+.tribe-event-modal-body .meeting-assistant-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
 }
 
 .tribe-event-modal-body input,

@@ -166,6 +166,9 @@ function MyTribe({ user }) {
   const visibleTribeMeetings = allTribesView
     ? (data?.all_tribe_events || [])
     : (data?.tribe_events || []);
+  const assistantsByTribe = data?.assistants_by_tribe || {};
+  const canMarkAssistant = isStaff || isTribeMaster;
+  const canManageMeetings = isStaff || isTribeMaster;
   const toggleEventTribe = (tribe) => {
     if (!studentEventTribes.has(tribe)) return;
     setActiveEventTribes((current) => (
@@ -257,12 +260,14 @@ function MyTribe({ user }) {
         )}
       </section>
 
-      {!allTribesView && (
+      {!allTribesView && canManageMeetings && (
         <TribeEventForm
           tribe={selectedTribe}
           tribeIcon={selectedTribeIcon}
           onSuccess={() => load(selectedTribe)}
           onGenerateStandard={generateStandardTribeEvents}
+          assistantNicks={assistantsByTribe[selectedTribe] || []}
+          canMarkAssistant={canMarkAssistant}
         />
       )}
 
@@ -271,6 +276,8 @@ function MyTribe({ user }) {
         onDelete={deleteTribeEvent}
         onEdit={setEditingTribeEvent}
         tribeIcon={selectedTribeIcon}
+        isAssistantViewer={user?.role === 'tribe_assistant'}
+        canManage={canManageMeetings}
       />
 
       <StudentEventForm students={data?.students || []} onSuccess={() => load(selectedTribe)} />
@@ -379,6 +386,8 @@ function MyTribe({ user }) {
           event={editingTribeEvent}
           onClose={() => setEditingTribeEvent(null)}
           onSave={updateTribeEvent}
+          assistantNicks={assistantsByTribe[editingTribeEvent.tribe] || []}
+          canMarkAssistant={canMarkAssistant}
         />
       )}
     </div>
@@ -406,9 +415,65 @@ function buildMeetingDays(events) {
   return [...new Set(sorted.map((event) => event.date))];
 }
 
-function AllTribeMeetings({ events, onDelete, onEdit, tribeIcon }) {
+function MeetingDayCards({ events, onDelete, onEdit, past = false, isAssistantViewer = false, canManage = true }) {
   const sortedEvents = [...events].sort((a, b) => `${a.date} ${a.time_start || ''}`.localeCompare(`${b.date} ${b.time_start || ''}`));
   const days = buildMeetingDays(sortedEvents);
+  if (past) days.reverse();
+
+  return (
+    <div className="meeting-day-grid">
+      {days.map((day) => {
+        const dayEvents = sortedEvents.filter((event) => event.date === day);
+        return (
+          <div className="meeting-day-card has-events" key={day}>
+            <div className="meeting-day-head">
+              <span>{formatMeetingWeekday(day)}</span>
+              <strong>{formatMeetingDate(day)}</strong>
+            </div>
+            <div className="meeting-slots">
+              {dayEvents.map((event) => (
+                <div className="meeting-slot" key={event.id}>
+                  <div className="meeting-slot-top">
+                    <strong>{event.time_start || 'без времени'}</strong>
+                    <div className="meeting-slot-actions">
+                      <span className="meeting-tribe"><TribeLabel tribe={event.tribe} size={14} /></span>
+                      {canManage && (
+                        <>
+                          <button type="button" className="meeting-action" onClick={() => onEdit(event)}
+                            title="Редактировать встречу" aria-label={`Редактировать встречу ${event.title}`}>
+                            <Pencil size={14} />
+                          </button>
+                          <button type="button" className="meeting-action meeting-delete" onClick={() => onDelete(event)}
+                            title="Удалить встречу" aria-label={`Удалить встречу ${event.title}`}>
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p>{event.title}</p>
+                  {event.location && <small>{event.location}</small>}
+                  {(isAssistantViewer || event.assistant_attending) && (
+                    <small className="meeting-assistant-badge">
+                      {isAssistantViewer
+                        ? (event.assistant_attending ? (past ? 'Вы участвовали' : 'Вы будете участвовать') : 'Ваше участие не отмечено')
+                        : (past ? 'Помощник был' : 'Помощник будет')}
+                    </small>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AllTribeMeetings({ events, onDelete, onEdit, tribeIcon, isAssistantViewer, canManage }) {
+  const today = todayIso();
+  const upcoming = events.filter((event) => event.date >= today);
+  const past = events.filter((event) => event.date < today);
 
   return (
     <section className="tribe-panel tribe-meetings-schedule">
@@ -416,67 +481,23 @@ function AllTribeMeetings({ events, onDelete, onEdit, tribeIcon }) {
       {events.length === 0 ? (
         <p className="text-muted">Пока нет назначенных встреч трайбов.</p>
       ) : (
-        <div className="meeting-day-grid">
-          {days.map((day) => {
-            const dayEvents = sortedEvents.filter((event) => event.date === day);
-            return (
-              <div className={`meeting-day-card ${dayEvents.length ? 'has-events' : ''}`} key={day}>
-                <div className="meeting-day-head">
-                  <span>{formatMeetingWeekday(day)}</span>
-                  <strong>{formatMeetingDate(day)}</strong>
-                </div>
-                <div className="meeting-slots">
-                  {dayEvents.length === 0 ? (
-                    <span className="meeting-empty">—</span>
-                  ) : (
-                    dayEvents.map((event) => (
-                      <div className="meeting-slot" key={event.id}>
-                        <div className="meeting-slot-top">
-                          <strong>{event.time_start || 'без времени'}</strong>
-                          <div className="meeting-slot-actions">
-                            <span className="meeting-tribe"><TribeLabel tribe={event.tribe} size={14} /></span>
-                            <button
-                              type="button"
-                              className="meeting-action"
-                              onClick={() => onEdit(event)}
-                              title="Редактировать встречу"
-                              aria-label={`Редактировать встречу ${event.title}`}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="meeting-action meeting-delete"
-                              onClick={() => onDelete(event)}
-                              title="Удалить встречу"
-                              aria-label={`Удалить встречу ${event.title}`}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                        <p>{event.title}</p>
-                        {event.location && <small>{event.location}</small>}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          {upcoming.length > 0 && <div className="meeting-period"><h3>Предстоящие</h3><MeetingDayCards events={upcoming} onDelete={onDelete} onEdit={onEdit} isAssistantViewer={isAssistantViewer} canManage={canManage} /></div>}
+          {past.length > 0 && <div className="meeting-period"><h3>Прошедшие</h3><MeetingDayCards events={past} onDelete={onDelete} onEdit={onEdit} past isAssistantViewer={isAssistantViewer} canManage={canManage} /></div>}
+        </>
       )}
     </section>
   );
 }
 
-function TribeEventEditModal({ event, onClose, onSave }) {
+function TribeEventEditModal({ event, onClose, onSave, assistantNicks, canMarkAssistant }) {
   const [form, setForm] = useState({
     title: event.title || '',
     event_date: event.date || todayIso(),
     time_start: event.time_start || '',
     location: event.location || '',
     comment: event.comment || '',
+    assistant_attending: Boolean(event.assistant_attending),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -490,7 +511,10 @@ function TribeEventEditModal({ event, onClose, onSave }) {
     setSaving(true);
     setError('');
     try {
-      await onSave(event.id, form);
+      const { assistant_attending: attending, ...otherFields } = form;
+      await onSave(event.id, canMarkAssistant && (assistantNicks.length > 0 || event.assistant_attending)
+        ? { ...otherFields, assistant_attending: attending }
+        : otherFields);
     } catch (submitError) {
       setError(submitError.message);
       setSaving(false);
@@ -536,6 +560,13 @@ function TribeEventEditModal({ event, onClose, onSave }) {
             Комментарий
             <textarea value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
           </label>
+          {canMarkAssistant && (assistantNicks.length > 0 || event.assistant_attending) && (
+            <label className="meeting-assistant-checkbox">
+              <input type="checkbox" checked={form.assistant_attending}
+                onChange={(e) => setForm({ ...form, assistant_attending: e.target.checked })} />
+              Помощник трайб-мастера {assistantNicks.map((nick) => `@${nick}`).join(', ')} был или будет присутствовать
+            </label>
+          )}
           {error && <p className="tribe-event-modal-error">{error}</p>}
         </div>
         <div className="tribe-event-modal-actions">
@@ -711,14 +742,17 @@ function StudentEventForm({ students, onSuccess }) {
   );
 }
 
-function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard }) {
+function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard, assistantNicks, canMarkAssistant }) {
   const [form, setForm] = useState({
     title: '',
     event_date: todayIso(),
     time_start: '',
     location: '',
     comment: '',
+    assistant_attending: false,
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const submit = async (e) => {
     e.preventDefault();
@@ -726,9 +760,22 @@ function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard }) {
       alert('Введите название встречи');
       return;
     }
-    await api.post('/api/tribe-events', { ...form, tribe });
-    setForm({ title: '', event_date: todayIso(), time_start: '', location: '', comment: '' });
-    onSuccess();
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const { assistant_attending: attending, ...otherFields } = form;
+      await api.post('/api/tribe-events', {
+        ...otherFields,
+        tribe,
+        ...(canMarkAssistant && assistantNicks.length > 0 ? { assistant_attending: attending } : {}),
+      });
+      setForm({ title: '', event_date: todayIso(), time_start: '', location: '', comment: '', assistant_attending: false });
+      onSuccess();
+    } catch (error) {
+      setSubmitError(error.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -757,12 +804,20 @@ function TribeEventForm({ tribe, tribeIcon, onSuccess, onGenerateStandard }) {
           Комментарий
           <textarea value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
         </label>
+        {canMarkAssistant && assistantNicks.length > 0 && (
+          <label className="full meeting-assistant-checkbox">
+            <input type="checkbox" checked={form.assistant_attending}
+              onChange={(e) => setForm({ ...form, assistant_attending: e.target.checked })} />
+            Помощник трайб-мастера {assistantNicks.map((nick) => `@${nick}`).join(', ')} был или будет присутствовать
+          </label>
+        )}
       </div>
+      {submitError && <p className="tribe-event-modal-error" role="alert">{submitError}</p>}
       <div className="tribe-meeting-actions">
         <button className="btn-secondary" type="button" onClick={onGenerateStandard}>
           Стандартное расписание встреч
         </button>
-        <button className="btn-primary" type="submit"><CalendarPlus size={18} /> Добавить встречу</button>
+        <button className="btn-primary" type="submit" disabled={submitting}><CalendarPlus size={18} /> {submitting ? 'Добавляем…' : 'Добавить встречу'}</button>
       </div>
     </form>
   );

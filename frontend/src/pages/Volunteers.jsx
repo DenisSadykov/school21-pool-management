@@ -560,7 +560,11 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate, canChangeRole = true }) 
           </label>
           {['tribe_master', 'tribe_assistant'].includes(v.role) && v.tribe && (
             <div className="tribe-event-editor">
-              <label htmlFor={`tribe-events-${v.id}`}>Трайб-мероприятия · 30 коинов за каждое</label>
+              <label htmlFor={`tribe-events-${v.id}`}>
+                {v.role === 'tribe_assistant'
+                  ? 'Прошедшие встречи с отметкой · 30 коинов за каждую'
+                  : 'Трайб-мероприятия · 30 коинов за каждое'}
+              </label>
               <div className="tribe-event-editor-controls">
                 <input
                   id={`tribe-events-${v.id}`}
@@ -580,7 +584,9 @@ function VolunteerActionsMenu({ volunteer: v, onUpdate, canChangeRole = true }) 
               </div>
               {v.tribe_event_count_override !== null && v.tribe_event_count_override !== undefined && (
                 <button type="button" className="tribe-event-auto" onClick={() => onUpdate(v.id, { tribe_event_count_override: null })}>
-                  Считать автоматически по мероприятиям трайба
+                  {v.role === 'tribe_assistant'
+                    ? 'Считать автоматически по встречам с отметкой помощника'
+                    : 'Считать автоматически по мероприятиям трайба'}
                 </button>
               )}
             </div>
@@ -632,7 +638,12 @@ function TribeRoleRow({ volunteer: v, tribes, isStaff, onUpdate }) {
       <td data-label="Дополнения">
         <div className="status-list">
           {v.role === 'tribe_assistant' && <span className="status-pill role-tribe_assistant">Помощник</span>}
-          {v.tribe && <span className="status-pill group">Мероприятия: {v.tribe_event_count ?? 0}</span>}
+          {v.tribe && (
+            <span className="status-pill group">
+              Мероприятия: {v.tribe_event_count ?? 0}
+              {v.tribe_event_count_override !== null && v.tribe_event_count_override !== undefined ? ' · вручную' : ''}
+            </span>
+          )}
           {v.has_confession && <span className="status-pill confession">Исповедь</span>}
         </div>
       </td>
