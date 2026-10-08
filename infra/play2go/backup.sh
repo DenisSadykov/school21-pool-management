@@ -19,6 +19,12 @@ docker compose -f "$task_compose" exec -T db pg_restore --list \
 mv "$task_dump.partial" "$task_dump"
 sha256sum "$task_dump" > "$task_dump.sha256"
 task_config="$task_backup_dir/config-$task_stamp.tar.gz"
-tar -czf "$task_config" -C "$task_root" infra/play2go .dockerignore
+task_config_paths=(infra/play2go .dockerignore)
+for task_settings in secure/production-settings.env secure/frontend-settings.env; do
+  if [[ -f "$task_root/$task_settings" ]]; then
+    task_config_paths+=("$task_settings")
+  fi
+done
+tar -czf "$task_config" -C "$task_root" "${task_config_paths[@]}"
 sha256sum "$task_config" > "$task_config.sha256"
 printf 'Verified archive: %s\nProtected configuration: %s\n' "$task_dump" "$task_config"
