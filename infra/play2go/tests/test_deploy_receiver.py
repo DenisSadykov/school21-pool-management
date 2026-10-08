@@ -26,6 +26,12 @@ def archive(files):
 FILES = {'backend/app.py': b'app', 'backend/requirements.txt': b'', 'frontend/build/index.html': b'new'}
 
 
+def test_public_directories_are_accessible_to_nginx(tmp_path):
+    receiver.unpack(archive({**FILES, 'frontend/build/static/js/main.js': b'js'}), tmp_path)
+    for directory in ['frontend/build', 'frontend/build/static', 'frontend/build/static/js']:
+        assert (tmp_path / directory).stat().st_mode & 0o777 == 0o755
+
+
 @pytest.mark.parametrize('name', ['/etc/passwd', 'backend/../../etc/passwd', 'secure/key', 'backend/.env'])
 def test_rejects_unsafe_paths(tmp_path, name):
     with pytest.raises(ValueError):

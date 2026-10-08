@@ -89,6 +89,12 @@ def unpack(data, target):
     for expected in ['backend/app.py', 'backend/requirements.txt', 'frontend/build/index.html']:
         if not (target / expected).is_file():
             raise ValueError('Incomplete application release')
+    # Nginx workers are unprivileged; only the mounted public tree is traversable.
+    public = target / 'frontend/build'
+    public.chmod(0o755)
+    for directory in public.rglob('*'):
+        if directory.is_dir():
+            directory.chmod(0o755)
 
 
 def main():
