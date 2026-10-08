@@ -1,10 +1,13 @@
 """Read-only checks, using an in-memory token rather than a stored password."""
 import json
+import sys
 import urllib.request
-from app import app, User, make_token
+from app import app, db, User, make_token
 
 try:
     with app.app_context():
+        if 'readonly' in sys.argv:
+            assert db.session.execute(db.text('SHOW default_transaction_read_only')).scalar() == 'on'
         user = User.query.filter_by(role='admin', active=True).first()
         if user is None:
             raise RuntimeError('No active admin')

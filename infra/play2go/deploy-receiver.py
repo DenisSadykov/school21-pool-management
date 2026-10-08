@@ -55,8 +55,11 @@ def healthy(container):
     raise RuntimeError('Container health check failed')
 
 
-def smoke(container):
-    run(['docker', 'exec', '-i', container, 'python', '-'], input=SMOKE.read_bytes())
+def smoke(container, readonly=False):
+    args = ['docker', 'exec', '-i', container, 'python', '-']
+    if readonly:
+        args.append('readonly')
+    run(args, input=SMOKE.read_bytes())
 
 
 def unpack(data, target):
@@ -116,6 +119,8 @@ def main():
     try:
         run(['docker', 'build', '-f', str(ROOT / 'infra/play2go/Dockerfile.api'), '-t', image, str(release)])
         config = json.loads(output(['docker', 'inspect', BACKEND]))[0]['Config']['Env']
+        config = [entry for entry in config if not entry.startswith('PGOPTIONS=')]
+        config.append('PGOPTIONS=-c default_transaction_read_only=on')
         env_path.write_text('\n'.join(config) + '\n')
         env_path.chmod(0o600)
         run(['docker', 'run', '-d', '--name', candidate,
@@ -124,7 +129,7 @@ def main():
              'python -c "import urllib.request; urllib.request.urlopen(\'http://127.0.0.1:5000/api/health\', timeout=5)"',
              '--health-interval', '2s', '--health-retries', '15', image], stdout=subprocess.DEVNULL)
         healthy(candidate)
-        smoke(candidate)
+        smoke(candidate, readonly=True)
         run(['systemctl', 'start', 'pool-copy-backup.service'])
         if active_timers:
             stopped_timers = True

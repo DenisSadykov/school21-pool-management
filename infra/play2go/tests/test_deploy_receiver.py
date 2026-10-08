@@ -63,7 +63,7 @@ def test_activation_and_rollback_preserve_data(tmp_path, monkeypatch, failure_ph
     monkeypatch.setattr(receiver.subprocess, 'run', run)
     monkeypatch.setattr(receiver, 'healthy', lambda _: None)
     failed = False
-    def smoke(container):
+    def smoke(container, readonly=False):
         nonlocal failed
         if not failed and ((failure_phase == 'candidate' and container != receiver.BACKEND) or (failure_phase == 'live' and container == receiver.BACKEND)):
             failed = True
