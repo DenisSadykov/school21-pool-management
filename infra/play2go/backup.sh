@@ -21,7 +21,8 @@ sha256sum "$task_dump" > "$task_dump.sha256"
 task_config="$task_backup_dir/config-$task_stamp.tar.gz"
 task_config_paths=(infra/play2go .dockerignore)
 for task_settings in secure/production-settings.env secure/frontend-settings.env \
-  secure/integration-settings-status.json secure/source-integration-config.json; do
+  secure/integration-settings-status.json secure/source-integration-config.json \
+  secure/local-project-settings.tar.gz; do
   if [[ -f "$task_root/$task_settings" ]]; then
     task_config_paths+=("$task_settings")
   fi
