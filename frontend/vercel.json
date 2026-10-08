@@ -2,12 +2,12 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "https://pool.31.77.148.136.nip.io",
+      "destination": "https://school21pool.ru",
       "permanent": false
     },
     {
       "source": "/:path*",
-      "destination": "https://pool.31.77.148.136.nip.io/:path*",
+      "destination": "https://school21pool.ru/:path*",
       "permanent": false
     }
   ],

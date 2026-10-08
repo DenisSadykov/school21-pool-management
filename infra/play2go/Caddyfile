@@ -4,6 +4,15 @@
     }
 }
 {$PUBLIC_HOST} {
+    @old_web not path /api/*
+    redir @old_web https://school21pool.ru{uri} temporary
     encode gzip
     reverse_proxy web:80
+}
+school21pool.ru {
+    encode gzip
+    reverse_proxy web:80
+}
+www.school21pool.ru {
+    redir https://school21pool.ru{uri} permanent
 }
