@@ -53,12 +53,13 @@ function Manage({ user }) {
       ) : (
         <>
           <section className="manage-section">
-            <h2>Стандартное расписание</h2>
+            <h2>Шаблон расписания</h2>
             {activePool.start_date ? (
               <>
                 <p className="muted">
-                  Генерирует 14-дневный шаблон School21 pool: стартовый понедельник 09:00–19:00 и 19:00–20:00,
-                  по четвергам — EXAM 11:00–17:00, остальные дни — слоты 10:00–14:00 и 15:00–19:00.
+                  Стандартный шаблон: экзамены по четвергам 11:00–17:00. Для бассейна Python —
+                  обычные смены по четвергам и экзамены по пятницам: 13:00–15:00 (5 мест,
+                  во вторую пятницу 4) и 16:00–19:00 (2 места). Остальные дни без изменений.
                 </p>
                 <GenerateScheduleForm pool={activePool} onDone={async (t) => {
                   setMsg(t);
@@ -236,14 +237,20 @@ function SmallAvatar({ person }) {
 function GenerateScheduleForm({ pool, onDone }) {
   const [loading, setLoading] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const [template, setTemplate] = useState(/python|пайтон/i.test(pool?.name || '') ? 'python' : 'standard');
   const poolId = pool?.id;
+
+  useEffect(() => {
+    setTemplate(/python|пайтон/i.test(pool?.name || '') ? 'python' : 'standard');
+  }, [poolId, pool?.name]);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!window.confirm('Сгенерировать стандартный бассейн на 14 дней? Существующие блоки не удаляются.')) return;
+    const templateName = template === 'python' ? 'Python' : 'стандартный';
+    if (!window.confirm(`Сгенерировать ${templateName} шаблон на 14 дней? Блоки с записанными волонтёрами не будут удалены.`)) return;
     setLoading(true);
     try {
-      const res = await api.post(`/api/pools/${poolId}/generate-schedule`, {});
+      const res = await api.post(`/api/pools/${poolId}/generate-schedule`, { template });
       onDone(res.message || 'Расписание создано');
     } catch (err) {
       alert(err.message);
@@ -273,6 +280,13 @@ function GenerateScheduleForm({ pool, onDone }) {
         </div>
       )}
       <form className="inline-form schedule-generator-actions" onSubmit={submit}>
+        <label className="schedule-generator-template">
+          Расписание
+          <select value={template} onChange={(e) => setTemplate(e.target.value)} disabled={loading}>
+            <option value="standard">Стандартный бассейн</option>
+            <option value="python">Бассейн Python</option>
+          </select>
+        </label>
         <button className="btn-primary" type="submit" disabled={loading}>
           <Plus size={16} /> {loading ? 'Создаю...' : 'Сгенерировать бассейн на 14 дней'}
         </button>

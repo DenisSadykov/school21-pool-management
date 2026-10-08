@@ -3603,8 +3603,22 @@ _SCHEDULE_TPL = {
     13: [('10:00', '14:00', '', 1), ('15:00', '19:00', '', 1)],
 }
 
+_PYTHON_SCHEDULE_TPL = {
+    3: _SCHEDULE_TPL[2],
+    4: [('13:00', '15:00', 'EXAM', 5), ('16:00', '19:00', 'EXAM', 2)],
+    10: _SCHEDULE_TPL[9],
+    11: [('13:00', '15:00', 'EXAM', 4), ('16:00', '19:00', 'EXAM', 2)],
+}
 
-def _schedule_template_for_day(day_index):
+
+def _schedule_template_for_day(day_index, template='standard'):
+    if template == 'python':
+        if day_index in _PYTHON_SCHEDULE_TPL:
+            return _PYTHON_SCHEDULE_TPL[day_index]
+        if day_index >= 14 and day_index % 7 == 3:
+            return _SCHEDULE_TPL[9]
+        if day_index >= 14 and day_index % 7 == 4:
+            return _PYTHON_SCHEDULE_TPL[11]
     if day_index in _SCHEDULE_TPL:
         return _SCHEDULE_TPL[day_index]
     weekday = day_index % 7
@@ -3625,6 +3639,9 @@ def generate_schedule(pool_id):
     if not pool.start_date:
         return jsonify({'error': 'У бассейна не задана дата начала'}), 400
     data = request.json or {}
+    template = data.get('template', 'standard')
+    if template not in ('standard', 'python'):
+        return jsonify({'error': 'Неизвестный шаблон расписания'}), 400
     try:
         raw_end_date = data.get('end_date')
         end_date = (
@@ -3637,15 +3654,36 @@ def generate_schedule(pool_id):
     if end_date < pool.start_date:
         return jsonify({'error': 'Дата окончания раньше даты начала'}), 400
 
+    # При смене шаблона убираем только старые сгенерированные блоки в изменённых
+    # днях. Ручные блоки и блоки с записью волонтёров не удаляем.
+    stale_blocks = []
+    for day_index in range((end_date - pool.start_date).days + 1):
+        if day_index % 14 not in (3, 4, 10, 11):
+            continue
+        current = pool.start_date + timedelta(days=day_index)
+        expected = set(_schedule_template_for_day(day_index, template))
+        for block in ShiftBlock.query.filter_by(pool_id=pool_id, date=current).all():
+            if (block.time_start, block.time_end, block.label, block.capacity) in expected:
+                continue
+            # Изменённую вручную вместимость правильного блока обновит цикл ниже.
+            if any((block.time_start, block.time_end, block.label) == row[:3] for row in expected):
+                continue
+            if block.generation_id is None or Signup.query.filter_by(block_id=block.id).first():
+                return jsonify({'error': f'На {current.isoformat()} есть другой блок или запись на смену. Измените этот день вручную перед сменой шаблона.'}), 409
+            stale_blocks.append(block)
+
     created = 0
     updated = 0
+    replaced = len(stale_blocks)
+    for block in stale_blocks:
+        db.session.delete(block)
     generation = ScheduleGeneration(pool_id=pool.id, end_date=end_date, created_by=g.user.id)
     db.session.add(generation)
     db.session.flush()
     current = pool.start_date
     day_index = 0
     while current <= end_date:
-        tpl = _schedule_template_for_day(day_index)
+        tpl = _schedule_template_for_day(day_index, template)
         for t1, t2, label, cap in tpl:
             existing = ShiftBlock.query.filter_by(
                 pool_id=pool_id,
@@ -3678,7 +3716,8 @@ def generate_schedule(pool_id):
     return jsonify({
         'created': created,
         'updated': updated,
-        'message': f'Создано {created} тайм-блоков, обновлено {updated}',
+        'replaced': replaced,
+        'message': f'Создано {created} тайм-блоков, обновлено {updated}, заменено {replaced}',
     })
 
 
