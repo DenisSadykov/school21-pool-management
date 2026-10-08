@@ -73,30 +73,43 @@ async function request(path, { method = 'GET', body } = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // Retry reads only: repeating a write after a timeout can create duplicates.
+  const attempts = method === 'GET' ? 2 : 1;
   let res;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
+  let data;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      res = await fetch(`${API_URL}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      data = null;
+      try {
+        data = await res.json();
+      } catch (error) {
+        // Keep the deadline active while the response body is being received.
+        if (error.name === 'AbortError' || error instanceof TypeError) throw error;
+        /* empty or non-JSON response */
+      }
+      if (attempt + 1 < attempts && [502, 503, 504].includes(res.status)) continue;
+      break;
+    } catch (error) {
+      const temporary = error.name === 'AbortError' || error instanceof TypeError;
+      if (temporary && attempt + 1 < attempts) continue;
+      if (error.name === 'AbortError') {
+        throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
+      }
+      if (error instanceof TypeError) {
+        throw new Error('Не удалось связаться с сервером. Проверь подключение и попробуй ещё раз.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-
-  let data = null;
-  try {
-    data = await res.json();
-  } catch (e) {
-    /* пустой ответ */
   }
 
   if (res.status === 401) {
