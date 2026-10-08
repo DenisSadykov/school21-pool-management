@@ -3605,9 +3605,9 @@ _SCHEDULE_TPL = {
 
 _PYTHON_SCHEDULE_TPL = {
     3: _SCHEDULE_TPL[2],
-    4: [('13:00', '15:00', 'EXAM', 5), ('16:00', '19:00', 'EXAM', 2)],
+    4: [('13:00', '15:00', 'EXAM', 5), ('16:00', '19:00', '', 2)],
     10: _SCHEDULE_TPL[9],
-    11: [('13:00', '15:00', 'EXAM', 4), ('16:00', '19:00', 'EXAM', 2)],
+    11: [('13:00', '15:00', 'EXAM', 4), ('16:00', '19:00', '', 2)],
 }
 
 
@@ -3662,11 +3662,15 @@ def generate_schedule(pool_id):
             continue
         current = pool.start_date + timedelta(days=day_index)
         expected = set(_schedule_template_for_day(day_index, template))
-        for block in ShiftBlock.query.filter_by(pool_id=pool_id, date=current).all():
+        day_blocks = ShiftBlock.query.filter_by(pool_id=pool_id, date=current).all()
+        for block in day_blocks:
             if (block.time_start, block.time_end, block.label, block.capacity) in expected:
                 continue
-            # Изменённую вручную вместимость правильного блока обновит цикл ниже.
-            if any((block.time_start, block.time_end, block.label) == row[:3] for row in expected):
+            # Время совпадает: меняем метку и вместимость на том же блоке,
+            # чтобы сохранить его ID и записи волонтёров.
+            if any((block.time_start, block.time_end) == row[:2] for row in expected):
+                if sum((other.time_start, other.time_end) == (block.time_start, block.time_end) for other in day_blocks) > 1:
+                    return jsonify({'error': f'На {current.isoformat()} есть несколько блоков на одно время. Исправьте их вручную.'}), 409
                 continue
             if block.generation_id is None or Signup.query.filter_by(block_id=block.id).first():
                 return jsonify({'error': f'На {current.isoformat()} есть другой блок или запись на смену. Измените этот день вручную перед сменой шаблона.'}), 409
@@ -3696,6 +3700,14 @@ def generate_schedule(pool_id):
                 if existing.capacity != cap:
                     existing.capacity = cap
                     updated += 1
+                continue
+            same_time = ShiftBlock.query.filter_by(
+                pool_id=pool_id, date=current, time_start=t1, time_end=t2,
+            ).first()
+            if same_time and day_index % 14 in (3, 4, 10, 11):
+                same_time.label = label
+                same_time.capacity = cap
+                updated += 1
                 continue
             db.session.add(
                 ShiftBlock(
