@@ -1,0 +1,10 @@
+[Unit]
+Description=School21 isolated copy backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/school21-pool-copy
+ExecStart=/bin/bash /opt/school21-pool-copy/infra/play2go/backup.sh
+UMask=0077
