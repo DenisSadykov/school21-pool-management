@@ -1,0 +1,9 @@
+{
+    servers {
+        protocols h1 h2
+    }
+}
+{$PUBLIC_HOST} {
+    encode gzip
+    reverse_proxy web:80
+}

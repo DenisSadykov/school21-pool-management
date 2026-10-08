@@ -1,0 +1,79 @@
+name: school21-pool-copy
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-pool.sh:ro
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=60]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d pool"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [database]
+  backend:
+    build:
+      context: ../..
+      dockerfile: infra/play2go/Dockerfile.api
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      DATABASE_URL: postgresql+psycopg://pool_app:${DB_PASSWORD}@db:5432/pool
+      SECRET_KEY: ${SECRET_KEY:?required}
+      FLASK_ENV: production
+      FLASK_DEBUG: "false"
+      SKIP_LOCAL_DOTENV: "true"
+      AUTO_INIT_DB: "false"
+      RUN_SCHEMA_MIGRATIONS: "false"
+      AUTO_START_WORKERS: "false"
+      AUTO_SYNC_TELEGRAM_COMMANDS: "false"
+      FRONTEND_URL: https://${PUBLIC_HOST}
+      TELEGRAM_BOT_TOKEN: ""
+      SYNC_WEBHOOK_URL: ""
+      INTERNAL_API_SECRET: ""
+      VERCEL: "false"
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [database, application]
+  web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    volumes:
+      - ../../frontend/build:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend: {condition: service_healthy}
+    networks: [application]
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?required}
+    ports: ["80:80/tcp", "443:443/tcp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+    networks: [application, egress]
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
+networks:
+  database: {internal: true}
+  application: {internal: true}
+  egress:
