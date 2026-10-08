@@ -1,0 +1,10 @@
+[Unit]
+Description=School21 Google Sheets export every five minutes
+
+[Timer]
+OnBootSec=300
+OnUnitActiveSec=300
+Unit=pool-sheets.service
+
+[Install]
+WantedBy=timers.target

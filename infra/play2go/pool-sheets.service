@@ -1,0 +1,10 @@
+[Unit]
+Description=School21 production Google Sheets export
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/school21-pool-copy
+ExecStart=/bin/bash -c 'docker compose --env-file infra/play2go/.env --env-file secure/telegram-bot.env --env-file secure/runtime-integrations.env -f infra/play2go/compose.yaml -f infra/play2go/compose.production.yaml exec -T backend python - google-sheets < infra/play2go/dispatch.py'
+TimeoutStartSec=190

@@ -1,6 +1,16 @@
 import app as app_module
 
 
+def test_maintenance_blocks_requests_but_keeps_health(client, monkeypatch):
+    monkeypatch.setenv('PLATFORM_MAINTENANCE', 'true')
+    response = client.post('/api/auth/login', json={'nick': 'admin'})
+    assert response.status_code == 503
+    assert response.headers['Retry-After'] == '60'
+    assert client.get('/api/health').status_code == 200
+    monkeypatch.delenv('PLATFORM_MAINTENANCE')
+    assert client.post('/api/auth/login', json={}).status_code == 400
+
+
 def test_health_returns_ok(client):
     response = client.get('/api/health')
 

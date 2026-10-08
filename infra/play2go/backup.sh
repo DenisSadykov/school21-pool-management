@@ -10,8 +10,11 @@ flock -n 9 || exit 0
 task_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 task_dump="$task_backup_dir/pool-$task_stamp.dump"
 task_compose="$task_root/infra/play2go/compose.yaml"
+task_database="$(docker compose -f "$task_compose" exec -T backend python -c \
+  'import os; from urllib.parse import urlsplit; print(urlsplit(os.environ["DATABASE_URL"]).path.lstrip("/"))')"
+[[ "$task_database" =~ ^[a-zA-Z0-9_]+$ ]]
 docker compose -f "$task_compose" exec -T db \
-  pg_dump -U postgres -d pool -Fc --schema=public --no-owner --no-acl \
+  pg_dump -U postgres -d "$task_database" -Fc --schema=public --no-owner --no-acl \
   --no-publications --no-subscriptions > "$task_dump.partial"
 test -s "$task_dump.partial"
 docker compose -f "$task_compose" exec -T db pg_restore --list \
@@ -22,7 +25,8 @@ task_config="$task_backup_dir/config-$task_stamp.tar.gz"
 task_config_paths=(infra/play2go .dockerignore)
 for task_settings in secure/production-settings.env secure/frontend-settings.env \
   secure/integration-settings-status.json secure/source-integration-config.json \
-  secure/local-project-settings.tar.gz secure/telegram-bot.env; do
+  secure/local-project-settings.tar.gz secure/telegram-bot.env \
+  secure/runtime-integrations.env; do
   if [[ -f "$task_root/$task_settings" ]]; then
     task_config_paths+=("$task_settings")
   fi
