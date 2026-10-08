@@ -71,6 +71,15 @@ def get_model_or_404(model, obj_id):
 
 app = Flask(__name__)
 
+
+@app.before_request
+def platform_maintenance():
+    if _env_flag('PLATFORM_MAINTENANCE') and request.path != '/api/health':
+        response = jsonify({'error': 'Платформа переключается на новый сервер. Повторите позже.'})
+        response.status_code = 503
+        response.headers['Retry-After'] = '60'
+        return response
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///pool.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = database_engine_options()

@@ -1,5 +1,5 @@
 // Единый клиент API: базовый URL, токен авторизации, обработка ошибок.
-export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+export const API_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5001');
 const REQUEST_TIMEOUT_MS = 15000;
 export const SESSION_INVALIDATED_EVENT = 'app:session-invalidated';
 

@@ -1,4 +1,16 @@
 {
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://school21pool.ru",
+      "permanent": false
+    },
+    {
+      "source": "/:path*",
+      "destination": "https://school21pool.ru/:path*",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

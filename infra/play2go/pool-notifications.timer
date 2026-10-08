@@ -1,0 +1,10 @@
+[Unit]
+Description=School21 notification delivery every minute
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+Unit=pool-notifications.service
+
+[Install]
+WantedBy=timers.target

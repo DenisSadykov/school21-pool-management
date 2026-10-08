@@ -1,0 +1,1 @@
+pool-deploy ALL=(root) NOPASSWD: /usr/local/sbin/school21-deploy

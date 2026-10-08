@@ -1,0 +1,18 @@
+services:
+  backend:
+    env_file:
+      - ../../secure/telegram-bot.env
+      - ../../secure/runtime-integrations.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://pool_app:${DB_PASSWORD}@db:5432/${LIVE_DATABASE:?required}
+      FRONTEND_URL: https://school21pool.ru,https://${PUBLIC_HOST}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?required}
+      TELEGRAM_BOT_USERNAME: school21_pool_bot
+      TELEGRAM_TEST_MODE: "false"
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:?required}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?required}
+      SYNC_SECRET: ${SYNC_SECRET:-}
+      SYNC_WEBHOOK_URL: ""
+      NOTIFICATION_DISPATCH_URL: http://127.0.0.1:5000/api/notifications/dispatch
+    # Outbound Telegram/Google access; DB remains on its private network only.
+    networks: [database, application, egress]

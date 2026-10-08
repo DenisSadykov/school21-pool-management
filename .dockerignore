@@ -1,0 +1,17 @@
+.git
+**/.env
+**/.env.*
+**/.vercel
+**/node_modules
+**/venv
+**/.venv
+**/__pycache__
+**/build
+**/backups
+secure
+**/*.db
+**/*.sqlite*
+**/*.dump
+**/*.log
+**/google_key.json
+.DS_Store
