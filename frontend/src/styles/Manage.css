@@ -67,6 +67,19 @@
   align-items: stretch;
 }
 
+.schedule-generator-template {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.schedule-generator-template select {
+  width: 100%;
+}
+
 .schedule-generator-actions .btn-primary,
 .schedule-generator-actions .btn-secondary {
   width: 100%;
