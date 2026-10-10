@@ -457,7 +457,7 @@
 }
 
 .penalty-hours {
-  background: rgba(207, 34, 46, 0.12);
+  background-color: rgba(207, 34, 46, 0.12);
   color: var(--danger);
   border: 1px solid rgba(207, 34, 46, 0.28);
   padding: 1px 7px;
@@ -474,6 +474,12 @@
 
 .penalty-hours-select {
   appearance: none;
+  -webkit-appearance: none;
+  background-color: rgba(207, 34, 46, 0.12);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px 14px;
+  padding: 1px 28px 1px 10px;
   cursor: pointer;
   min-width: 78px;
   text-align: center;
@@ -484,7 +490,7 @@
 
 .penalty-hours-select:hover:not(:disabled),
 .penalty-hours-select:focus {
-  background: rgba(207, 34, 46, 0.18);
+  background-color: rgba(207, 34, 46, 0.18);
   border-color: rgba(207, 34, 46, 0.5);
   outline: none;
 }
