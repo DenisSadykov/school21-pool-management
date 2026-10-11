@@ -84,7 +84,7 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, o
             {open && (
               <div className="user-dropdown">
                 <button className="dropdown-item" onClick={() => go('/profile')}>
-                  <UserCircle2 size={15} /> Личные данные
+                  <UserCircle2 size={15} /> Личный кабинет
                 </button>
                 {isStaff && (
                   <>

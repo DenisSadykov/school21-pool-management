@@ -123,6 +123,16 @@ def seed_data():
         app_module.db.session.commit()
 
         app_module.db.session.add(Signup(block_id=block.id, user_id=volunteer.id))
+        history_pool = Pool(name='E2E Прошлый бассейн', archived=True, active=False,
+                            start_date=date.today() - timedelta(days=40))
+        app_module.db.session.add(history_pool)
+        app_module.db.session.flush()
+        app_module.db.session.add(PoolVolunteer(pool_id=history_pool.id, user_id=volunteer.id, pool_role='volunteer'))
+        historical_block = ShiftBlock(pool_id=history_pool.id, date=date.today() - timedelta(days=30),
+                                      time_start='13:00', time_end='15:00', label='EXAM')
+        app_module.db.session.add(historical_block)
+        app_module.db.session.flush()
+        app_module.db.session.add(Signup(block_id=historical_block.id, user_id=volunteer.id))
         pending_penalty = StudentPenalty(
             student_name='monetang',
             volunteer_id=volunteer.id,

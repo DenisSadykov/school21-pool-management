@@ -1,0 +1,96 @@
+.personal-statistics { display: grid; gap: 20px; }
+.personal-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.personal-metric, .personal-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+.personal-metric { padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.personal-metric-label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-weight: 600; }
+.personal-metric-label svg { color: var(--accent); flex-shrink: 0; }
+.personal-metric > strong { font-size: 2rem; letter-spacing: -.04em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.personal-caption, .personal-data-note { font-size: .8rem; color: var(--text-secondary); }
+.personal-data-note { max-width: 940px; margin-top: -8px; }
+.personal-panel { padding: 24px; min-width: 0; }
+.personal-panel h2 { font-size: 1rem; letter-spacing: -.01em; }
+.personal-section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.personal-section-title p { margin-top: 4px; font-size: .8rem; color: var(--text-secondary); }
+.personal-section-title > svg { color: var(--text-muted); flex-shrink: 0; }
+.personal-two-columns { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; }
+.personal-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; align-items: end; }
+.personal-chart-column { display: flex; flex-direction: column; gap: 8px; text-align: center; min-width: 0; }
+.personal-chart-value { font-size: .7rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.personal-chart-track { height: 136px; background: var(--bg-hover); border-radius: 5px; display: flex; align-items: flex-end; overflow: hidden; }
+.personal-chart-bar { width: 100%; background: var(--accent); border-radius: 5px 5px 0 0; }
+.personal-chart-label { color: var(--text-secondary); font-size: .7rem; }
+.personal-chart-details { margin-top: 18px; }
+.personal-chart-details summary, .personal-coin-details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: .8rem; padding: 6px 0; }
+.personal-chart-details summary:focus-visible, .personal-coin-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.personal-chart-details ul, .personal-coin-details ul { list-style: none; display: grid; gap: 8px; margin: 10px 0; }
+.personal-chart-details li, .personal-coin-details li { display: flex; justify-content: space-between; gap: 16px; font-size: .85rem; }
+.personal-empty { color: var(--text-secondary); font-size: .85rem; padding: 8px 0 20px; }
+.personal-next-shifts { list-style: none; }
+.personal-next-shifts li { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border-soft); }
+.personal-next-shifts li:first-child { padding-top: 0; }
+.personal-next-shifts li > div { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.personal-next-shifts span { font-size: .8rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.personal-shift-time { text-align: right; flex-shrink: 0; }
+.personal-inline-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: .85rem; font-weight: 600; min-height: 32px; }
+.personal-count { background: var(--accent-muted); color: var(--accent); padding: 5px 10px; border-radius: 999px; font-size: .8rem; white-space: nowrap; }
+.personal-achievements { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.personal-achievement { border: 1px solid var(--border); background: var(--bg-elevated); border-radius: 9px; padding: 16px; display: flex; flex-direction: column; }
+.personal-achievement-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 14px; }
+.personal-achievement-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; color: var(--text-secondary); background: var(--bg-hover); border-radius: 10px; flex-shrink: 0; }
+.personal-achievement-status { font-size: .7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.personal-achievement h3 { font-size: .85rem; margin-bottom: 6px; }
+.personal-achievement p { color: var(--text-secondary); font-size: .75rem; line-height: 1.5; margin-bottom: 16px; flex: 1; }
+.personal-achievement progress { appearance: none; width: 100%; height: 5px; border: 0; border-radius: 3px; overflow: hidden; background: var(--border-soft); }
+.personal-achievement progress::-webkit-progress-bar { background: var(--border-soft); }
+.personal-achievement progress::-webkit-progress-value { background: var(--accent); }
+.personal-achievement progress::-moz-progress-bar { background: var(--accent); }
+.personal-achievement.earned { border-color: var(--accent); background: var(--accent-muted); }
+.personal-achievement.earned .personal-achievement-icon { color: var(--accent); background: var(--bg-card); }
+.personal-achievement.earned .personal-achievement-status { color: var(--success); font-weight: 600; }
+.personal-achievement.earned:nth-child(3n + 2) .personal-achievement-icon { color: var(--warning); }
+.personal-achievement.earned:nth-child(3n) .personal-achievement-icon { color: var(--success); }
+.personal-filter { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.personal-filter label { font-size: .8rem; color: var(--text-secondary); }
+.personal-filter select { max-width: 240px; min-width: 0; }
+.personal-pool-history { display: grid; gap: 14px; }
+.personal-pool-card { border: 1px solid var(--border); padding: 20px; border-radius: 9px; min-width: 0; }
+.personal-pool-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.personal-pool-heading h3 { font-size: .95rem; overflow-wrap: anywhere; }
+.personal-pool-heading p { font-size: .8rem; color: var(--text-secondary); margin-top: 4px; }
+.personal-pool-state { align-self: flex-start; font-size: .75rem; background: var(--bg-hover); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.personal-pool-state.active { background: var(--accent-muted); color: var(--accent); }
+.personal-pool-numbers { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
+.personal-pool-numbers dt { font-size: .75rem; color: var(--text-secondary); }
+.personal-pool-numbers dd { font-size: 1.15rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.personal-pool-coins dd { color: var(--warning); }
+.personal-coin-details { margin-top: 16px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+.personal-warnings { color: var(--text-secondary); font-size: .8rem; padding-left: 20px; }
+.personal-load { display: grid; gap: 12px; justify-items: start; }
+@media (max-width: 1150px) {
+  .personal-achievements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .personal-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 768px) {
+  .personal-statistics { gap: 16px; }
+  .personal-metrics { gap: 10px; }
+  .personal-metric { padding: 16px; }
+  .personal-metric > strong { font-size: 1.75rem; }
+  .personal-metric-label { font-size: .8rem; align-items: flex-start; }
+  .personal-panel { padding: 18px; }
+  .personal-two-columns { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .personal-achievements { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .personal-achievement { padding: 12px; }
+  .personal-achievement-top { flex-wrap: wrap; }
+  .personal-section-title { flex-wrap: wrap; margin-bottom: 18px; }
+  .personal-section-title > svg { display: none; }
+  .personal-filter { width: 100%; }
+  .personal-filter select { flex: 1; max-width: 100%; }
+  .personal-pool-card { padding: 16px; }
+  .personal-pool-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .personal-chart { gap: 3px; }
+  .personal-chart-label, .personal-chart-value { font-size: .6rem; }
+  .personal-coin-details li { flex-wrap: wrap; gap: 4px 12px; }
+  .personal-inline-link, .personal-chart-details summary, .personal-coin-details summary { min-height: 44px; display: flex; align-items: center; }
+  .personal-chart-details summary::before, .personal-coin-details summary::before { content: '+ '; margin-right: 6px; }
+  .personal-chart-details[open] summary::before, .personal-coin-details[open] summary::before { content: '− '; }
+}
