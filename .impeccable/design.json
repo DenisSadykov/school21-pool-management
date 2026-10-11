@@ -9,7 +9,7 @@
       "contracts": ["docs/student-notes.md", ".impeccable/surfaces/frontend-src-pages-mynotes-jsx.md"],
       "productContext": "/Users/denissadykov/school21-pool-management/PRODUCT.md (read only; absent in this worktree)",
       "screenshots": [".impeccable/review/desktop.png", ".impeccable/review/mobile.png"],
-      "limitations": ["Screenshots corroborate the light MyNotes list after editing; the refreshed desktop capture also shows the expanded 210px sidebar, as confirmed by the user after the test waits were updated.", "Dark theme and other states were extracted from source, not reviewed in a browser.", "No invented north star, synthetic tonal ramps, or new component states.", "Frontmatter is an extracted reference; source CSS remains authoritative."]
+      "limitations": ["Screenshots corroborate the light MyNotes list after editing; the refreshed desktop capture also shows the expanded 210px sidebar after the test waits were updated.", "Dark theme and other states were extracted from source, not reviewed in a browser.", "No invented north star, synthetic tonal ramps, or new component states.", "Frontmatter is an extracted reference; source CSS remains authoritative."]
     },
     "colorMeta": {
       "accent": {"role": "primary", "displayName": "Accent blue", "source": "theme.css :root --accent; also --button-bg and --info"},
