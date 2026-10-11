@@ -16,6 +16,33 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+test.each(['get', 'post', 'patch', 'del'])('bypasses cached hosting redirects for %s API requests', async (method) => {
+  fetch.mockResolvedValue(response(200, { ok: true }));
+  await api[method]('/api/dashboard');
+  expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/dashboard'), expect.objectContaining({
+    cache: 'no-store',
+  }));
+});
+
+test('bypasses cached redirects on both read attempts', async () => {
+  fetch.mockRejectedValueOnce(new TypeError('redirect loop')).mockResolvedValueOnce(response(200, {}));
+  await api.get('/api/dashboard');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch.mock.calls.every(([, options]) => options.cache === 'no-store')).toBe(true);
+});
+
+test('bypasses cached redirects for file uploads', async () => {
+  fetch.mockResolvedValue(response(200, { ok: true }));
+  await api.upload('/api/upload', new FormData());
+  expect(fetch.mock.calls[0][1].cache).toBe('no-store');
+});
+
+test('bypasses cached redirects for file downloads', async () => {
+  fetch.mockResolvedValue({ ...response(200, {}), blob: jest.fn().mockResolvedValue(new Blob()) });
+  await api.download('/api/export');
+  expect(fetch.mock.calls[0][1].cache).toBe('no-store');
+});
+
 test.each([abortError(), new TypeError('network')])('retries a temporary read failure once', async (error) => {
   fetch.mockRejectedValueOnce(error).mockResolvedValueOnce(response(200, { days: [] }));
   await expect(api.get('/api/schedule')).resolves.toEqual({ days: [] });
