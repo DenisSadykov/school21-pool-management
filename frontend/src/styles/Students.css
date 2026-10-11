@@ -997,6 +997,47 @@
 }
 
 @media (max-width: 768px) {
+  .students-page .event-copy-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+
+  .students-page .event-copy-filter-heading {
+    min-width: 0;
+  }
+
+  .students-page .event-copy-filter-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .students-page .event-copy-filter-controls label {
+    min-width: 0;
+  }
+
+  .students-page .event-copy-filter-controls input {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .students-page .event-copy-button {
+    grid-column: 1 / -1;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .students-page .event-copy-button svg {
+    flex-shrink: 0;
+  }
+
   .page-header {
     flex-direction: column;
   }
@@ -1058,6 +1099,7 @@
   .students-table tbody,
   .students-table tr,
   .students-table td {
+    box-sizing: border-box;
     display: block;
     width: 100%;
   }
@@ -1065,6 +1107,14 @@
   .students-table tbody {
     display: grid;
     gap: 12px;
+  }
+
+  .students-page .students-table td {
+    width: 100%;
+  }
+
+  .students-page .students-table td[data-label="Управление"] {
+    width: auto;
   }
 
   .students-table tr {
@@ -1103,7 +1153,10 @@
   }
 
   .students-table td[data-label="Пир"] {
-    padding: 0 64px 14px 0;
+    min-height: 44px;
+    padding: 0 56px 0 0;
+    display: flex;
+    align-items: center;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -1128,7 +1181,8 @@
   }
 
   .student-person .nick-button {
-    flex: 0 0 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .students-table td[data-label="Управление"] {
@@ -1182,6 +1236,7 @@
 
   .students-table td[data-label="Мероприятия"] .student-events {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
   }
@@ -1212,5 +1267,13 @@
   .student-form .form-actions button {
     flex: none;
     width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .students-page .students-filters,
+  .students-page .event-copy-filter-controls,
+  .students-page .students-table tr {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
