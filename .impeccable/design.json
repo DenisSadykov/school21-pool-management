@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T19:25:32Z",
+  "title": "Design System: School21 Pool Management",
+  "extensions": {
+    "extraction": {
+      "mode": "incumbent-only",
+      "sources": ["frontend/src/styles/theme.css", "frontend/src/styles/Pages.css", "frontend/src/styles/App.css", "frontend/src/styles/Navbar.css", "frontend/src/styles/Sidebar.css", "frontend/src/styles/MyNotes.css", "frontend/src/pages/MyNotes.jsx"],
+      "contracts": ["docs/student-notes.md", ".impeccable/surfaces/frontend-src-pages-mynotes-jsx.md"],
+      "productContext": "/Users/denissadykov/school21-pool-management/PRODUCT.md (read only; absent in this worktree)",
+      "screenshots": [".impeccable/review/desktop.png", ".impeccable/review/mobile.png"],
+      "limitations": ["Screenshots corroborate the light MyNotes list after editing only.", "Dark theme and other states were extracted from source, not reviewed in a browser.", "No invented north star, synthetic tonal ramps, or new component states.", "Frontmatter is an extracted reference; source CSS remains authoritative."]
+    },
+    "colorMeta": {
+      "accent": {"role": "primary", "displayName": "Accent blue", "source": "theme.css :root --accent; also --button-bg and --info"},
+      "accent-dim": {"role": "primary", "displayName": "Hover blue", "source": "theme.css :root --accent-dim; also --button-hover"},
+      "accent-muted": {"role": "primary", "displayName": "Selected blue tint", "source": "theme.css :root --accent-muted"},
+      "bg-dark": {"role": "neutral", "displayName": "Root page background", "source": "theme.css :root --bg-dark"},
+      "light-bg-dark": {"role": "neutral", "displayName": "Explicit light page background", "source": "theme.css [data-theme=light] --bg-dark"},
+      "dark-accent": {"role": "primary", "displayName": "Dark link accent", "source": "theme.css [data-theme=dark] --accent"},
+      "dark-button-bg": {"role": "primary", "displayName": "Dark primary button", "source": "theme.css [data-theme=dark] --button-bg"}
+    },
+    "typographyMeta": {
+      "headline": {"displayName": "Page heading", "purpose": "Shared page-header h1; inherits system UI family."},
+      "body": {"displayName": "System UI body", "purpose": "Global body text; no custom webfont introduced."},
+      "label": {"displayName": "Form label", "purpose": "Shared form-group labels; not every local label uses weight 600."},
+      "badge": {"displayName": "Mono badge", "purpose": "Confirmed and pending status badges."}
+    },
+    "shadows": [
+      {"name": "shadow-sm", "value": "0 1px 2px rgba(31, 35, 40, 0.08)", "purpose": "Root small shadow; theme-toggle thumb."},
+      {"name": "shadow-md", "value": "0 4px 24px rgba(31, 35, 40, 0.1)", "purpose": "Existing root medium token; not applied to the MyNotes list."},
+      {"name": "shadow-lg", "value": "0 8px 40px rgba(31, 35, 40, 0.12)", "purpose": "Existing root large token; not applied to the MyNotes list."},
+      {"name": "dark-shadow-sm", "value": "0 1px 2px rgba(0, 0, 0, 0.3)", "purpose": "Dark small override."},
+      {"name": "dark-shadow-md", "value": "0 12px 28px rgba(0, 0, 0, 0.34)", "purpose": "Dark medium override."},
+      {"name": "dark-shadow-lg", "value": "0 20px 48px rgba(0, 0, 0, 0.42)", "purpose": "Dark large override."},
+      {"name": "user-dropdown", "value": "0 8px 24px rgba(0,0,0,0.35)", "purpose": "Navbar dropdown literal; independent of theme shadow tokens."},
+      {"name": "mobile-sidebar", "value": "0 12px 36px rgba(15, 23, 42, 0.12)", "purpose": "Mobile drawer; open variant adds 100vw 0 0 rgba(15, 23, 42, 0.12)."}
+    ],
+    "motion": [
+      {"name": "transition", "value": "150ms ease-in-out", "purpose": "Existing shared state transitions."},
+      {"name": "body-theme", "value": "180ms ease", "purpose": "Body background-color and color transitions."},
+      {"name": "loader", "value": "1.1s linear infinite", "purpose": "Existing loading logo rotateY animation."},
+      {"name": "pool-pulse", "value": "4.8s ease-in-out infinite", "purpose": "Existing navbar pool badge pulse; disabled for reduced motion."},
+      {"name": "reduced-motion", "value": "0.01ms", "purpose": "Global animation/transition duration override; one animation iteration and auto scroll behavior."}
+    ],
+    "breakpoints": [{"name": "mobile", "value": "768px", "query": "(max-width: 768px)"}],
+    "controls": {"height": "var(--control-height)", "rootHeight": "30px", "touchHeight": "44px", "touchQueries": ["(pointer: coarse)", "(max-width: 768px)"], "myNotesMinHeight": "44px"},
+    "focus": {"outline": "2px solid var(--accent)", "outlineOffset": "2px", "fieldShadow": "0 0 0 3px var(--focus-ring)", "rootRing": "rgba(9, 105, 218, 0.15)", "darkRing": "rgba(88, 166, 255, 0.24)"},
+    "surfaceTreatments": {
+      "overlay": {"root": "rgba(15, 23, 42, 0.45)", "dark": "rgba(2, 6, 12, 0.72)"},
+      "note-bg": {"root": "linear-gradient(180deg, #fff8a6 0%, #ffe98b 100%)", "dark": "linear-gradient(180deg, #433a17 0%, #322b14 100%)"},
+      "note-strong-bg": {"root": "linear-gradient(180deg, #ffd6a0 0%, #ffbe6f 100%)", "dark": "linear-gradient(180deg, #4a2f1c 0%, #362316 100%)"},
+      "scope": "Existing theme exceptions; none of these note treatments is used by the MyNotes list."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button", "kind": "button", "refersTo": "button-primary",
+      "description": "Pages.css primary control with global focus; theme variables remain live-bound.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Сохранить</button>",
+      "css": ".ds-primary{font-family:var(--font-ui);font-size:14px;font-weight:600;line-height:1.4285;min-height:var(--control-height);padding:0 var(--control-padding-x);border-radius:6px;display:flex;align-items:center;gap:var(--spacing-sm);background:var(--button-bg);color:var(--button-fg);border:1px solid rgba(9,105,218,0.45);cursor:pointer;transition:all var(--transition)}.ds-primary:hover{background:var(--button-hover);border-color:rgba(9,105,218,0.6)}.ds-primary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:768px){.ds-primary{width:100%;justify-content:center}}"
+    },
+    {
+      "name": "Secondary button", "kind": "button", "refersTo": "button-secondary",
+      "description": "Pages.css neutral action variant.",
+      "html": "<button class=\"ds-secondary\" type=\"button\">Отмена</button>",
+      "css": ".ds-secondary{font-family:var(--font-ui);font-size:14px;font-weight:600;line-height:1.4285;min-height:var(--control-height);padding:0 var(--control-padding-x);border-radius:6px;display:flex;align-items:center;gap:var(--spacing-sm);background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;transition:all var(--transition)}.ds-secondary:hover{background:var(--bg-hover);color:var(--text-primary);border-color:var(--text-secondary)}.ds-secondary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:768px){.ds-secondary{width:100%;justify-content:center}}"
+    },
+    {
+      "name": "Text field", "kind": "input", "refersTo": "input",
+      "description": "Global single-line field and existing focus treatment.",
+      "html": "<input class=\"ds-input\" aria-label=\"Ник пира\" placeholder=\"Ник пира\">",
+      "css": ".ds-input{font-family:var(--font-ui);font-size:14px;line-height:1.2;height:var(--control-height);padding:0 var(--control-padding-x);color:var(--text-primary);background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);transition:all var(--transition)}.ds-input::placeholder{color:var(--text-secondary)}.ds-input:focus{outline:none;border-color:var(--accent);background-color:var(--bg-card);box-shadow:0 0 0 3px var(--focus-ring)}.ds-input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Active sidebar link", "kind": "nav", "refersTo": "navigation-active",
+      "description": "Sidebar.css active link; source cascade keeps active colors during hover.",
+      "html": "<a class=\"ds-nav ds-active\" href=\"/my-notes\" aria-current=\"page\"><span>Мои заметки</span></a>",
+      "css": ".ds-nav{font-family:var(--font-ui);font-size:0.875rem;display:flex;align-items:center;gap:9px;min-height:var(--control-height);padding:0 10px;color:var(--text-secondary);text-decoration:none;border-radius:var(--radius-md);border:1px solid transparent;transition:all var(--transition);white-space:nowrap}.ds-nav:hover{background:var(--bg-elevated);color:var(--text-primary)}.ds-nav.ds-active{background:var(--accent-muted);color:var(--accent);font-weight:600;box-shadow:none}.ds-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Confirmed badge", "kind": "chip",
+      "description": "Pages.css semantic badge with incumbent literal tint; no invented interactive state.",
+      "html": "<span class=\"ds-badge\">Подтверждено</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;min-height:20px;padding:1px 6px;border-radius:3px;font-size:0.68rem;font-weight:650;font-family:var(--font-mono);background:rgba(26,127,55,0.1);color:var(--success);border:1px solid rgba(26,127,55,0.28)}"
+    },
+    {
+      "name": "Form panel", "kind": "card", "refersTo": "form-panel",
+      "description": "Pages.css bordered form surface; no shadow or hover behavior in source.",
+      "html": "<form class=\"ds-form\">Форма</form>",
+      "css": ".ds-form{font-family:var(--font-ui);font-size:14px;line-height:1.5;color:var(--text-primary);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--spacing-lg);margin-bottom:var(--spacing-xl)}"
+    },
+    {
+      "name": "MyNotes entry", "kind": "custom",
+      "description": "MyNotes.css flat saved-entry pattern, scoped to the notes surface.",
+      "html": "<article class=\"ds-note\"><h2>@пир</h2><time>11 октября 2026 г.</time><p>Наблюдение о пире</p></article>",
+      "css": ".ds-note{font-family:var(--font-ui);font-size:14px;line-height:1.5;color:var(--text-primary);padding:20px 0;border-top:1px solid var(--border)}.ds-note h2{margin:0;font-size:1.05rem;color:var(--text-primary);overflow-wrap:anywhere}.ds-note time{display:inline-block;margin-top:6px;color:var(--text-secondary);font-size:0.8rem}.ds-note p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin:14px 0 0;color:var(--text-primary);max-width:75ch}"
+    }
+  ],
+  "narrative": {
+    "overview": "This document records the existing working interface: compact system typography, blue actions and links, neutral surfaces, thin borders, and small rounded corners. It establishes no new identity, metaphor, palette, or component behavior. Existing CSS remains implementation authority; the frontmatter is its extracted token reference.",
+    "keyCharacteristics": ["Compact system typography and semantic blue accents.", "Thin borders and tonal surface separation.", "Theme-aware controls with visible keyboard focus.", "Responsive stacking and larger touch controls."],
+    "rules": [],
+    "dos": ["Do reuse semantic CSS variables and their existing light/dark overrides.", "Do retain shared system typography, thin borders, and compact corner radii.", "Do preserve visible keyboard focus and reduced-motion behavior.", "Do keep MyNotes-specific sizing and list composition scoped to that surface."],
+    "donts": ["Don't treat the root palette as the explicit light-theme palette where overrides exist.", "Don't replace dark primary-button colors with the dark link accent.", "Don't promote note gradients or navbar pill shapes into every panel.", "Don't present screenshot-unseen states as visually verified."]
+  }
+}
