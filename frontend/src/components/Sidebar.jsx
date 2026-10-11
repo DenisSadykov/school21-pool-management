@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Users, AlertCircle, BookOpen, Trophy, ClipboardCheck, SlidersHorizontal, Bell, Menu } from 'lucide-react';
+import { Home, Calendar, Users, AlertCircle, BookOpen, Trophy, ClipboardCheck, SlidersHorizontal, Bell, Menu, FileText } from 'lucide-react';
 import useIsMobile from '../useIsMobile';
 import '../styles/Sidebar.css';
 import TribeLabel from './TribeLabel';
@@ -34,6 +34,7 @@ function Sidebar({ user, mobileOpen, onMobileClose }) {
     { path: '/schedule', label: 'График смен', icon: Calendar, tone: 'schedule' },
     { path: '/penalties', label: 'Штрафы', icon: AlertCircle, tone: 'penalties' },
     { path: '/students', label: 'Пиры', icon: BookOpen, tone: 'students' },
+    { path: '/my-notes', label: 'Мои заметки', icon: FileText, tone: 'students' },
     ...(canUseTribe ? [{ path: '/my-tribe', label: isStaff ? 'Трайбы' : 'Мой трайб', icon: Trophy, tone: 'tribe' }] : []),
     ...(user?.role === 'tribe_master' ? [{
       path: '/tribe-scripts',

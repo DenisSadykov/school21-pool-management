@@ -35,6 +35,7 @@ describe('Sidebar tribe scripts relationship', () => {
     );
 
     expect(screen.getByRole('link', { name: 'Мой трайб' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Мои заметки' })).toHaveAttribute('href', '/my-notes');
     expect(screen.queryByRole('link', { name: 'Скрипты трайба' })).not.toBeInTheDocument();
   });
 });

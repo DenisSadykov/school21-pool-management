@@ -9,6 +9,7 @@ import Loader from './components/Loader';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/Schedule';
 import Students from './pages/Students';
+import MyNotes from './pages/MyNotes';
 import Volunteers from './pages/Volunteers';
 import Penalties from './pages/Penalties';
 import Manage from './pages/Manage';
@@ -230,6 +231,7 @@ function AppRoutes({
                   <Route path="/schedule" element={<Schedule user={user} />} />
                   <Route path="/penalties" element={<Penalties user={user} />} />
                   <Route path="/students" element={<Students user={user} />} />
+                  <Route path="/my-notes" element={<MyNotes />} />
                   <Route path="/volunteers" element={<Volunteers user={user} />} />
                   <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
                   <Route path="/exam-brief" element={<ExamBrief />} />

@@ -1,0 +1,33 @@
+const { test, expect } = require('@playwright/test');
+
+test('volunteer creates, searches, edits and deletes a private pupil note on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/login');
+  await page.getByLabel('Твой ник').fill('odessabu');
+  await page.getByLabel('Пароль', { exact: true }).fill('volunteer123');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
+  await page.goto('/students');
+  const row = page.locator('tr').filter({ hasText: 'lanachun' });
+  await row.getByRole('link', { name: 'Мои заметки' }).click();
+  await expect(page.getByRole('combobox', { name: 'Пир', exact: true })).toHaveValue('1');
+  await page.getByLabel('Текст заметки').fill('E2E: личная заметка волонтёра');
+  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(page.getByText('Заметка сохранена', { exact: true })).toBeVisible();
+  await expect(page.getByText('E2E: личная заметка волонтёра', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Все мои заметки' }).click();
+  await page.getByPlaceholder('Ник пира').fill('lanachun');
+  await page.getByLabel('Порядок записей').selectOption('oldest');
+  await page.getByRole('button', { name: 'Редактировать заметку о @lanachun' }).click();
+  await page.getByLabel('Текст заметки').fill('E2E: исправленная личная заметка');
+  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(page.getByText('E2E: исправленная личная заметка', { exact: true })).toBeVisible();
+  expect(await page.locator('.my-notes-page').evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+  await page.screenshot({ path: '/tmp/school21-notes-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: '/tmp/school21-notes-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: 'Удалить заметку о @lanachun' }).click();
+  await page.getByRole('button', { name: 'Да, удалить' }).click();
+  await expect(page.getByText('Заметка удалена', { exact: true })).toBeVisible();
+  await expect(page.getByText('E2E: исправленная личная заметка', { exact: true })).toHaveCount(0);
+});

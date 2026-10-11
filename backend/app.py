@@ -449,6 +449,21 @@ class Student(db.Model):
     __table_args__ = (db.UniqueConstraint('pool_id', 'nick', name='uq_student_pool_nick'),)
 
 
+class StudentNote(db.Model):
+    __tablename__ = 'student_notes'
+    id = db.Column(db.Integer, primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='SET NULL'), index=True)
+    student_nick = db.Column(db.String(100), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=_naive_utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=_naive_utcnow, nullable=False)
+    __table_args__ = (
+        db.Index('ix_student_notes_author_created', 'author_id', 'created_at', 'id'),
+        db.CheckConstraint('length(trim(text)) > 0 AND length(text) <= 4000', name='ck_student_notes_text'),
+    )
+
+
 class StudentEvent(db.Model):
     __tablename__ = 'student_events'
     id = db.Column(db.Integer, primary_key=True)
@@ -2792,6 +2807,7 @@ def delete_user(user_id):
         return jsonify({'error': 'Нельзя удалить самого себя'}), 400
 
     NotificationDelivery.query.filter_by(user_id=user.id).delete()
+    StudentNote.query.filter_by(author_id=user.id).delete(synchronize_session=False)
     NotificationEvent.query.filter_by(recipient_user_id=user.id).delete()
     NotificationEvent.query.filter_by(created_by=user.id).update({'created_by': None})
     TelegramAccount.query.filter_by(user_id=user.id).delete()
@@ -2974,6 +2990,8 @@ def delete_pool(pool_id):
             Signup.query.filter(Signup.block_id.in_(block_ids)).delete(synchronize_session=False)
         if student_ids:
             StudentEvent.query.filter(StudentEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
+            StudentNote.query.filter(StudentNote.student_id.in_(student_ids)).update(
+                {'student_id': None}, synchronize_session=False)
         if penalty_ids:
             PenaltyHistory.query.filter(PenaltyHistory.penalty_id.in_(penalty_ids)).delete(synchronize_session=False)
         if notification_ids:
@@ -5914,6 +5932,97 @@ def get_students():
     return jsonify(_student_list_payload(pool_id))
 
 
+def _student_note_payload(note):
+    return {
+        'id': note.id, 'student_id': note.student_id, 'student_nick': note.student_nick,
+        'text': note.text, 'created_at': note.created_at.isoformat() + 'Z',
+        'updated_at': note.updated_at.isoformat() + 'Z',
+    }
+
+
+def _student_note_text(data):
+    if not isinstance(data, dict) or not isinstance(data.get('text'), str):
+        return None
+    value = data['text'].strip()
+    return value if 0 < len(value) <= 4000 else None
+
+
+@app.route('/api/me/student-notes', methods=['GET'])
+@require_auth
+def list_my_student_notes():
+    # No staff override: author scope is applied before every other filter.
+    query = StudentNote.query.filter_by(author_id=g.user.id)
+    student_id = request.args.get('student_id')
+    if student_id is not None:
+        if not student_id.isdecimal() or len(student_id) > 10 or not 1 <= int(student_id) <= 2147483647:
+            return jsonify({'error': 'Некорректный ученик'}), 400
+        query = query.filter_by(student_id=int(student_id))
+    search = (request.args.get('q') or '').strip().lstrip('@')[:100]
+    if search:
+        query = query.filter(db.func.lower(StudentNote.student_nick).contains(search.lower(), autoescape=True))
+    sort = request.args.get('sort', 'newest')
+    if sort not in {'newest', 'oldest'}:
+        return jsonify({'error': 'Некорректная сортировка'}), 400
+    raw_page = request.args.get('page', '1')
+    if not raw_page.isdecimal() or len(raw_page) > 6 or not 1 <= int(raw_page) <= 100000:
+        return jsonify({'error': 'Некорректная страница'}), 400
+    page = int(raw_page)
+    total = query.count()
+    order = (StudentNote.created_at.desc(), StudentNote.id.desc()) if sort == 'newest' else (
+        StudentNote.created_at.asc(), StudentNote.id.asc())
+    notes = query.order_by(*order).offset((page - 1) * 50).limit(50).all()
+    return jsonify({'notes': [_student_note_payload(note) for note in notes],
+                    'total': total, 'page': page, 'has_more': page * 50 < total})
+
+
+@app.route('/api/me/student-notes', methods=['POST'])
+@require_auth
+def create_my_student_note():
+    data = request.get_json(silent=True)
+    text = _student_note_text(data)
+    if text is None:
+        return jsonify({'error': 'Напишите заметку от 1 до 4000 символов'}), 400
+    student_id = data.get('student_id')
+    if not isinstance(student_id, int) or isinstance(student_id, bool) or not 1 <= student_id <= 2147483647:
+        return jsonify({'error': 'Выберите ученика'}), 400
+    pool_id, error = _active_pool_id_for_request()
+    if error:
+        return error
+    student = Student.query.filter_by(id=student_id, pool_id=pool_id).first()
+    if student is None:
+        return jsonify({'error': 'Ученик не найден в текущем бассейне'}), 404
+    now = _naive_utcnow()
+    note = StudentNote(author_id=g.user.id, student_id=student.id, student_nick=student.nick,
+                       text=text, created_at=now, updated_at=now)
+    db.session.add(note)
+    db.session.commit()
+    return jsonify(_student_note_payload(note)), 201
+
+
+@app.route('/api/me/student-notes/<int:note_id>', methods=['PATCH', 'DELETE'])
+@require_auth
+def change_my_student_note(note_id):
+    if note_id > 2147483647:
+        return jsonify({'error': 'Заметка не найдена'}), 404
+    note = StudentNote.query.filter_by(id=note_id, author_id=g.user.id).with_for_update().first()
+    if note is None:
+        return jsonify({'error': 'Заметка не найдена'}), 404
+    if request.method == 'DELETE':
+        db.session.delete(note)
+        db.session.commit()
+        return jsonify({'message': 'Заметка удалена'})
+    data = request.get_json(silent=True)
+    text = _student_note_text(data)
+    if text is None:
+        return jsonify({'error': 'Напишите заметку от 1 до 4000 символов'}), 400
+    if data.get('updated_at') != note.updated_at.isoformat() + 'Z':
+        return jsonify({'error': 'Заметка уже изменена. Обновите список и повторите.'}), 409
+    note.text = text
+    note.updated_at = _naive_utcnow()
+    db.session.commit()
+    return jsonify(_student_note_payload(note))
+
+
 @app.route('/api/students', methods=['POST'])
 @require_role('admin', 'team_lead')
 def create_student():
@@ -6632,6 +6741,7 @@ def delete_student(student_id):
     if StudentPenalty.query.filter_by(student_id=student.id).first():
         return jsonify({'error': 'Сначала удалите связанные штрафы ученика'}), 409
     StudentEvent.query.filter_by(student_id=student.id).delete()
+    StudentNote.query.filter_by(student_id=student.id).update({'student_id': None}, synchronize_session=False)
     db.session.delete(student)
     db.session.commit()
     return jsonify({'message': 'Ученик удалён'})

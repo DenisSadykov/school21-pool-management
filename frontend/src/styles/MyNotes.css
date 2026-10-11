@@ -1,0 +1,47 @@
+.my-notes-page { max-width: 1050px; }
+.my-notes-private { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.875rem; margin-top: 8px; }
+.my-notes-private svg { flex-shrink: 0; }
+.my-notes-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; margin: 20px 0; }
+.my-notes-page label { display: grid; gap: 6px; min-width: 0; color: var(--text-secondary); font-size: 0.875rem; }
+.my-notes-page input, .my-notes-page select, .my-notes-page textarea { width: 100%; min-width: 0; box-sizing: border-box; background-color: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; font: inherit; }
+.my-notes-page input, .my-notes-page select { min-height: 44px; }
+.my-notes-page textarea { resize: vertical; line-height: 1.6; }
+.my-notes-page input:focus-visible, .my-notes-page select:focus-visible, .my-notes-page textarea:focus-visible, .my-note-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.my-notes-search > div { position: relative; }
+.my-notes-search svg { position: absolute; left: 12px; top: 13px; pointer-events: none; }
+.my-notes-search input { padding-left: 38px; }
+.my-notes-editor { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-card); display: grid; gap: 16px; margin: 16px 0; }
+.my-notes-editor h2, .my-note-heading h2 { margin: 0; font-size: 1.05rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.my-notes-editor-footer, .my-note-heading, .my-notes-student-scope { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.my-notes-editor-footer small, .my-note-heading time, .my-note-edited, .my-notes-count { color: var(--text-secondary); font-size: 0.8rem; }
+.my-notes-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.my-notes-page button { min-height: 44px; }
+.my-notes-page button:disabled { opacity: 0.55; cursor: not-allowed; }
+.my-note-entry { padding: 20px 0; border-top: 1px solid var(--border); }
+.my-note-entry .my-notes-editor { margin: 0; }
+.my-note-heading { align-items: flex-start; }
+.my-note-heading > div:first-child { min-width: 0; }
+.my-note-heading time { display: inline-block; margin-top: 6px; }
+.my-note-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; margin: 14px 0 0; color: var(--text-primary); max-width: 75ch; }
+.my-note-icon { width: 44px; min-width: 44px; display: inline-flex; justify-content: center; align-items: center; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
+.my-note-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+.my-note-delete-confirm { padding: 12px; margin-top: 12px; background: var(--bg-elevated); border-radius: var(--radius-md); }
+.my-note-delete-confirm p { margin: 0 0 10px; }
+.my-note-danger, .my-notes-error { color: var(--danger); }
+.my-notes-success { color: var(--success); }
+.my-notes-empty { padding: 28px 0; color: var(--text-secondary); }
+.my-notes-empty h2 { font-size: 1.05rem; color: var(--text-primary); margin-bottom: 8px; }
+.my-notes-empty p { max-width: 65ch; line-height: 1.6; }
+.my-notes-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.student-person .student-note-link { display: inline-flex; align-items: center; gap: 5px; width: fit-content; min-height: 32px; color: var(--accent); font-size: 0.78rem; text-decoration: none; }
+.student-note-link:hover { text-decoration: underline; }
+@media (max-width: 768px) {
+  .my-notes-page .page-header { align-items: stretch; }
+  .my-notes-page .page-header > button { justify-content: center; }
+  .my-notes-toolbar { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .my-notes-editor { padding: 14px; }
+  .my-notes-editor-footer, .my-notes-student-scope { align-items: stretch; flex-direction: column; }
+  .my-notes-editor-footer .my-notes-actions > button { flex: 1; justify-content: center; }
+  .my-notes-page input, .my-notes-page select, .my-notes-page textarea { font-size: 16px; }
+  .student-person .student-note-link { min-height: 44px; }
+}
