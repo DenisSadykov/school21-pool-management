@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, getToken, setSession } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
 import PasswordChange from '../components/PasswordChange';
+import PersonalStatistics from '../components/PersonalStatistics';
 import '../styles/Pages.css';
 import '../styles/Profile.css';
 
 function Profile({ user, setUser }) {
+  const [section, setSection] = useState('overview');
   const [form, setForm] = useState({
     name: '',
     nick: '',
@@ -61,10 +63,17 @@ function Profile({ user, setUser }) {
 
   return (
     <div className="page manage-page">
-      <h1>Личные данные</h1>
+      <div className="personal-cabinet-heading"><h1>Личный кабинет</h1>
+        <p>Ваша история участия, маленькие победы и настройки аккаунта.</p></div>
+      <nav className="personal-cabinet-tabs" aria-label="Разделы личного кабинета">
+        {[['overview', 'Обзор'], ['details', 'Личные данные'], ['security', 'Безопасность']].map(([key, title]) =>
+          <button key={key} type="button" className={section === key ? 'selected' : ''}
+            aria-current={section === key ? 'page' : undefined} onClick={() => setSection(key)}>{title}</button>)}
+      </nav>
       {message && <div className="alert success">{message}</div>}
-
-      <section className="manage-section">
+      {section === 'overview' && <PersonalStatistics userId={user?.id} />}
+      <div hidden={section !== 'details'}>
+      <section className="manage-section" aria-label="Личные данные">
         <div className="profile-header">
           <span className="profile-avatar-large">
             {user?.avatar_url ? (
@@ -122,7 +131,10 @@ function Profile({ user, setUser }) {
           </button>
         </form>
       </section>
+      </div>
+      <div hidden={section !== 'security'}>
       <PasswordChange user={user} setUser={setUser} />
+      </div>
     </div>
   );
 }

@@ -3963,6 +3963,43 @@ def my_shifts():
 # ==================== Статистика ====================
 
 
+@app.route('/api/me/statistics', methods=['GET'])
+@require_auth
+def my_statistics():
+    """Personal history only; no active-pool filter and no user-id override."""
+    from personal_statistics import build_personal_statistics
+
+    user = g.user
+    memberships = PoolVolunteer.query.filter_by(user_id=user.id).all()
+    shifts = (
+        db.session.query(ShiftBlock)
+        .join(Signup, Signup.block_id == ShiftBlock.id)
+        .filter(Signup.user_id == user.id).all()
+    )
+    reviews = GroupReview.query.filter_by(reviewer_id=user.id).all()
+    rewards = RewardEvent.query.filter_by(user_id=user.id).all()
+    pool_ids = {row.pool_id for row in memberships + shifts + reviews + rewards if row.pool_id is not None}
+    pools = Pool.query.filter(Pool.id.in_(pool_ids)).all() if pool_ids else []
+    # Join on both pool and tribe: never load another user's tribe history.
+    meetings = (
+        db.session.query(TribeEvent)
+        .join(PoolVolunteer, db.and_(
+            PoolVolunteer.pool_id == TribeEvent.pool_id,
+            PoolVolunteer.tribe == TribeEvent.tribe,
+        ))
+        .filter(PoolVolunteer.user_id == user.id, PoolVolunteer.pool_role.in_(TRIBE_ACCESS_ROLES))
+        .all()
+    )
+    payload = build_personal_statistics(
+        memberships, shifts, reviews, rewards, pools, meetings,
+        now=_moscow_now(), rates=REWARD_RATES, event_types=REWARD_EVENT_TYPES,
+        shift_reward_type=_shift_reward_type,
+    )
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @app.route('/api/stats', methods=['GET'])
 @require_auth
 def stats():
