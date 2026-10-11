@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api, clearSession, setSession } from '../api';
+import PasswordInput from './PasswordInput';
 import '../styles/Login.css';
 
 export default function PasswordChange({ user, setUser, required = false }) {
@@ -37,15 +38,15 @@ export default function PasswordChange({ user, setUser, required = false }) {
         <form onSubmit={submit}>
           <div className="form-group">
             <label htmlFor="change-current">Текущий пароль</label>
-            <input id="change-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required maxLength={256} />
+            <PasswordInput id="change-current" label="Текущий пароль" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required maxLength={256} />
           </div>
           <div className="form-group">
             <label htmlFor="change-next">Новый пароль</label>
-            <input id="change-next" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={8} maxLength={256} />
+            <PasswordInput id="change-next" label="Новый пароль" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={8} maxLength={256} />
           </div>
           <div className="form-group">
             <label htmlFor="change-confirm">Повторите новый пароль</label>
-            <input id="change-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} maxLength={256} />
+            <PasswordInput id="change-confirm" label="Повторите новый пароль" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} maxLength={256} />
           </div>
           {message && <p role="status">{message}</p>}
           <button className="btn-primary" disabled={busy} type="submit">{busy ? 'Сохраняем...' : 'Сохранить пароль'}</button>

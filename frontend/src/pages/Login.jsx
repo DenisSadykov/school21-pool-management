@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, setSession } from '../api';
+import PasswordInput from '../components/PasswordInput';
 import '../styles/Login.css';
 
 function safeInternalPath(value) {
@@ -68,9 +69,9 @@ function Login({ setUser }) {
 
           <div className="form-group">
             <label htmlFor="password">Пароль</label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
+              label="Пароль"
               placeholder="Пароль"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

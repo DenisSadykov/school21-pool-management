@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { api, downloadFile, setSession } from '../api';
+import PasswordInput from '../components/PasswordInput';
 import { moscowTodayIso } from '../utils/date';
 import '../styles/Pages.css';
 import '../styles/Admin.css';
@@ -180,20 +181,23 @@ function Admin({ user, setUser }) {
           <section className="admin-section">
             <h2>Сменить пароль</h2>
             <form className="admin-password-form" onSubmit={handlePasswordChange}>
-              <input
-                type="password"
+              <PasswordInput
+                label="Текущий пароль"
+                autoComplete="current-password"
                 placeholder="Текущий пароль"
                 value={passwordForm.current}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, current: e.target.value }))}
               />
-              <input
-                type="password"
+              <PasswordInput
+                label="Новый пароль"
+                autoComplete="new-password"
                 placeholder="Новый пароль"
                 value={passwordForm.next}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, next: e.target.value }))}
               />
-              <input
-                type="password"
+              <PasswordInput
+                label="Подтвердить новый пароль"
+                autoComplete="new-password"
                 placeholder="Подтвердить новый пароль"
                 value={passwordForm.confirm}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm: e.target.value }))}
