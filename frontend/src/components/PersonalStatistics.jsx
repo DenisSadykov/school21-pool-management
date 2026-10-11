@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Award, CalendarDays, Clock3, Coins, Flag, ShieldCheck, Users, UserCheck, ArrowRight } from 'lucide-react';
+import { CalendarDays, Clock3, Coins, Flag, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import '../styles/PersonalStatistics.css';
@@ -11,8 +11,6 @@ const dateLabel = (value) => value ? new Intl.DateTimeFormat('ru-RU', {
 const roles = { volunteer: 'Волонтёр', tribe_master: 'Трайб-мастер', tribe_assistant: 'Помощник трайб-мастера',
   team_lead: 'Тимлид', responsible_team_lead: 'Тимлид', responsible_admin: 'Администратор' };
 const states = { active: 'Текущий', ended: 'Завершён', archived: 'В архиве' };
-const icons = { exam_shift: ShieldCheck, three_pools: Flag, group_reviews: Users,
-  assistant_meetings: UserCheck, fifty_hours: Clock3, tribe_meetings: Users };
 
 export default function PersonalStatistics({ userId }) {
   const [data, setData] = useState(null);
@@ -39,8 +37,7 @@ export default function PersonalStatistics({ userId }) {
   </section>;
   if (!data) return <section className="personal-panel personal-load" role="status">Загружаем вашу историю…</section>;
 
-  const { summary, pools, achievements, monthly_activity: activity } = data;
-  const unlocked = achievements.filter((item) => item.unlocked).length;
+  const { summary, pools, monthly_activity: activity } = data;
   const maxHours = Math.max(1, ...activity.map((item) => item.hours));
   const hasActivity = activity.some((item) => item.shifts > 0);
   const selectedPools = poolFilter === 'all' ? pools : pools.filter((item) => String(item.id) === poolFilter);
@@ -99,24 +96,6 @@ export default function PersonalStatistics({ userId }) {
         <Link className="personal-inline-link" to="/schedule">Открыть график смен <ArrowRight size={16} aria-hidden="true" /></Link>
       </section>
     </div>
-
-    <section className="personal-panel" aria-labelledby="achievements-title">
-      <div className="personal-section-title"><div><h2 id="achievements-title">Маленькие победы</h2>
-        <p>Ачивки за сохранённую историю · без дополнительных коинов</p></div>
-        <span className="personal-count">{unlocked} из {achievements.length}</span></div>
-      <div className="personal-achievements">
-        {achievements.map((item) => {
-          const Icon = icons[item.id] || Award;
-          const progress = Math.min(item.value, item.target);
-          return <article key={item.id} className={`personal-achievement ${item.unlocked ? 'earned' : ''}`}>
-            <div className="personal-achievement-top"><span className="personal-achievement-icon"><Icon size={21} aria-hidden="true" /></span>
-              <span className="personal-achievement-status">{item.unlocked ? 'Открыто' : `${number(progress)} / ${number(item.target)}`}</span></div>
-            <h3>{item.title}</h3><p>{item.description}</p>
-            <progress max={item.target} value={progress} aria-label={`Прогресс: ${item.title}`} />
-          </article>;
-        })}
-      </div>
-    </section>
 
     <section className="personal-panel" aria-labelledby="pool-history-title">
       <div className="personal-section-title"><div><h2 id="pool-history-title">История бассейнов</h2>

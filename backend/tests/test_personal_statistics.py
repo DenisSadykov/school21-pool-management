@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 
 import app as app_module
+import pytest
 from sqlalchemy import event
 
 
@@ -78,10 +79,7 @@ def test_statistics_history_future_boundary_and_reward_parity(client, factories,
                                                     pv.coins_adjustment, pv.pool_role)
         actual = next(row for row in data['pools'] if row['id'] == pool.id)
         assert actual['coins'] == expected['total']
-    achievements = {row['id']: row for row in data['achievements']}
-    assert achievements['first_shift']['unlocked'] is True
-    assert achievements['three_pools']['unlocked'] is False
-    assert achievements['group_reviews']['unlocked'] is True
+    assert data['achievements'] == []
 
 
 def test_assistant_only_marked_past_meetings_and_manual_coins(client, factories, db_session, auth_headers, monkeypatch):
@@ -98,7 +96,7 @@ def test_assistant_only_marked_past_meetings_and_manual_coins(client, factories,
     data = client.get('/api/me/statistics', headers=auth_headers(user)).json
     assert data['summary']['assistant_meetings'] == 3
     assert data['summary']['coins'] == 3 * app_module.REWARD_RATES['tribe_master_event']
-    assert next(row for row in data['achievements'] if row['id'] == 'assistant_meetings')['unlocked'] is True
+    assert data['achievements'] == []
     # An override changes coins, never fabricates meeting history / achievements.
     pv.tribe_event_count_override = 12
     db_session.commit()
@@ -111,7 +109,7 @@ def test_assistant_only_marked_past_meetings_and_manual_coins(client, factories,
     db_session.commit()
     data = client.get('/api/me/statistics', headers=auth_headers(user)).json
     assert data['summary']['assistant_meetings'] == 0
-    assert next(row for row in data['achievements'] if row['id'] == 'assistant_meetings')['unlocked'] is False
+    assert data['achievements'] == []
 
 
 def test_master_future_coins_not_future_achievements(client, factories, db_session, auth_headers, monkeypatch):
@@ -136,7 +134,7 @@ def test_empty_statistics_and_invalid_legacy_time(client, factories, db_session,
     assert data['summary']['pools'] == 0
     assert data['pools'] == []
     assert len(data['monthly_activity']) == 12
-    assert all(not row['unlocked'] for row in data['achievements'])
+    assert data['achievements'] == []
     pool = factories.pool()
     signup(db_session, factories, user, pool, date(2026, 9, 1), start='broken')
     data = client.get('/api/me/statistics', headers=auth_headers(user)).json
@@ -168,3 +166,11 @@ def test_query_count_does_not_grow_per_pool(client, factories, db_session, auth_
     assert response.status_code == 200
     assert response.json['summary']['pools'] == 15
     assert len(statements) <= 10
+
+
+@pytest.mark.parametrize('role', ['volunteer', 'tribe_master', 'tribe_assistant', 'team_lead', 'admin'])
+def test_achievements_paused_for_every_role(client, factories, auth_headers, role):
+    user = factories.user('person', role=role)
+    response = client.get('/api/me/statistics', headers=auth_headers(user))
+    assert response.status_code == 200
+    assert response.json['achievements'] == []
