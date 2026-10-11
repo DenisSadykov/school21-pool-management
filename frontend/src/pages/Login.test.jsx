@@ -32,16 +32,13 @@ describe('Login', () => {
     localStorage.clear();
   });
 
-  it('shows password field for every role', () => {
+  it('shows only nickname and password even with an old saved role', () => {
+    localStorage.setItem('loginRole', 'admin');
     renderLogin();
-
+    expect(screen.getByLabelText('Твой ник')).toBeInTheDocument();
     expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Роль'), { target: { value: 'team_lead' } });
-    expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Роль'), { target: { value: 'volunteer' } });
-    expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Роль')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
   it('submits credentials, saves session and redirects back', async () => {
@@ -51,7 +48,6 @@ describe('Login', () => {
 
     renderLogin(setUser, [{ pathname: '/login', state: { from: '/students' } }]);
 
-    fireEvent.change(screen.getByLabelText('Роль'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByLabelText('Твой ник'), { target: { value: ' odessabu ' } });
     fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'pass1234' } });
     fireEvent.click(screen.getByRole('button', { name: 'Войти' }));

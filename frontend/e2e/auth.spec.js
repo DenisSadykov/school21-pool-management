@@ -5,7 +5,7 @@ test.describe('School 21 Pool smoke', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: 'School 21 Pool' })).toBeVisible();
-    await page.getByLabel('Роль', { exact: true }).selectOption('admin');
+    await expect(page.getByRole('combobox')).toHaveCount(0);
     await page.getByLabel('Твой ник').fill('admin');
     await page.getByLabel('Пароль').fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -31,7 +31,6 @@ test.describe('School 21 Pool smoke', () => {
   test('admin can open notifications hub', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByLabel('Роль', { exact: true }).selectOption('admin');
     await page.getByLabel('Твой ник').fill('admin');
     await page.getByLabel('Пароль').fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -53,7 +52,6 @@ test.describe('School 21 Pool smoke', () => {
   test('volunteer can log in and sees only volunteer screens', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByLabel('Роль', { exact: true }).selectOption('volunteer');
     await page.getByLabel('Твой ник').fill('odessabu');
     await page.getByLabel('Пароль').fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -67,7 +65,6 @@ test.describe('School 21 Pool smoke', () => {
   test('staff can switch the schedule to read-only for volunteers', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByLabel('Роль', { exact: true }).selectOption('admin');
     await page.getByLabel('Твой ник').fill('admin');
     await page.getByLabel('Пароль').fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -85,7 +82,6 @@ test.describe('School 21 Pool smoke', () => {
 
     await page.getByRole('button', { name: 'AD @admin Админ' }).click();
     await page.getByRole('button', { name: 'Выйти' }).click();
-    await page.getByLabel('Роль', { exact: true }).selectOption('volunteer');
     await page.getByLabel('Твой ник').fill('odessabu');
     await page.getByLabel('Пароль').fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();

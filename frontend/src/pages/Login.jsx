@@ -3,14 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api, setSession } from '../api';
 import '../styles/Login.css';
 
-const ROLE_OPTIONS = [
-  { value: 'volunteer', label: 'Волонтер' },
-  { value: 'tribe_master', label: 'Трайб-мастер' },
-  { value: 'tribe_assistant', label: 'Помощник трайб-мастера' },
-  { value: 'team_lead', label: 'Тимлид' },
-  { value: 'admin', label: 'Админ' },
-];
-
 function safeInternalPath(value) {
   if (typeof value !== 'string') return '/';
   if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
@@ -20,17 +12,10 @@ function safeInternalPath(value) {
 function Login({ setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [role, setRole] = useState(() => localStorage.getItem('loginRole') || 'volunteer');
   const [nick, setNick] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const handleRoleChange = (e) => {
-    const nextRole = e.target.value;
-    setRole(nextRole);
-    localStorage.setItem('loginRole', nextRole);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,15 +53,6 @@ function Login({ setUser }) {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="role">Роль</label>
-            <select id="role" value={role} onChange={handleRoleChange}>
-              {ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
             <label htmlFor="nick">Твой ник</label>
             <input
               id="nick"
@@ -86,20 +62,21 @@ function Login({ setUser }) {
               onChange={(e) => setNick(e.target.value)}
               autoFocus
               autoCapitalize="none"
+              autoComplete="username"
             />
           </div>
 
-            <div className="form-group">
-              <label htmlFor="password">Пароль</label>
-              <input
-                id="password"
-                type="password"
-                placeholder="Пароль"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
+          <div className="form-group">
+            <label htmlFor="password">Пароль</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="Пароль"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
 
           {error && <div className="error-message">{error}</div>}
 
@@ -111,7 +88,7 @@ function Login({ setUser }) {
         <div className="login-footer">
           <p className="text-muted">
             Ник должен быть заранее добавлен в систему.
-            { !['admin', 'team_lead'].includes(role) && ' При первом входе пароль — ваш ник. Затем нужно задать свой пароль.' }
+            {' Если личный пароль ещё не установлен, начальный пароль — ваш ник. После входа нужно задать свой пароль.'}
           </p>
         </div>
       </div>
