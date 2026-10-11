@@ -130,7 +130,7 @@ Sources are `frontend/src/styles/theme.css`, `Pages.css`, `App.css`, `Navbar.css
 - Theme-aware controls with visible keyboard focus.
 - Responsive stacking and larger touch controls.
 
-Evidence limits: `.impeccable/review/desktop.png` (1280 × 900) and `mobile.png` (390 × 844) show the light-theme MyNotes list after an edit, with a success message, search, ordering, and pagination. They corroborate that state only; the desktop capture does not show an expanded sidebar. Dark theme, editor, confirmation, hover, and focus details below come from source, not a fresh rendered review. No browser was used. No synthetic tonal ramps or qualitative identity claims were added.
+Evidence limits: `.impeccable/review/desktop.png` (1280 × 900) and `mobile.png` (390 × 844) show the light-theme MyNotes list after an edit, with a success message, search, ordering, and pagination. The refreshed desktop capture shows the expanded 210px sidebar, as confirmed by the user after the test waits were updated. They corroborate those captured states only. Dark theme, editor, confirmation, hover, and focus details below come from source, not a fresh rendered review. No browser was used. No synthetic tonal ramps or qualitative identity claims were added.
 
 ## Colors
 
