@@ -64,7 +64,7 @@ def factories(db_session):
     ShiftBlock = app_module.ShiftBlock
 
     class FactorySet:
-        def user(self, nick, role='volunteer', password=None, **kwargs):
+        def user(self, nick, role='volunteer', password='testing-pass123', **kwargs):
             user = User(
                 nick=nick,
                 name=kwargs.pop('name', nick),

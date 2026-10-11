@@ -54,6 +54,16 @@ describe('App session refresh', () => {
     expect(clearSession).not.toHaveBeenCalled();
   });
 
+  it('blocks the normal interface until the initial password is changed', async () => {
+    const initial = { ...cachedUser, must_change_password: true };
+    getUser.mockReturnValue(initial);
+    api.get.mockResolvedValue(initial);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Задайте свой пароль')).toBeInTheDocument());
+    expect(screen.queryByText('Дашборд')).not.toBeInTheDocument();
+    expect(screen.queryByText('Навигация')).not.toBeInTheDocument();
+  });
+
   it('does not delete the session when the startup safety timer expires', async () => {
     jest.useFakeTimers();
     api.get.mockReturnValue(new Promise(() => {}));

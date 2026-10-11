@@ -248,7 +248,7 @@ class User(db.Model):
     is_group_reviewer = db.Column(db.Boolean, default=False)
     has_confession = db.Column(db.Boolean, default=False)
     coins_adjustment = db.Column(db.Integer, default=0)
-    password_hash = db.Column(db.String(255))  # только для team_lead / admin
+    password_hash = db.Column(db.String(255))  # пароль для всех ролей
     telegram = db.Column(db.String(100))
     tribe = db.Column(db.String(50))
     active = db.Column(db.Boolean, default=True)
@@ -2355,8 +2355,28 @@ def verify_internal_api_secret():
 # ==================== Авторизация ====================
 
 
+def must_change_password(user):
+    return not user.password_hash and user.role not in ROLES_WITH_PASSWORD
+
+
+def _password_matches(user, password):
+    if not isinstance(password, str) or not password or len(password) > 256:
+        return False
+    if user.password_hash:
+        return check_password_hash(user.password_hash, password)
+    return must_change_password(user) and secrets.compare_digest(
+        user.nick.encode('utf-8'), password.encode('utf-8'))
+
+
+def _credential_version(user):
+    # Signed tokens contain only a digest, never the stored password hash.
+    value = user.password_hash or f'initial:{user.nick}'
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
 def make_token(user):
-    return serializer.dumps({'id': user.id, 'role': user.role})
+    return serializer.dumps({'id': user.id, 'role': user.role,
+                             'credential_version': _credential_version(user)})
 
 
 def _pool_membership_for_user(user, pool_id=None):
@@ -2392,6 +2412,7 @@ def _session_user_dict(user, pool_id=None):
     payload['role'] = _effective_access_role(user, pool_id)
     payload['tribe'] = _effective_access_tribe(user, pool_id)
     payload['active_pool_id'] = pool_id
+    payload['must_change_password'] = must_change_password(user)
     return payload
 
 
@@ -2446,8 +2467,19 @@ def load_user_from_request():
         data = serializer.loads(token, max_age=60 * 60 * 24 * 30)  # 30 дней
     except BadSignature:
         return None
+    if not isinstance(data, dict):
+        return None
     user = db.session.get(User, data.get('id'))
-    return user if user and user.active else None
+    if not user or not user.active or data.get('credential_version') != _credential_version(user):
+        return None
+    return user
+
+
+def _password_change_gate(user):
+    if must_change_password(user) and request.endpoint not in {'me', 'change_my_password'}:
+        return jsonify({'error': 'Сначала смените начальный пароль',
+                        'code': 'password_change_required'}), 403
+    return None
 
 
 def require_auth(fn):
@@ -2456,6 +2488,9 @@ def require_auth(fn):
         user = load_user_from_request()
         if not user:
             return jsonify({'error': 'Не авторизован'}), 401
+        blocked = _password_change_gate(user)
+        if blocked is not None:
+            return blocked
         _bind_request_user(user)
         return fn(*args, **kwargs)
     return wrapper
@@ -2468,6 +2503,9 @@ def require_role(*roles):
             user = load_user_from_request()
             if not user:
                 return jsonify({'error': 'Не авторизован'}), 401
+            blocked = _password_change_gate(user)
+            if blocked is not None:
+                return blocked
             effective_role = _effective_access_role(user)
             if effective_role not in roles:
                 return jsonify({'error': 'Недостаточно прав'}), 403
@@ -2497,6 +2535,8 @@ def health():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or not isinstance(data.get('nick', ''), str):
+        return jsonify({'error': 'Укажите ник и пароль'}), 400
     nick = (data.get('nick') or '').strip()
     password = data.get('password') or ''
     if not nick:
@@ -2506,9 +2546,8 @@ def login():
     if not user or not user.active:
         return jsonify({'error': 'Тебя нет в системе. Обратись к тимлиду, чтобы внесли твой ник.'}), 403
 
-    if user.role in ROLES_WITH_PASSWORD:
-        if not user.password_hash or not check_password_hash(user.password_hash, password):
-            return jsonify({'error': 'Неверный пароль'}), 403
+    if not _password_matches(user, password):
+        return jsonify({'error': 'Неверный пароль'}), 403
 
     return jsonify({'token': make_token(user), 'user': _session_user_dict(user)})
 
@@ -2781,21 +2820,29 @@ def delete_user(user_id):
 
 
 @app.route('/api/me/password', methods=['POST'])
-@require_role('team_lead', 'admin')
+@require_auth
 def change_my_password():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Укажите текущий и новый пароль'}), 400
     current_password = data.get('current_password') or ''
     new_password = data.get('new_password') or ''
-
-    if not g.user.password_hash or not check_password_hash(g.user.password_hash, current_password):
+    # Serialize password changes so two initial sessions cannot overwrite each other.
+    user = User.query.filter_by(id=g.user.id).populate_existing().with_for_update().one()
+    if not user.active or load_user_from_request() is None:
+        return jsonify({'error': 'Не авторизован'}), 401
+    if not _password_matches(user, current_password):
         return jsonify({'error': 'Текущий пароль неверный'}), 400
-    if len(new_password) < 4:
-        return jsonify({'error': 'Новый пароль должен быть не короче 4 символов'}), 400
+    if not isinstance(new_password, str) or not 8 <= len(new_password) <= 256:
+        return jsonify({'error': 'Новый пароль должен содержать от 8 до 256 символов'}), 400
+    if new_password.casefold() == user.nick.casefold() or new_password == current_password:
+        return jsonify({'error': 'Новый пароль должен отличаться от ника и текущего пароля'}), 400
 
-    g.user.password_hash = generate_password_hash(new_password)
+    user.password_hash = generate_password_hash(new_password)
+    log_action('update', 'user', user.id, 'Сменён пароль', {'user_id': user.id})
     db.session.commit()
-    log_action('update', 'user', g.user.id, 'Сменён пароль администратора/тимлида', {'user_id': g.user.id})
-    return jsonify({'message': 'Пароль обновлён'})
+    return jsonify({'message': 'Пароль обновлён', 'token': make_token(user),
+                    'user': _session_user_dict(user)})
 
 
 # ==================== Бассейны ====================

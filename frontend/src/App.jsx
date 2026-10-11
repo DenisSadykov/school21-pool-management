@@ -22,6 +22,7 @@ import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
+import PasswordChange from './components/PasswordChange';
 import ThemeToggle from './components/ThemeToggle';
 import {
   api,
@@ -185,6 +186,10 @@ function AppRoutes({
     );
   }
 
+  if (user.must_change_password) {
+    return <PasswordChange user={user} setUser={setUser} required />;
+  }
+
   const isStaff = user.role === 'team_lead' || user.role === 'admin';
   const canUseTribe = ['tribe_master', 'tribe_assistant'].includes(user.role) || isStaff;
   const canUseGroupReviews = isStaff;
@@ -234,7 +239,7 @@ function AppRoutes({
                   {isStaff && <Route path="/manage" element={<Manage user={user} />} />}
                   {isStaff && <Route path="/notifications" element={<Notifications user={user} />} />}
                   {isStaff && <Route path="/settings" element={<Settings user={user} />} />}
-                  {isStaff && <Route path="/admin" element={<Admin user={user} />} />}
+                  {isStaff && <Route path="/admin" element={<Admin user={user} setUser={setUser} />} />}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </main>
