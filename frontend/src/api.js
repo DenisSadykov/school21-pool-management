@@ -83,6 +83,9 @@ async function request(path, { method = 'GET', body } = {}) {
     try {
       res = await fetch(`${API_URL}${path}`, {
         method,
+        // A browser may retain permanent redirects from the previous hosting.
+        // Bypass that cache for API calls, including authenticated responses.
+        cache: 'no-store',
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
@@ -133,6 +136,7 @@ async function upload(path, formData) {
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: 'POST',
+      cache: 'no-store',
       headers,
       body: formData,
       signal: controller.signal,
@@ -172,7 +176,7 @@ async function download(path) {
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(`${API_URL}${path}`, { headers, signal: controller.signal });
+    res = await fetch(`${API_URL}${path}`, { cache: 'no-store', headers, signal: controller.signal });
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error('Сервер не отвечает. Проверь подключение и попробуй ещё раз.');
