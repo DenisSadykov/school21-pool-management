@@ -591,6 +591,37 @@
   font-size: 0.92rem;
 }
 
+.dashboard-shift-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-shift-telegram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.dashboard-shift-telegram:hover {
+  background: var(--accent-muted);
+}
+
+.dashboard-shift-telegram:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dashboard-shift-telegram img {
+  display: block;
+}
+
 .dashboard-action {
   display: inline-flex;
   align-items: center;

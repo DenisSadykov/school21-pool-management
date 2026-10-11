@@ -27,6 +27,32 @@ const dashboardPayload = {
   pool_responsibles: [],
 };
 
+it('shows direct Telegram buttons beside tomorrow volunteers, without raw Telegram handles', async () => {
+  api.get.mockResolvedValue({
+    ...dashboardPayload,
+    role: 'team_lead',
+    tomorrow: '2026-10-12',
+    tomorrow_blocks: [{
+      id: 1, date: '2026-10-12', time_start: '09:00', time_end: '19:00',
+      volunteers: [
+        { id: 1, nick: 'aracelio', telegram: '@helene_sleepymood' },
+        { id: 2, nick: 'combinef', telegram: 'https://t.me/code2py' },
+        { id: 3, nick: 'without_telegram', telegram: '' },
+        { id: 4, nick: 'invalid_telegram', telegram: 'not a username' },
+      ],
+    }],
+  });
+  render(<MemoryRouter><Dashboard user={{ role: 'team_lead' }} /></MemoryRouter>);
+  expect(await screen.findByRole('link', { name: 'Написать @aracelio в Telegram' }))
+    .toHaveAttribute('href', 'https://t.me/helene_sleepymood');
+  expect(screen.getByRole('link', { name: 'Написать @combinef в Telegram' }))
+    .toHaveAttribute('href', 'https://t.me/code2py');
+  expect(screen.queryByText(/tg:/)).not.toBeInTheDocument();
+  expect(screen.getByText('@without_telegram')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Написать @without_telegram в Telegram' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Написать @invalid_telegram в Telegram' })).not.toBeInTheDocument();
+});
+
 describe('Tribe-master dashboard scripts reminder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
