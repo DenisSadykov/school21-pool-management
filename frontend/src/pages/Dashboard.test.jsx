@@ -45,6 +45,7 @@ it('shows direct Telegram buttons beside tomorrow volunteers, without raw Telegr
   render(<MemoryRouter><Dashboard user={{ role: 'team_lead' }} /></MemoryRouter>);
   expect(await screen.findByRole('link', { name: 'Написать @aracelio в Telegram' }))
     .toHaveAttribute('href', 'https://t.me/helene_sleepymood');
+  expect(screen.getByText('@aracelio').closest('.dashboard-shift-people')).toHaveClass('has-columns');
   expect(screen.getByRole('link', { name: 'Написать @combinef в Telegram' }))
     .toHaveAttribute('href', 'https://t.me/code2py');
   expect(screen.queryByText(/tg:/)).not.toBeInTheDocument();

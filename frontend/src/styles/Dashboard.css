@@ -599,13 +599,40 @@
   overflow-wrap: anywhere;
 }
 
+.dashboard-shift-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dashboard-shift-people {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px 16px;
+  position: relative;
+}
+
+.dashboard-shift-people.has-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-shift-people.has-columns::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+
 .dashboard-shift-telegram {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
 }
 
@@ -620,6 +647,24 @@
 
 .dashboard-shift-telegram img {
   display: block;
+}
+
+@media (pointer: coarse), (max-width: 600px) {
+  .dashboard-shift-telegram {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 340px) {
+  .dashboard-shift-people.has-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-shift-people.has-columns::after {
+    display: none;
+  }
 }
 
 .dashboard-action {
