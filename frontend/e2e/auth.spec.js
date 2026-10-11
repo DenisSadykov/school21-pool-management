@@ -7,7 +7,7 @@ test.describe('School 21 Pool smoke', () => {
     await expect(page.getByRole('heading', { name: 'School 21 Pool' })).toBeVisible();
     await expect(page.getByRole('combobox')).toHaveCount(0);
     await page.getByLabel('Твой ник').fill('admin');
-    await page.getByLabel('Пароль').fill('secret123');
+    await page.getByLabel('Пароль', { exact: true }).fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
 
     await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
@@ -32,7 +32,7 @@ test.describe('School 21 Pool smoke', () => {
     await page.goto('/');
 
     await page.getByLabel('Твой ник').fill('admin');
-    await page.getByLabel('Пароль').fill('secret123');
+    await page.getByLabel('Пароль', { exact: true }).fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
 
     await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
@@ -53,7 +53,7 @@ test.describe('School 21 Pool smoke', () => {
     await page.goto('/');
 
     await page.getByLabel('Твой ник').fill('odessabu');
-    await page.getByLabel('Пароль').fill('volunteer123');
+    await page.getByLabel('Пароль', { exact: true }).fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();
 
     await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
@@ -66,7 +66,7 @@ test.describe('School 21 Pool smoke', () => {
     await page.goto('/');
 
     await page.getByLabel('Твой ник').fill('admin');
-    await page.getByLabel('Пароль').fill('secret123');
+    await page.getByLabel('Пароль', { exact: true }).fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
     await page.getByRole('link', { name: 'График смен' }).click();
 
@@ -83,7 +83,7 @@ test.describe('School 21 Pool smoke', () => {
     await page.getByRole('button', { name: 'AD @admin Админ' }).click();
     await page.getByRole('button', { name: 'Выйти' }).click();
     await page.getByLabel('Твой ник').fill('odessabu');
-    await page.getByLabel('Пароль').fill('volunteer123');
+    await page.getByLabel('Пароль', { exact: true }).fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();
     await page.getByRole('link', { name: 'График смен' }).click();
 
@@ -101,9 +101,9 @@ test('initial nickname password forces change before opening any page', async ({
   await page.goto('/schedule');
   await expect(page.getByRole('heading', { name: 'Задайте свой пароль' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'График смен' })).toHaveCount(0);
-  await page.getByLabel('Текущий пароль').fill('first_login');
+  await page.getByLabel('Текущий пароль', { exact: true }).fill('first_login');
   await page.getByLabel('Новый пароль', { exact: true }).fill('personal-pass123');
-  await page.getByLabel('Повторите новый пароль').fill('personal-pass123');
+  await page.getByLabel('Повторите новый пароль', { exact: true }).fill('personal-pass123');
   await page.getByRole('button', { name: 'Сохранить пароль' }).click();
   await expect(page.getByRole('heading', { name: 'График смен' })).toBeVisible();
   await page.reload();
