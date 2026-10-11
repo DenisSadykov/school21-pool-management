@@ -8,6 +8,7 @@
   background: var(--bg-sidebar);
   border-bottom: 1px solid var(--border);
   height: 48px;
+  flex-shrink: 0;
   padding: 0;
   position: sticky;
   top: 0;
