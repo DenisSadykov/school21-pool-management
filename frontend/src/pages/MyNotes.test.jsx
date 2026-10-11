@@ -73,3 +73,32 @@ it('renders note text safely, not as HTML', async () => {
   expect(await screen.findByText('<script>alert(1)</script>')).toBeInTheDocument();
   expect(container.querySelector('script')).toBeNull();
 });
+
+it('protects an edit from search, sorting and page changes', async () => {
+  render(<MemoryRouter><MyNotes /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Редактировать заметку о @pupil' }));
+  fireEvent.change(screen.getByLabelText('Текст заметки'), { target: { value: 'Мой черновик' } });
+  expect(screen.getByPlaceholderText('Ник пира')).toBeDisabled();
+  expect(screen.getByLabelText('Порядок записей')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled();
+  expect(screen.getByLabelText('Текст заметки')).toHaveValue('Мой черновик');
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+  expect(screen.getByPlaceholderText('Ник пира')).not.toBeDisabled();
+});
+
+it('recovers the latest revision while preserving the conflicting draft', async () => {
+  const fresh = { ...note, text: 'Текст другой вкладки', updated_at: '2026-10-11T13:00:00Z' };
+  api.patch.mockRejectedValueOnce(new Error('Заметка уже изменена. Обновите список и повторите.'))
+    .mockResolvedValueOnce({ ...fresh, text: 'Мой черновик' });
+  api.get.mockResolvedValue({ notes: [fresh], has_more: false });
+  const onSaved = jest.fn();
+  render(<NoteEditor note={note} onSaved={onSaved} onCancel={jest.fn()} />);
+  fireEvent.change(screen.getByLabelText('Текст заметки'), { target: { value: 'Мой черновик' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Получить последнюю версию, сохранив мой текст' }));
+  expect(await screen.findByText('Текст другой вкладки')).toBeInTheDocument();
+  expect(screen.getByLabelText('Текст заметки')).toHaveValue('Мой черновик');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(api.patch).toHaveBeenLastCalledWith('/api/me/student-notes/1', { text: 'Мой черновик', updated_at: fresh.updated_at });
+});

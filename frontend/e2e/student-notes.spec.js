@@ -25,6 +25,8 @@ test('volunteer creates, searches, edits and deletes a private pupil note on mob
   expect(await page.locator('.my-notes-page').evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   await page.screenshot({ path: '/tmp/school21-notes-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '210px');
   await page.screenshot({ path: '/tmp/school21-notes-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Удалить заметку о @lanachun' }).click();
   await page.getByRole('button', { name: 'Да, удалить' }).click();

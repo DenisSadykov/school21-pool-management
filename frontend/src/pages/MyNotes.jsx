@@ -17,6 +17,28 @@ export function NoteEditor({ note, students = [], selectedStudent, onSaved, onCa
   const [studentId, setStudentId] = useState(String(selectedStudent || ''));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [revision, setRevision] = useState(note?.updated_at);
+  const [latest, setLatest] = useState(null);
+  const refreshRevision = async () => {
+    setSaving(true);
+    try {
+      const search = new URLSearchParams({ q: note.student_nick, page: '1' });
+      let found;
+      let more = true;
+      let page = 1;
+      while (more && !found) {
+        search.set('page', String(page++));
+        const result = await api.get(`/api/me/student-notes?${search}`);
+        found = result.notes.find(item => item.id === note.id);
+        more = result.has_more;
+      }
+      if (!found) throw new Error('Заметка больше не существует. Ваш текст остаётся в форме.');
+      setLatest(found);
+      setRevision(found.updated_at);
+      setError('');
+    } catch (requestError) { setError(requestError.message); }
+    finally { setSaving(false); }
+  };
   const submit = async (event) => {
     event.preventDefault();
     if (saving || !text.trim() || (!note && !studentId)) return;
@@ -24,7 +46,7 @@ export function NoteEditor({ note, students = [], selectedStudent, onSaved, onCa
     setError('');
     try {
       const saved = note
-        ? await api.patch(`/api/me/student-notes/${note.id}`, { text, updated_at: note.updated_at })
+        ? await api.patch(`/api/me/student-notes/${note.id}`, { text, updated_at: revision })
         : await api.post('/api/me/student-notes', { text, student_id: Number(studentId) });
       onSaved(saved);
     } catch (requestError) {
@@ -56,11 +78,13 @@ export function NoteEditor({ note, students = [], selectedStudent, onSaved, onCa
         </div>
       </div>
       {error && <p className="my-notes-error" role="alert">{error}</p>}
+      {note && error && <button className="btn-secondary" type="button" disabled={saving} onClick={refreshRevision}>Получить последнюю версию, сохранив мой текст</button>}
+      {latest && <div className="my-note-delete-confirm"><p>Последняя сохранённая версия:</p><p className="my-note-text">{latest.text}</p><small>Ваш текст остался в форме. Нажмите «Сохранить», только если хотите заменить эту версию своим текстом.</small></div>}
     </form>
   );
 }
 
-function NoteEntry({ note, onChanged, onDeleted }) {
+function NoteEntry({ note, onChanged, onDeleted, editingId, onEditing }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -79,8 +103,8 @@ function NoteEntry({ note, onChanged, onDeleted }) {
   };
   return (
     <article className="my-note-entry">
-      {editing ? <NoteEditor note={note} onCancel={() => setEditing(false)} onSaved={saved => {
-        onChanged(saved); setEditing(false);
+      {editing ? <NoteEditor note={note} onCancel={() => { setEditing(false); onEditing(null); }} onSaved={saved => {
+        onChanged(saved); setEditing(false); onEditing(null);
       }} /> : <>
         <div className="my-note-heading">
           <div><h2>@{note.student_nick}</h2>
@@ -89,9 +113,9 @@ function NoteEntry({ note, onChanged, onDeleted }) {
           </div>
           <div className="my-notes-actions">
             <button type="button" className="my-note-icon" aria-label={`Редактировать заметку о @${note.student_nick}`}
-              onClick={() => setEditing(true)} disabled={deleting}><Pencil size={18} /></button>
+              onClick={() => { setEditing(true); onEditing(note.id); }} disabled={deleting || Boolean(editingId)}><Pencil size={18} /></button>
             <button type="button" className="my-note-icon" aria-label={`Удалить заметку о @${note.student_nick}`}
-              onClick={() => setConfirming(true)} disabled={deleting}><Trash2 size={18} /></button>
+              onClick={() => setConfirming(true)} disabled={deleting || Boolean(editingId)}><Trash2 size={18} /></button>
           </div>
         </div>
         <p className="my-note-text">{note.text}</p>
@@ -100,7 +124,7 @@ function NoteEntry({ note, onChanged, onDeleted }) {
           <p>Удалить эту заметку? Восстановить её в кабинете нельзя.</p>
           <div className="my-notes-actions">
             <button className="btn-secondary" type="button" disabled={deleting} onClick={() => setConfirming(false)}>Оставить</button>
-            <button className="btn-secondary my-note-danger" type="button" disabled={deleting} onClick={remove}>
+            <button className="btn-secondary my-note-danger" type="button" disabled={deleting || Boolean(editingId)} onClick={remove}>
               {deleting ? 'Удаляю…' : 'Да, удалить'}
             </button>
           </div>
@@ -126,6 +150,7 @@ export default function MyNotes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(Boolean(studentId));
+  const [editingId, setEditingId] = useState(null);
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState('');
   const requestId = useRef(0);
@@ -157,13 +182,13 @@ export default function MyNotes() {
     <div className="page my-notes-page">
       <div className="page-header">
         <div><h1>Мои заметки</h1><p className="my-notes-private"><Lock size={16} /> Только ваши записи. Другие пользователи их не видят.</p></div>
-        <button className="btn-primary" type="button" onClick={() => { setCreating(true); setMessage(''); }} disabled={creating}>
+        <button className="btn-primary" type="button" onClick={() => { setCreating(true); setMessage(''); }} disabled={creating || Boolean(editingId)}>
           <Plus size={18} /> Добавить заметку
         </button>
       </div>
       {studentId && <div className="my-notes-student-scope">
         <span>{selected ? `Заметки о @${selected.nick}` : 'Заметки выбранного пира'}</span>
-        <button className="btn-secondary" type="button" onClick={() => { setParams({}); setPage(1); setCreating(false); }}><X size={16} /> Все мои заметки</button>
+        <button className="btn-secondary" type="button" disabled={Boolean(editingId)} onClick={() => { setParams({}); setPage(1); setCreating(false); }}><X size={16} /> Все мои заметки</button>
       </div>}
       {message && <p className="my-notes-success" role="status">{message}</p>}
       {creating && <>
@@ -173,26 +198,27 @@ export default function MyNotes() {
       </>}
       <div className="my-notes-toolbar">
         <label className="my-notes-search"><span>Поиск по нику</span><div><Search size={18} />
-          <input type="search" placeholder="Ник пира" value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
+          <input type="search" placeholder="Ник пира" value={query} disabled={Boolean(editingId)} onChange={e => { setQuery(e.target.value); setPage(1); }} />
         </div></label>
-        <label>Порядок записей<select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>
+        <label>Порядок записей<select value={sort} disabled={Boolean(editingId)} onChange={e => { setSort(e.target.value); setPage(1); }}>
           <option value="newest">Сначала новые</option><option value="oldest">Сначала старые</option>
         </select></label>
       </div>
-      {loading ? <Loader text="Загрузка заметок…" compact /> : error ? <div className="my-notes-empty">
+      {editingId && <p className="my-notes-count">Сохраните заметку или нажмите «Отмена», чтобы изменить поиск и порядок.</p>}
+      {loading && notes.length === 0 ? <Loader text="Загрузка заметок…" compact /> : error && !editingId ? <div className="my-notes-empty">
         <p role="alert">{error}</p><button className="btn-secondary" type="button" onClick={reload}>Повторить</button>
       </div> : notes.length === 0 ? <div className="my-notes-empty">
         <h2>{query ? 'По этому нику нет заметок' : 'Здесь будут ваши наблюдения о пирах'}</h2>
         <p>{query ? 'Попробуйте другой ник или очистите поиск.' : 'Выберите пира в новой заметке или откройте «Мои заметки» рядом с его ником в разделе «Пиры».'}</p>
       </div> : <>
         <p className="my-notes-count">Записей: {total}</p>
-        <div className="my-notes-list">{notes.map(note => <NoteEntry key={note.id} note={note}
+        <div className="my-notes-list">{notes.map(note => <NoteEntry key={note.id} note={note} editingId={editingId || (loading || creating ? true : null)} onEditing={setEditingId}
           onChanged={saved => { setNotes(current => current.map(item => item.id === saved.id ? saved : item)); setMessage('Изменения сохранены'); }}
           onDeleted={() => { setMessage('Заметка удалена'); reload(); }} />)}</div>
         <div className="my-notes-pagination">
-          <button className="btn-secondary" type="button" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Назад</button>
+          <button className="btn-secondary" type="button" disabled={page === 1 || Boolean(editingId)} onClick={() => setPage(p => p - 1)}>Назад</button>
           <span>Страница {page}</span>
-          <button className="btn-secondary" type="button" disabled={!hasMore} onClick={() => setPage(p => p + 1)}>Далее</button>
+          <button className="btn-secondary" type="button" disabled={!hasMore || Boolean(editingId)} onClick={() => setPage(p => p + 1)}>Далее</button>
         </div>
       </>}
     </div>
