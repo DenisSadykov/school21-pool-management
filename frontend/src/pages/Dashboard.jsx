@@ -29,14 +29,9 @@ function formatDate(value) {
   });
 }
 
-function personLine(person) {
-  if (!person) return '';
-  return `@${person.nick}${person.telegram ? ` · tg: ${person.telegram}` : ''}`;
-}
-
 function getTelegramLink(telegram) {
-  const username = (telegram || '').trim().replace(/^@+/, '');
-  return username ? `https://t.me/${username}` : '';
+  const username = normalizeTelegramUsername(telegram);
+  return /^[a-zA-Z0-9_]+$/.test(username) ? `https://t.me/${username}` : '';
 }
 
 function normalizeTelegramUsername(value) {
@@ -600,9 +595,26 @@ function TomorrowBlocks({ blocks, personal = false }) {
             {(block.volunteers || []).length === 0 ? (
               <span className="text-muted">Пока никто не записан</span>
             ) : (
-              block.volunteers.map((person) => (
-                <span key={person.id}>{personLine(person)}</span>
-              ))
+              block.volunteers.map((person) => {
+                const telegramLink = getTelegramLink(person.telegram);
+                return (
+                  <span className="dashboard-shift-person" key={person.id}>
+                    <span>@{person.nick}</span>
+                    {telegramLink && (
+                      <a
+                        className="dashboard-shift-telegram"
+                        href={telegramLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Написать @${person.nick} в Telegram`}
+                        title={`Написать @${person.nick} в Telegram`}
+                      >
+                        <img src="/icons/telegram.webp" alt="" width="24" height="24" />
+                      </a>
+                    )}
+                  </span>
+                );
+              })
             )}
           </div>
         </div>

@@ -323,6 +323,7 @@
 .person-identity-text {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: 38px;
   min-width: 0;
 }
@@ -333,6 +334,10 @@
   gap: 6px;
   flex-wrap: wrap;
   margin-top: 4px;
+}
+
+.person-identity-text .person-meta {
+  margin-top: 0;
 }
 
 .volunteer-table td:nth-child(2) .person-meta {
