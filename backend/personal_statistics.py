@@ -137,28 +137,13 @@ def build_personal_statistics(memberships, shifts, reviews, rewards, pools, meet
         for key in ('past_hours', 'upcoming_hours'):
             target[key] = round(target[key], 2)
 
-    conditions = [
-        ('first_shift', 'Первый шаг', 'Первая прошедшая запись на смену', 'past_shifts', 1),
-        ('ten_shifts', 'Надёжное плечо', '10 прошедших записей на смены', 'past_shifts', 10),
-        ('twenty_five_shifts', 'Опора бассейна', '25 прошедших записей на смены', 'past_shifts', 25),
-        ('fifty_hours', '50 часов рядом', '50 часов в прошедших сменах по расписанию', 'past_hours', 50),
-        ('exam_shift', 'Экзамен под контролем', 'Прошедшая запись на экзаменационную смену', 'exam_shifts', 1),
-        ('weekend_shifts', 'Выходной в команде', '3 прошедшие записи на смены в выходные', 'weekend_shifts', 3),
-        ('three_pools', 'Не первый бассейн', 'Прошедшая активность в 3 бассейнах', 'active_pools', 3),
-        ('group_reviews', 'Вместе разберёмся', '5 групповых проверок с наступившей датой', 'group_reviews', 5),
-        ('tribe_meetings', 'Свои люди', '3 прошедшие встречи своего трайба в роли мастера или помощника', 'tribe_meetings', 3),
-        ('assistant_meetings', 'Правая рука', 'Присутствие отмечено на 3 прошедших встречах', 'assistant_meetings', 3),
-    ]
-    achievements = [dict(id=key, title=title, description=description, target=target,
-                         value=summary[metric], unlocked=summary[metric] >= target)
-                    for key, title, description, metric, target in conditions]
     legacy_rewards = rewards_by_pool.get(None, [])
     if legacy_rewards:
         warnings.append('Есть старые начисления без привязки к бассейну: показаны отдельно, не включены в итог.')
     if any(row['manual_event_count'] is not None for row in history):
-        warnings.append('Ручное количество трайб-мероприятий влияет на коины, но не выдаёт ачивки за встречи.')
+        warnings.append('Ручное количество трайб-мероприятий влияет на коины, но не меняет статистику встреч.')
     return dict(as_of=now.isoformat(), timezone='Europe/Moscow', summary=summary,
                 monthly_activity=list(monthly.values()), pools=history, upcoming_shifts=upcoming[:10],
-                achievements=achievements, coin_breakdown=list(all_breakdown.values()),
+                achievements=[], coin_breakdown=list(all_breakdown.values()),
                 unscoped_rewards=dict(count=len(legacy_rewards), coins=sum(row.coins for row in legacy_rewards)),
                 warnings=sorted(set(warnings)))

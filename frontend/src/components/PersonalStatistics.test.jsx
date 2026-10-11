@@ -19,14 +19,15 @@ const show = () => render(<MemoryRouter><PersonalStatistics userId={1} /></Memor
 
 beforeEach(() => { jest.clearAllMocks(); api.get.mockResolvedValue(payload); });
 
-test('shows personal history, accessible chart values and achievement progress', async () => {
+test('shows statistics without achievements even with an old API payload', async () => {
   show();
   expect(screen.getByRole('status')).toHaveTextContent('Загружаем');
   expect(await screen.findByRole('heading', { name: 'Ваш ритм' })).toBeInTheDocument();
   expect(api.get).toHaveBeenCalledWith('/api/me/statistics');
   expect(screen.getByRole('listitem', { name: 'сентябрь 2026 г.: 16 ч., смен: 4' })).toBeInTheDocument();
-  expect(screen.getByRole('progressbar', { name: 'Прогресс: Первый шаг' })).toHaveAttribute('value', '1');
-  expect(screen.getByRole('progressbar', { name: 'Прогресс: Надёжное плечо' })).toHaveAttribute('value', '4');
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(screen.queryByText('Маленькие победы')).not.toBeInTheDocument();
+  expect(screen.queryByText('Первый шаг')).not.toBeInTheDocument();
   expect(screen.getByText(/не подтверждает фактический выход/)).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Открыть график смен' })).toHaveAttribute('href', '/schedule');
   fireEvent.change(screen.getByLabelText('Бассейн'), { target: { value: '2' } });

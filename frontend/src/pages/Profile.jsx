@@ -64,7 +64,7 @@ function Profile({ user, setUser }) {
   return (
     <div className="page manage-page">
       <div className="personal-cabinet-heading"><h1>Личный кабинет</h1>
-        <p>Ваша история участия, маленькие победы и настройки аккаунта.</p></div>
+        <p>Ваша история участия, статистика и настройки аккаунта.</p></div>
       <nav className="personal-cabinet-tabs" aria-label="Разделы личного кабинета">
         {[['overview', 'Обзор'], ['details', 'Личные данные'], ['security', 'Безопасность']].map(([key, title]) =>
           <button key={key} type="button" className={section === key ? 'selected' : ''}

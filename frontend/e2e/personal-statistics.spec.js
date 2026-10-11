@@ -13,7 +13,8 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole('heading', { name: 'Личный кабинет' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Ваш ритм' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'E2E Прошлый бассейн' })).toBeVisible();
-    await expect(page.getByRole('progressbar', { name: 'Прогресс: Первый шаг' })).toHaveAttribute('value', '1');
+    await expect(page.getByRole('heading', { name: 'Маленькие победы' })).toHaveCount(0);
+    await expect(page.getByRole('progressbar')).toHaveCount(0);
     await page.getByLabel('Бассейн', { exact: true }).selectOption({ label: 'E2E Прошлый бассейн' });
     await expect(page.getByRole('heading', { name: 'E2E Бассейн', exact: true })).toHaveCount(0);
     await page.getByText('Из чего складываются коины', { exact: true }).click();
