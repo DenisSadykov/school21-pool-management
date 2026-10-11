@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { api, downloadFile } from '../api';
+import { api, downloadFile, setSession } from '../api';
 import { moscowTodayIso } from '../utils/date';
 import '../styles/Pages.css';
 import '../styles/Admin.css';
@@ -46,7 +46,7 @@ function formatActionDetails(item) {
   return details.join(' • ');
 }
 
-function Admin({ user }) {
+function Admin({ user, setUser }) {
   const [backup, setBackup] = useState(null);
   const [actions, setActions] = useState([]);
   const [message, setMessage] = useState('');
@@ -111,6 +111,8 @@ function Admin({ user }) {
         current_password: passwordForm.current,
         new_password: passwordForm.next,
       });
+      setSession(result.token, result.user);
+      setUser?.(result.user);
       setPasswordForm({ current: '', next: '', confirm: '' });
       setMessage(`✅ ${result.message}`);
       loadActions();

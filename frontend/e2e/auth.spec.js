@@ -31,7 +31,7 @@ test.describe('School 21 Pool smoke', () => {
   test('admin can open notifications hub', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByLabel('Роль').selectOption('admin');
+    await page.getByLabel('Роль', { exact: true }).selectOption('admin');
     await page.getByLabel('Твой ник').fill('admin');
     await page.getByLabel('Пароль').fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -55,6 +55,7 @@ test.describe('School 21 Pool smoke', () => {
 
     await page.getByLabel('Роль', { exact: true }).selectOption('volunteer');
     await page.getByLabel('Твой ник').fill('odessabu');
+    await page.getByLabel('Пароль').fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();
 
     await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
@@ -66,7 +67,7 @@ test.describe('School 21 Pool smoke', () => {
   test('staff can switch the schedule to read-only for volunteers', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByLabel('Роль').selectOption('admin');
+    await page.getByLabel('Роль', { exact: true }).selectOption('admin');
     await page.getByLabel('Твой ник').fill('admin');
     await page.getByLabel('Пароль').fill('secret123');
     await page.getByRole('button', { name: 'Войти' }).click();
@@ -86,10 +87,29 @@ test.describe('School 21 Pool smoke', () => {
     await page.getByRole('button', { name: 'Выйти' }).click();
     await page.getByLabel('Роль', { exact: true }).selectOption('volunteer');
     await page.getByLabel('Твой ник').fill('odessabu');
+    await page.getByLabel('Пароль').fill('volunteer123');
     await page.getByRole('button', { name: 'Войти' }).click();
     await page.getByRole('link', { name: 'График смен' }).click();
 
     await expect(page.getByRole('status')).toContainText('График доступен только для просмотра');
     await expect(page.getByRole('button', { name: 'Запись выключена' })).toBeDisabled();
   });
+});
+
+test('initial nickname password forces change before opening any page', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Твой ник').fill('first_login');
+  await page.getByLabel('Пароль', { exact: true }).fill('first_login');
+  await page.getByRole('button', { name: 'Войти', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Задайте свой пароль' })).toBeVisible();
+  await page.goto('/schedule');
+  await expect(page.getByRole('heading', { name: 'Задайте свой пароль' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'График смен' })).toHaveCount(0);
+  await page.getByLabel('Текущий пароль').fill('first_login');
+  await page.getByLabel('Новый пароль', { exact: true }).fill('personal-pass123');
+  await page.getByLabel('Повторите новый пароль').fill('personal-pass123');
+  await page.getByRole('button', { name: 'Сохранить пароль' }).click();
+  await expect(page.getByRole('heading', { name: 'График смен' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'График смен' })).toBeVisible();
 });

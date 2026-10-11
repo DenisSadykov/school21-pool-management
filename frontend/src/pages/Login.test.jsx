@@ -32,16 +32,16 @@ describe('Login', () => {
     localStorage.clear();
   });
 
-  it('shows password field only for staff roles', () => {
+  it('shows password field for every role', () => {
     renderLogin();
 
-    expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Роль'), { target: { value: 'team_lead' } });
     expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Роль'), { target: { value: 'volunteer' } });
-    expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
   });
 
   it('submits credentials, saves session and redirects back', async () => {
@@ -74,6 +74,7 @@ describe('Login', () => {
     renderLogin(jest.fn(), [{ pathname: '/login', state: { from: '//evil.example' } }]);
 
     fireEvent.change(screen.getByLabelText('Твой ник'), { target: { value: 'volunteer' } });
+    fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'volunteer123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
     await waitFor(() => expect(screen.getByText('Главная')).toBeInTheDocument());

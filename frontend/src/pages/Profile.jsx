@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, getToken, setSession } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
+import PasswordChange from '../components/PasswordChange';
 import '../styles/Pages.css';
 import '../styles/Profile.css';
 
@@ -121,6 +122,7 @@ function Profile({ user, setUser }) {
           </button>
         </form>
       </section>
+      <PasswordChange user={user} setUser={setUser} />
     </div>
   );
 }
