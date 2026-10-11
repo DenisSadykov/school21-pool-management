@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, Copy, Download, FileUp, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check, Copy, Download, FileUp, MoreHorizontal, Plus, Trash2, FileText } from 'lucide-react';
 import { api, downloadFile } from '../api';
 import Loader from '../components/Loader';
 import TribeLabel from '../components/TribeLabel';
 import '../styles/Pages.css';
 import '../styles/Students.css';
+import '../styles/MyNotes.css';
 
 const HEADER_MAP = {
   nick: 'nick',
@@ -642,6 +643,9 @@ function StudentRow({ student, tribes, canManage, onDelete }) {
           <button type="button" className="nick-button" onClick={handleCopyNick} title="Скопировать ник">
             <strong>{copied ? 'Скопировано' : student.nick}</strong>
           </button>
+          <Link className="student-note-link" to={`/my-notes?student_id=${student.id}`}>
+            <FileText size={14} /> Мои заметки
+          </Link>
         </div>
       </td>
       <td data-label="Трайб">
