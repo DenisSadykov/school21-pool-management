@@ -586,12 +586,12 @@ function TomorrowBlocks({ blocks, personal = false }) {
   return (
     <div className="shift-list">
       {blocks.map((block) => (
-        <div className="shift-row" key={block.id}>
+        <div className="shift-row dashboard-shift-row" key={block.id}>
           <div>
             <strong>{formatDate(block.date)} · {block.time_start}-{block.time_end}</strong>
             {block.label && <span className="shift-label">{block.label}</span>}
           </div>
-          <div className="people-list">
+          <div className={`people-list dashboard-shift-people${(block.volunteers || []).length > 1 ? ' has-columns' : ''}`}>
             {(block.volunteers || []).length === 0 ? (
               <span className="text-muted">Пока никто не записан</span>
             ) : (
@@ -609,7 +609,7 @@ function TomorrowBlocks({ blocks, personal = false }) {
                         aria-label={`Написать @${person.nick} в Telegram`}
                         title={`Написать @${person.nick} в Telegram`}
                       >
-                        <img src="/icons/telegram.webp" alt="" width="24" height="24" />
+                        <img src="/icons/telegram.webp" alt="" width="20" height="20" />
                       </a>
                     )}
                   </span>
