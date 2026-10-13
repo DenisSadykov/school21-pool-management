@@ -35,13 +35,16 @@ def test_recycled_telegram_username_cannot_rebind_existing_owner(factories, db_s
     assert result['linked'] is True
 
 
-def test_legacy_telegram_link_upgrades_only_by_private_chat_identity(factories, db_session):
+def test_legacy_telegram_link_upgrades_only_by_private_chat_identity(factories, db_session, monkeypatch):
     owner = factories.user('legacy_owner', telegram='@old_handle')
     account = linked_account(db_session, owner, telegram_user_id=None)
 
     assert platform._telegram_user_from_tg({'id': 888, 'username': 'old_handle'}) is None
     assert account.telegram_user_id is None
     assert platform._telegram_user_from_tg({'id': 777, 'username': 'changed_handle'}).id == owner.id
+    assert account.telegram_user_id is None
+    monkeypatch.setattr(platform, 'sync_telegram_photo', lambda *a: None)
+    platform.upsert_telegram_account(owner, {'id': 777, 'username': 'changed_handle'}, 777)
     assert account.telegram_user_id == '777'
 
 
@@ -87,14 +90,22 @@ def test_old_bot_callback_cannot_change_penalty_after_access_revoked(
     assert platform.PenaltyHistory.query.count() == 0
 
 
+@pytest.mark.parametrize('legacy_invite_schema', [False, True])
 def test_delete_creator_preserves_other_users_rewards_reviews_invites_and_penalties(
-    client, factories, db_session, auth_headers,
+    client, factories, db_session, auth_headers, legacy_invite_schema,
 ):
     admin = factories.user('admin', role='admin')
     creator = factories.user('creator', role='team_lead')
     recipient = factories.user('recipient')
     pool = factories.pool(active=True)
     factories.assign(recipient, pool)
+    if legacy_invite_schema:
+        conn = db_session.connection()
+        old_schema = str(platform.CreateTable(platform.PoolInviteLink.__table__).compile(dialect=conn.dialect))
+        old_schema = old_schema.replace('created_by INTEGER,', 'created_by INTEGER NOT NULL,')
+        assert 'created_by INTEGER NOT NULL' in old_schema
+        conn.exec_driver_sql('DROP TABLE pool_invite_links')
+        conn.exec_driver_sql(old_schema)
     reward = platform.RewardEvent(user_id=recipient.id, pool_id=pool.id,
         created_by=creator.id, event_type='manual', coins=40)
     review = platform.GroupReview(reviewer_id=recipient.id, created_by=creator.id,
@@ -105,6 +116,11 @@ def test_delete_creator_preserves_other_users_rewards_reviews_invites_and_penalt
     db_session.add_all([reward, review, invite, penalty])
     db_session.commit()
     ids = (reward.id, review.id, invite.id, penalty.id, creator.id)
+    if legacy_invite_schema:
+        platform._upgrade_sqlite_invite_creator(db_session.connection())
+        db_session.commit()
+        db_session.expire_all()
+        assert db_session.get(platform.PoolInviteLink, ids[2]).token == 'preserve-invite'
     # SQLite normally hides this production FK failure. Explicitly enforce it.
     db_session.execute(platform.db.text('PRAGMA foreign_keys=ON'))
     assert db_session.execute(platform.db.text('PRAGMA foreign_keys')).scalar() == 1
@@ -179,3 +195,29 @@ def test_health_checks_actual_database_and_redacts_connection_failure(client, mo
     assert response.get_json()['status'] == 'degraded'
     assert response.get_json()['database']['ok'] is False
     assert b'secret connection' not in response.data
+
+
+@pytest.mark.parametrize('question,status,event_type', [
+    ('m', 'pending', 'penalty_method_question'), ('c', 'in_workoff', 'penalty_workoff_check'),
+])
+def test_existing_skip_buttons_remain_usable(factories, db_session, monkeypatch, question, status, event_type):
+    user = factories.user('skip_actor')
+    pool = factories.pool(active=True)
+    factories.assign(user, pool)
+    linked_account(db_session, user)
+    penalty = platform.StudentPenalty(student_name='synthetic', pool_id=pool.id, workoff_status=status)
+    db_session.add(penalty)
+    db_session.flush()
+    event = platform.NotificationEvent(type=event_type, status='sent', recipient_user_id=user.id,
+        pool_id=pool.id, source_entity='penalty', source_entity_id=penalty.id)
+    db_session.add(event)
+    db_session.commit()
+    skipped = []
+    monkeypatch.setattr(platform, 'telegram_answer_callback', lambda *a, **k: {})
+    monkeypatch.setattr(platform, '_delete_related_penalty_messages', lambda *a: skipped.append(a))
+    result = platform.telegram_handle_callback({'id': 'skip', 'from': {'id': 777},
+                                                'data': f'p:{penalty.id}:{question}:s:{event.id}'})
+    assert result['ok'] is True
+    assert skipped == [(penalty.id, event_type, event.id)]
+    db_session.refresh(penalty)
+    assert penalty.workoff_status == status

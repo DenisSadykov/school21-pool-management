@@ -19,6 +19,7 @@ from defusedxml import ElementTree as ET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
+from sqlalchemy.schema import CreateTable
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
@@ -1537,8 +1538,8 @@ def _telegram_account_from_tg(tg_user):
             TelegramAccount.telegram_chat_id == telegram_user_id,
             db.or_(TelegramAccount.telegram_user_id.is_(None), TelegramAccount.telegram_user_id == ''),
         ).first()
-        if account:
-            account.telegram_user_id = telegram_user_id
+        # Read-only compatibility here; /start persists the numeric identity
+        # under the user lock in upsert_telegram_account.
     return account
 
 
@@ -1952,7 +1953,7 @@ def telegram_handle_callback(callback):
     if (
         not expected_event_type
         or event.status != 'sent'
-        or answer not in ('y', 'n')
+        or answer not in (('y', 'n', 's') if question in ('m', 'c') else ('y', 'n'))
         or event.type != expected_event_type
         or event.source_entity != 'penalty'
         or event.source_entity_id != penalty.id
@@ -2274,7 +2275,10 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
             skipped += 1
             db.session.commit()
             continue
-        user = db.session.get(User, event.recipient_user_id) if event.recipient_user_id else None
+        # All dispatch/removal/deletion paths lock user before membership and
+        # notification records, avoiding a send-then-deadlock retry window.
+        user = User.query.filter_by(id=event.recipient_user_id).populate_existing().with_for_update().first() \
+            if event.recipient_user_id else None
         # Removal takes the same membership lock. A delivery finishes before
         # removal commits, or sees that access has already been revoked.
         membership = PoolVolunteer.query.filter_by(pool_id=event.pool_id, user_id=user.id).populate_existing().with_for_update().first() \
@@ -2863,7 +2867,7 @@ def update_user(user_id):
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @require_role('team_lead', 'admin')
 def delete_user(user_id):
-    user = get_model_or_404(User, user_id)
+    user = User.query.filter_by(id=user_id).with_for_update().first_or_404()
     if (user.nick or '').strip().lower() == 'admin':
         return jsonify({'error': 'Пользователя @admin удалить нельзя'}), 400
     if user.role in ROLES_WITH_PASSWORD and g.user.role != 'admin':
@@ -3126,6 +3130,7 @@ def add_pool_volunteers(pool_id):
 @app.route('/api/pools/<int:pool_id>/volunteers/<int:user_id>', methods=['DELETE'])
 @require_role('team_lead', 'admin')
 def remove_pool_volunteer(pool_id, user_id):
+    User.query.filter_by(id=user_id).with_for_update().first_or_404()
     pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).with_for_update().first_or_404()
     NotificationEvent.query.filter(
         NotificationEvent.pool_id == pool_id,
@@ -7921,6 +7926,32 @@ def seed_pool_data():
         print(f'[seed] ошибка при загрузке тестовых данных: {e}')
 
 
+def _upgrade_sqlite_invite_creator(conn):
+    columns = conn.exec_driver_sql('PRAGMA table_info(pool_invite_links)').fetchall()
+    if not any(row[1] == 'created_by' and row[3] for row in columns):
+        return
+    if {row[1] for row in columns} != set(PoolInviteLink.__table__.columns.keys()):
+        raise RuntimeError('Unexpected invite schema; preserve it for manual migration')
+    schema = str(CreateTable(PoolInviteLink.__table__).compile(dialect=conn.dialect)).replace(
+        'CREATE TABLE pool_invite_links', 'CREATE TABLE pool_invite_links_nullable', 1)
+    conn.exec_driver_sql('SAVEPOINT invite_creator_upgrade')
+    try:
+        conn.exec_driver_sql(schema)
+        conn.exec_driver_sql('''
+            INSERT INTO pool_invite_links_nullable
+                (id, pool_id, token, created_by, is_active, uses_count, max_uses, expires_at, created_at, updated_at)
+            SELECT id, pool_id, token, created_by, is_active, uses_count, max_uses, expires_at, created_at, updated_at
+            FROM pool_invite_links
+        ''')
+        conn.exec_driver_sql('DROP TABLE pool_invite_links')
+        conn.exec_driver_sql('ALTER TABLE pool_invite_links_nullable RENAME TO pool_invite_links')
+        conn.exec_driver_sql('RELEASE SAVEPOINT invite_creator_upgrade')
+    except Exception:
+        conn.exec_driver_sql('ROLLBACK TO SAVEPOINT invite_creator_upgrade')
+        conn.exec_driver_sql('RELEASE SAVEPOINT invite_creator_upgrade')
+        raise
+
+
 def ensure_user_profile_columns():
     """Лёгкая SQLite-миграция для новых полей профиля волонтёра."""
     if db.engine.dialect.name != 'sqlite':
@@ -8287,6 +8318,7 @@ def ensure_user_profile_columns():
                 conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN max_uses INTEGER')
             if 'expires_at' not in pool_invite_cols:
                 conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN expires_at DATETIME')
+            _upgrade_sqlite_invite_creator(conn)
         if 'telegram_accounts' in tables:
             telegram_cols = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(telegram_accounts)').fetchall()}
             if 'telegram_user_id' not in telegram_cols:

@@ -10,7 +10,7 @@ writer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(writer)
 
 
-def test_status_contains_only_metadata_with_private_permissions(tmp_path):
+def test_status_contains_only_metadata_readable_by_unprivileged_api(tmp_path):
     dump = tmp_path / 'sample.dump'
     dump.write_bytes(b'fake archive contents for unit test')
     target = tmp_path / 'status' / 'status.json'
@@ -19,7 +19,8 @@ def test_status_contains_only_metadata_with_private_permissions(tmp_path):
     assert set(record) == {'version', 'verified', 'verified_at', 'size_bytes'}
     assert record['size_bytes'] == dump.stat().st_size
     assert record['verified'] is True
-    assert target.stat().st_mode & 0o777 == 0o600
+    assert target.stat().st_mode & 0o777 == 0o644
+    assert target.parent.stat().st_mode & 0o777 == 0o755
     assert not target.with_suffix('.partial').exists()
 
 
