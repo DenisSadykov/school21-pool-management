@@ -30,7 +30,7 @@ def test_telegram_start_links_known_user_and_sends_greeting(client, factories, d
 
     response = client.post('/api/telegram/webhook', json={
         'message': {
-            'chat': {'id': 555},
+            'chat': {'id': 999},
             'from': {'id': 999, 'username': 'DenisSadykov'},
             'text': '/start',
         }
@@ -43,11 +43,11 @@ def test_telegram_start_links_known_user_and_sends_greeting(client, factories, d
 
     account = db_session.query(app_module.TelegramAccount).filter_by(user_id=user.id).one()
     assert account.is_linked is True
-    assert account.telegram_chat_id == '555'
+    assert account.telegram_chat_id == '999'
     assert account.telegram_username == 'denissadykov'
 
     assert len(sent_messages) == 1
-    assert sent_messages[0]['chat_id'] == 555
+    assert sent_messages[0]['chat_id'] == 999
     assert 'Привязка прошла успешно.' in sent_messages[0]['text']
 
 
@@ -154,6 +154,7 @@ def test_telegram_penalties_lists_each_student_as_separate_copyable_nick(client,
 def test_telegram_callback_marks_penalty_in_workoff(client, factories, db_session, monkeypatch):
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
 
     penalty = app_module.StudentPenalty(
         student_name='Ivan Student',
@@ -188,6 +189,7 @@ def test_telegram_callback_marks_penalty_in_workoff(client, factories, db_sessio
     account = app_module.TelegramAccount(
         user_id=volunteer.id,
         telegram_username='volunteer1',
+        telegram_user_id='777',
         telegram_chat_id='321',
         is_linked=True,
         delivery_enabled=True,
@@ -228,6 +230,7 @@ def test_telegram_callback_marks_penalty_awaiting_unlock(client, factories, db_s
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
     factories.assign(admin, pool, pool_role='responsible_admin')
+    factories.assign(volunteer, pool)
 
     penalty = app_module.StudentPenalty(
         student_name='Petr Student',
@@ -262,6 +265,7 @@ def test_telegram_callback_marks_penalty_awaiting_unlock(client, factories, db_s
     volunteer_account = app_module.TelegramAccount(
         user_id=volunteer.id,
         telegram_username='volunteer1',
+        telegram_user_id='777',
         telegram_chat_id='321',
         is_linked=True,
         delivery_enabled=True,
@@ -395,6 +399,7 @@ def test_responsible_can_confirm_penalty_unlock_from_telegram(client, factories,
 def test_telegram_callback_method_no_queues_retry_without_cancelling_new_event(client, factories, db_session, monkeypatch):
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
 
     penalty = app_module.StudentPenalty(
         student_name='Retry Student',
@@ -428,6 +433,7 @@ def test_telegram_callback_method_no_queues_retry_without_cancelling_new_event(c
     account = app_module.TelegramAccount(
         user_id=volunteer.id,
         telegram_username='volunteer1',
+        telegram_user_id='777',
         telegram_chat_id='321',
         is_linked=True,
         delivery_enabled=True,
@@ -472,6 +478,7 @@ def test_telegram_callback_method_no_queues_retry_without_cancelling_new_event(c
 def test_telegram_callback_complete_no_queues_retry_without_cancelling_new_event(client, factories, db_session, monkeypatch):
     volunteer = factories.user('volunteer1', role='volunteer', telegram='@volunteer1')
     pool = factories.pool('Active pool', active=True)
+    factories.assign(volunteer, pool)
 
     penalty = app_module.StudentPenalty(
         student_name='Retry Complete',
@@ -505,6 +512,7 @@ def test_telegram_callback_complete_no_queues_retry_without_cancelling_new_event
     account = app_module.TelegramAccount(
         user_id=volunteer.id,
         telegram_username='volunteer1',
+        telegram_user_id='777',
         telegram_chat_id='321',
         is_linked=True,
         delivery_enabled=True,

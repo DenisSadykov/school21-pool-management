@@ -1,3 +1,57 @@
+.settings-page .settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.settings-page .settings-form {
+  align-items: flex-end;
+}
+
+.settings-page .settings-form > .settings-field {
+  flex: 1 1 160px;
+}
+
+.settings-page .settings-form > .settings-pool-name {
+  flex-basis: 320px;
+}
+
+.settings-page .settings-field > input,
+.settings-page .settings-field > select {
+  width: 100%;
+  min-width: 0;
+  flex: none;
+  font-weight: 400;
+}
+
+.settings-page .u-profile > .settings-field {
+  flex: 1;
+}
+
+.settings-page .u-actions {
+  align-items: flex-end;
+}
+
+.settings-page .u-actions > .settings-field {
+  width: 148px;
+}
+
+@media (max-width: 768px) {
+  .settings-page .settings-form {
+    align-items: stretch;
+  }
+
+  .settings-page .settings-form > .settings-field {
+    flex: none;
+  }
+}
+
 .sys-vol-table-wrap {
   overflow-x: auto;
   overflow-y: visible;

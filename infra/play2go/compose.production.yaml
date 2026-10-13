@@ -14,5 +14,9 @@ services:
       SYNC_SECRET: ${SYNC_SECRET:-}
       SYNC_WEBHOOK_URL: ""
       NOTIFICATION_DISPATCH_URL: http://127.0.0.1:5000/api/notifications/dispatch
+      BACKUP_STATUS_FILE: /run/pool-backup-status/status.json
+    volumes:
+      # Status JSON only: database dumps and configuration never enter the API.
+      - ../../secure/backup-status:/run/pool-backup-status:ro
     # Outbound Telegram/Google access; DB remains on its private network only.
     networks: [database, application, egress]

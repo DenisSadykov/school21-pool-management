@@ -56,7 +56,7 @@ function Admin({ user, setUser }) {
   const isAdmin = user?.role === 'admin';
   const canChangePassword = ['admin', 'team_lead'].includes(user?.role);
 
-  const loadBackup = () => api.get('/api/admin/backup-status').then(setBackup).catch(() => {});
+  const loadBackup = () => api.get('/api/admin/backup-status').then(setBackup).catch(() => setBackup({ status: 'unavailable' }));
   const loadActions = () => api.get('/api/admin/action-log?limit=60').then(setActions).catch(() => []);
 
   useEffect(() => {
@@ -165,16 +165,21 @@ function Admin({ user, setUser }) {
           <h2>Экспорт и резерв</h2>
           <div className="admin-actions">
             <button className="btn-secondary" type="button" onClick={downloadExcel}>Скачать Excel</button>
-            <button className="btn-secondary" type="button" onClick={createBackup}>Создать резерв сейчас</button>
+            {backup?.manual_available && <button className="btn-secondary" type="button" onClick={createBackup}>Создать Excel-резерв сейчас</button>}
           </div>
           <div className="info-list">
-            <div className="info-item"><span>Ежедневный резерв:</span>
-              <strong>{backup?.today_exists ? 'создан сегодня' : 'ещё не создан сегодня'}</strong></div>
+            <div className="info-item"><span>Резерв базы:</span>
+              <strong>{!backup ? 'Проверяем…' : backup.status === 'unavailable' ? 'Не удалось проверить' :
+                backup.status === 'unknown' ? 'Нет подтверждённых сведений' : backup.status === 'stale' ? 'Последний резерв устарел' :
+                backup.today_exists ? 'Проверен сегодня' : 'Проверен ранее'}</strong></div>
             <div className="info-item"><span>Последний резерв:</span>
               <strong>{backup?.latest_at ? new Date(backup.latest_at).toLocaleString('ru-RU') : '—'}</strong></div>
-            <div className="info-item"><span>Папка:</span><strong>{backup?.backup_dir || '—'}</strong></div>
+            <div className="info-item"><span>Формат:</span><strong>{backup?.provider === 'postgresql' ? 'Полный PostgreSQL' :
+              backup?.provider === 'excel' ? 'Excel-экспорт' : '—'}</strong></div>
           </div>
-          <p className="text-muted">Резерв создаётся автоматически один раз в сутки, пока запущен бэкенд.</p>
+          <p className="text-muted">{backup?.provider === 'postgresql'
+            ? 'Полный резерв базы создаётся отдельной ежедневной задачей сервера. Здесь показана последняя проверенная копия на ВМ; состояние копии на компьютере здесь не отслеживается.'
+            : 'Excel-экспорт не является полным резервом базы данных. Наличие полного резерва нужно проверять отдельно.'}</p>
         </section>
 
         {canChangePassword && (

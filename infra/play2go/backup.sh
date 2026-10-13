@@ -33,4 +33,6 @@ for task_settings in secure/production-settings.env secure/frontend-settings.env
 done
 tar -czf "$task_config" -C "$task_root" "${task_config_paths[@]}"
 sha256sum "$task_config" > "$task_config.sha256"
+python3 "$task_root/infra/play2go/write-backup-status.py" \
+  "$task_dump" "$task_root/secure/backup-status/status.json"
 printf 'Verified archive: %s\nProtected configuration: %s\n' "$task_dump" "$task_config"
