@@ -22,6 +22,7 @@ from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
+from backup_metadata import managed_backup_status
 
 def _env_flag(name, default='false'):
     return os.getenv(name, default).strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -44,8 +45,13 @@ if not _env_flag('SKIP_LOCAL_DOTENV', 'false'):
 
 def database_engine_options():
     """Avoid persistent per-instance pools in ephemeral serverless runtimes."""
+    options = {}
+    if os.getenv('DATABASE_URL', '').startswith(('postgres://', 'postgresql://', 'postgresql+psycopg://')):
+        options['connect_args'] = {
+            'connect_timeout': max(1, int(os.getenv('DATABASE_CONNECT_TIMEOUT', '5'))),
+        }
     if not _env_flag('VERCEL') or not _env_flag('SERVERLESS_DB_NULL_POOL', 'true'):
-        return {}
+        return options
     return {
         'poolclass': NullPool,
         'connect_args': {
@@ -377,7 +383,7 @@ class PoolInviteLink(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     pool_id = db.Column(db.Integer, db.ForeignKey('pools.id'), nullable=False, unique=True)
     token = db.Column(db.String(128), nullable=False, unique=True)
-    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     uses_count = db.Column(db.Integer, default=0, nullable=False)
     max_uses = db.Column(db.Integer)
@@ -1376,6 +1382,8 @@ def find_platform_user_by_username(username):
 
 def upsert_telegram_account(user, tg_user, chat_id):
     telegram_user_id = str(tg_user.get('id') or '') or None
+    if not telegram_user_id or str(chat_id) != telegram_user_id:
+        raise ValueError('Привязать бота можно только из личного чата Telegram')
     if telegram_user_id:
         conflict = TelegramAccount.query.filter(
             TelegramAccount.telegram_user_id == telegram_user_id,
@@ -1383,7 +1391,16 @@ def upsert_telegram_account(user, tg_user, chat_id):
         ).first()
         if conflict:
             raise ValueError('Этот Telegram аккаунт уже привязан к другому пользователю')
-    account = TelegramAccount.query.filter_by(user_id=user.id).first()
+    # Serialize first links as well as updates. A recycled username must never
+    # replace an existing numeric Telegram identity, even after unlinking.
+    User.query.filter_by(id=user.id).with_for_update().one()
+    account = TelegramAccount.query.filter_by(user_id=user.id).populate_existing().first()
+    if account and (
+        (account.telegram_user_id and account.telegram_user_id != telegram_user_id)
+        or (not account.telegram_user_id and account.telegram_chat_id
+            and account.telegram_chat_id != telegram_user_id)
+    ):
+        raise ValueError('У пользователя уже привязан другой Telegram аккаунт. Обратитесь к администратору')
     if not account:
         account = TelegramAccount(user_id=user.id)
         db.session.add(account)
@@ -1399,6 +1416,9 @@ def upsert_telegram_account(user, tg_user, chat_id):
 
 
 def telegram_link_account(chat_id, tg_user):
+    telegram_user_id = str(tg_user.get('id') or '')
+    if not telegram_user_id or str(chat_id) != telegram_user_id:
+        return {'linked': False, 'reason': 'private_chat_required'}
     username = normalize_tg_username(tg_user.get('username'))
     if not username:
         telegram_send_message(
@@ -1407,7 +1427,8 @@ def telegram_link_account(chat_id, tg_user):
         )
         return {'linked': False, 'reason': 'missing_username'}
 
-    user = find_platform_user_by_username(username)
+    account = _telegram_account_from_tg(tg_user)
+    user = db.session.get(User, account.user_id) if account else find_platform_user_by_username(username)
     if not user:
         telegram_send_message(
             chat_id,
@@ -1415,7 +1436,13 @@ def telegram_link_account(chat_id, tg_user):
         )
         return {'linked': False, 'reason': 'user_not_found'}
 
-    account = upsert_telegram_account(user, tg_user, chat_id)
+    if not user.active:
+        return {'linked': False, 'reason': 'inactive_user'}
+    try:
+        account = upsert_telegram_account(user, tg_user, chat_id)
+    except ValueError as exc:
+        telegram_send_message(chat_id, str(exc))
+        return {'linked': False, 'reason': 'identity_conflict'}
     log_action(
         'link',
         'telegram_account',
@@ -1497,14 +1524,28 @@ def _telegram_code_block(value):
     return f'<code>{html_escape(str(value or ""))}</code>'
 
 
-def _telegram_user_from_tg(tg_user):
-    username = normalize_tg_username(tg_user.get('username'))
-    if not username:
+def _telegram_account_from_tg(tg_user):
+    telegram_user_id = str(tg_user.get('id') or '')
+    if not telegram_user_id:
         return None
-    account = TelegramAccount.query.filter_by(telegram_username=username, is_linked=True).first()
-    if account:
-        return db.session.get(User, account.user_id)
-    return find_platform_user_by_username(username)
+    account = TelegramAccount.query.filter_by(telegram_user_id=telegram_user_id, is_linked=True).first()
+    if not account:
+        # Old private-chat links are safe to upgrade by their stable chat ID,
+        # never by a mutable/recyclable username.
+        account = TelegramAccount.query.filter(
+            TelegramAccount.is_linked.is_(True),
+            TelegramAccount.telegram_chat_id == telegram_user_id,
+            db.or_(TelegramAccount.telegram_user_id.is_(None), TelegramAccount.telegram_user_id == ''),
+        ).first()
+        if account:
+            account.telegram_user_id = telegram_user_id
+    return account
+
+
+def _telegram_user_from_tg(tg_user):
+    account = _telegram_account_from_tg(tg_user)
+    user = db.session.get(User, account.user_id) if account else None
+    return user if user and user.active else None
 
 
 def telegram_handle_penalties(chat_id, tg_user):
@@ -1881,15 +1922,7 @@ def telegram_handle_callback(callback):
             telegram_answer_callback(callback_id, 'Некорректное действие')
         return {'ok': False, 'reason': 'bad_callback'}
 
-    account = TelegramAccount.query.filter_by(
-        telegram_user_id=str(tg_user.get('id') or ''),
-        is_linked=True,
-    ).first()
-    if not account:
-        account = TelegramAccount.query.filter_by(
-            telegram_username=normalize_tg_username(tg_user.get('username')),
-            is_linked=True,
-        ).first()
+    account = _telegram_account_from_tg(tg_user)
     actor = db.session.get(User, account.user_id) if account else None
     penalty = db.session.get(StudentPenalty, penalty_id)
     if not penalty:
@@ -1900,6 +1933,8 @@ def telegram_handle_callback(callback):
     current_pool_id = active_pool_id()
     if (
         not actor
+        or not actor.active
+        or not _can_access_pool_id(actor, current_pool_id)
         or not event
         or event.recipient_user_id != actor.id
         or penalty.pool_id != current_pool_id
@@ -1916,6 +1951,8 @@ def telegram_handle_callback(callback):
     }.get(question)
     if (
         not expected_event_type
+        or event.status != 'sent'
+        or answer not in ('y', 'n')
         or event.type != expected_event_type
         or event.source_entity != 'penalty'
         or event.source_entity_id != penalty.id
@@ -2227,6 +2264,9 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
     for event_id in candidate_ids:
         processed += 1
         event = db.session.get(NotificationEvent, event_id)
+        if not event or event.status != 'processing':
+            skipped += 1
+            continue
         if event.pool_id is not None and event.pool_id != active_pool_id():
             event.status = 'cancelled'
             event.cancelled_at = _utcnow()
@@ -2235,6 +2275,21 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
             db.session.commit()
             continue
         user = db.session.get(User, event.recipient_user_id) if event.recipient_user_id else None
+        # Removal takes the same membership lock. A delivery finishes before
+        # removal commits, or sees that access has already been revoked.
+        membership = PoolVolunteer.query.filter_by(pool_id=event.pool_id, user_id=user.id).populate_existing().with_for_update().first() \
+            if user and event.pool_id is not None else None
+        if event.pool_id is not None and (
+            not user or not user.active
+            or not membership
+            or membership.notifications_enabled is False
+        ):
+            event.status = 'cancelled'
+            event.cancelled_at = _utcnow()
+            event.processing_started_at = None
+            skipped += 1
+            db.session.commit()
+            continue
         account = TelegramAccount.query.filter_by(
             user_id=user.id,
             is_linked=True,
@@ -2533,8 +2588,18 @@ def require_role(*roles):
 @app.route('/api/health', methods=['GET'])
 def health():
     database_status = production_database_status()
+    database_ok = False
+    try:
+        with db.engine.begin() as connection:
+            if connection.dialect.name == 'postgresql':
+                connection.exec_driver_sql("SET LOCAL statement_timeout = '3s'")
+            database_ok = connection.exec_driver_sql('SELECT 1').scalar() == 1
+    except Exception:
+        # Do not expose connection strings, credentials or DB diagnostics.
+        app.logger.warning('Database readiness check failed')
     return jsonify({
-        'status': 'ok',
+        'status': 'ok' if database_ok else 'degraded',
+        'database': {'ok': database_ok},
         'timestamp': _utcnow().isoformat(),
         'production_config': {
             'ok': not database_status['issues'],
@@ -2544,7 +2609,7 @@ def health():
             'auto_init_db': should_auto_init_db(),
             'schema_migrations': should_run_schema_migrations(),
         },
-    })
+    }), 200 if database_ok else 503
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -2812,17 +2877,19 @@ def delete_user(user_id):
     NotificationEvent.query.filter_by(created_by=user.id).update({'created_by': None})
     TelegramAccount.query.filter_by(user_id=user.id).delete()
     PoolVolunteer.query.filter_by(user_id=user.id).delete()
-    RewardEvent.query.filter(
-        db.or_(RewardEvent.user_id == user.id, RewardEvent.created_by == user.id)
-    ).delete(synchronize_session=False)
-    GroupReview.query.filter(
-        db.or_(GroupReview.reviewer_id == user.id, GroupReview.created_by == user.id)
-    ).delete(synchronize_session=False)
+    RewardEvent.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    RewardEvent.query.filter_by(created_by=user.id).update({'created_by': None}, synchronize_session=False)
+    GroupReview.query.filter_by(reviewer_id=user.id).delete(synchronize_session=False)
+    GroupReview.query.filter_by(created_by=user.id).update({'created_by': None}, synchronize_session=False)
+    PoolInviteLink.query.filter_by(created_by=user.id).update({'created_by': None}, synchronize_session=False)
     TribeEvent.query.filter_by(created_by=user.id).update({'created_by': None})
     StudentEvent.query.filter_by(created_by=user.id).update({'created_by': None})
     StudentPenalty.query.filter_by(volunteer_id=user.id).update({
         'volunteer_id': None,
         'volunteer_name': None,
+    }, synchronize_session=False)
+    StudentPenalty.query.filter_by(database_entry_marked_by=user.id).update({
+        'database_entry_marked_by': None,
     }, synchronize_session=False)
     Broadcast.query.filter_by(author_id=user.id).delete()
     DashboardNote.query.filter_by(author_id=user.id).delete()
@@ -3059,7 +3126,14 @@ def add_pool_volunteers(pool_id):
 @app.route('/api/pools/<int:pool_id>/volunteers/<int:user_id>', methods=['DELETE'])
 @require_role('team_lead', 'admin')
 def remove_pool_volunteer(pool_id, user_id):
-    pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).first_or_404()
+    pv = PoolVolunteer.query.filter_by(pool_id=pool_id, user_id=user_id).with_for_update().first_or_404()
+    NotificationEvent.query.filter(
+        NotificationEvent.pool_id == pool_id,
+        NotificationEvent.recipient_user_id == user_id,
+        NotificationEvent.status.in_(['queued', 'pending', 'processing']),
+    ).update({
+        'status': 'cancelled', 'cancelled_at': _utcnow(), 'processing_started_at': None,
+    }, synchronize_session=False)
     block_ids = [b.id for b in ShiftBlock.query.filter_by(pool_id=pool_id).all()]
     if block_ids:
         Signup.query.filter(
@@ -7737,8 +7811,16 @@ def export_configured_google_sheets():
 @app.route('/api/admin/backup-status', methods=['GET'])
 @require_role('team_lead', 'admin')
 def backup_status():
+    if _is_production_runtime():
+        if _env_flag('VERCEL'):
+            return jsonify({'provider': 'external', 'status': 'unknown', 'manual_available': False,
+                            'latest_at': None, 'today_exists': None})
+        return jsonify(managed_backup_status(os.getenv('BACKUP_STATUS_FILE', '')))
     latest = latest_backup_file()
     return jsonify({
+        'provider': 'excel',
+        'manual_available': True,
+        'status': 'ok' if latest else 'unknown',
         'persistent': not _is_production_runtime(),
         'backup_dir': BACKUP_DIR,
         'latest_file': latest,
@@ -7752,7 +7834,7 @@ def backup_status():
 def backup_now():
     if _is_production_runtime():
         return jsonify({
-            'error': 'Локальные резервные копии недоступны в serverless. Используйте Excel-экспорт или внешнее хранилище.'
+            'error': 'Полный резерв базы создаётся отдельной задачей сервера. Excel-экспорт не заменяет резерв PostgreSQL.'
         }), 409
     path = create_daily_backup(force=True)
     log_action('backup', 'workbook', None, 'Создан ручной резерв Excel', {'path': path})
@@ -8187,7 +8269,7 @@ def ensure_user_profile_columns():
                     id INTEGER NOT NULL,
                     pool_id INTEGER NOT NULL UNIQUE,
                     token VARCHAR(128) NOT NULL UNIQUE,
-                    created_by INTEGER NOT NULL,
+                    created_by INTEGER,
                     is_active BOOLEAN DEFAULT 1,
                     uses_count INTEGER DEFAULT 0,
                     max_uses INTEGER,
@@ -8347,6 +8429,7 @@ def ensure_postgres_profile_columns():
         conn.exec_driver_sql('ALTER TABLE tribe_events ADD COLUMN IF NOT EXISTS assistant_attending BOOLEAN NOT NULL DEFAULT FALSE')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS max_uses INTEGER')
         conn.exec_driver_sql('ALTER TABLE pool_invite_links ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP')
+        conn.exec_driver_sql('ALTER TABLE pool_invite_links ALTER COLUMN created_by DROP NOT NULL')
 
         conn.exec_driver_sql('ALTER TABLE reward_events ADD COLUMN IF NOT EXISTS pool_id INTEGER')
         conn.exec_driver_sql('ALTER TABLE telegram_accounts ALTER COLUMN photo_url TYPE TEXT')

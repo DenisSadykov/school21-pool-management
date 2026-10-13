@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SlidersHorizontal, Shield, LogOut, ChevronDown, Menu, UserCircle2 } from 'lucide-react';
 import { api, clearSession, POOLS_CHANGED_EVENT } from '../api';
@@ -20,6 +20,8 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, o
   const [activePool, setActivePool] = useState(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const ref = useRef(null);
+  const profileTriggerRef = useRef(null);
+  const profileDropdownId = useId();
   const navigate = useNavigate();
   const isStaff = user?.role === 'team_lead' || user?.role === 'admin';
 
@@ -35,6 +37,18 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, o
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleKeyDown(event) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      profileTriggerRef.current?.focus();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
 
   useEffect(() => {
     const loadActivePool = () => {
@@ -62,7 +76,11 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, o
         <div className="navbar-actions">
           <div className="navbar-user-wrap" ref={ref}>
             <button
+              type="button"
+              ref={profileTriggerRef}
               className={`navbar-user ${open ? 'active' : ''}`}
+              aria-expanded={open}
+              aria-controls={profileDropdownId}
               onClick={() => setOpen(!open)}
             >
               <span className="user-avatar">
@@ -82,7 +100,7 @@ function Navbar({ user, setUser, mobileSidebarOpen, onMobileMenuToggle, theme, o
             </button>
 
             {open && (
-              <div className="user-dropdown">
+              <div className="user-dropdown" id={profileDropdownId}>
                 <button className="dropdown-item" onClick={() => go('/profile')}>
                   <UserCircle2 size={15} /> Личный кабинет
                 </button>

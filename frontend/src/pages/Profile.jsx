@@ -13,7 +13,7 @@ function Profile({ user, setUser }) {
     nick: '',
     telegram: '',
   });
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileRef = useRef(null);
 
@@ -32,13 +32,14 @@ function Profile({ user, setUser }) {
 
   const save = async (event) => {
     event.preventDefault();
+    setMessage(null);
     setLoading(true);
     try {
       const updatedUser = await api.patch('/api/me', form);
       applyUser(updatedUser);
-      setMessage('Личные данные сохранены.');
+      setMessage({ type: 'success', text: 'Личные данные сохранены.' });
     } catch (error) {
-      setMessage(`Ошибка: ${error.message}`);
+      setMessage({ type: 'error', text: `Ошибка: ${error.message}` });
     } finally {
       setLoading(false);
     }
@@ -48,6 +49,7 @@ function Profile({ user, setUser }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    setMessage(null);
     const payload = new FormData();
     payload.append('file', file);
     try {
@@ -55,9 +57,9 @@ function Profile({ user, setUser }) {
       if (response?.user) {
         applyUser(response.user);
       }
-      setMessage('Фото профиля обновлено.');
+      setMessage({ type: 'success', text: 'Фото профиля обновлено.' });
     } catch (error) {
-      setMessage(`Ошибка загрузки фото: ${error.message}`);
+      setMessage({ type: 'error', text: `Ошибка загрузки фото: ${error.message}` });
     }
   };
 
@@ -70,7 +72,11 @@ function Profile({ user, setUser }) {
           <button key={key} type="button" className={section === key ? 'selected' : ''}
             aria-current={section === key ? 'page' : undefined} onClick={() => setSection(key)}>{title}</button>)}
       </nav>
-      {message && <div className="alert success">{message}</div>}
+      {message && (
+        <div className={`alert ${message.type}`} role={message.type === 'error' ? 'alert' : 'status'}>
+          {message.text}
+        </div>
+      )}
       {section === 'overview' && <PersonalStatistics userId={user?.id} />}
       <div hidden={section !== 'details'}>
       <section className="manage-section" aria-label="Личные данные">

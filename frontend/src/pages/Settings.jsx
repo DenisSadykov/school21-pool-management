@@ -57,7 +57,7 @@ function Settings({ user }) {
   }, [loadPools, loadActivePool]);
 
   return (
-    <div className="page manage-page">
+    <div className="page manage-page settings-page">
       <h1>Настройки</h1>
       {msg && <div className="alert success">{msg}</div>}
 
@@ -225,14 +225,20 @@ function PoolForm({ onDone }) {
     } catch (err) { alert(err.message); }
   };
   return (
-    <form className="inline-form" onSubmit={submit}>
-      <input className="pool-form-name" placeholder="Название (Бассейн 08.06)" value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <input
-        type="date"
-        className={datePulse ? 'field-error-pulse' : ''}
-        value={form.start_date}
-        onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+    <form className="inline-form settings-form" onSubmit={submit}>
+      <label className="settings-field settings-pool-name">
+        <span>Название бассейна</span>
+        <input className="pool-form-name" placeholder="Название (Бассейн 08.06)" value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      </label>
+      <label className="settings-field">
+        <span>Дата начала</span>
+        <input
+          type="date"
+          className={datePulse ? 'field-error-pulse' : ''}
+          value={form.start_date}
+          onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+      </label>
       <button className="btn-primary" type="submit"><Plus size={16} /> Создать</button>
     </form>
   );
@@ -250,19 +256,34 @@ function UserForm({ onDone }) {
     } catch (err) { alert(err.message); }
   };
   return (
-    <form className="inline-form" onSubmit={submit}>
-      <input placeholder="ник" value={form.nick} autoCapitalize="none"
-        onChange={(e) => setForm({ ...form, nick: e.target.value })} />
-      <input placeholder="имя" value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <input className="user-form-telegram" placeholder="@telegram" value={form.telegram} autoCapitalize="none"
-        onChange={(e) => setForm({ ...form, telegram: e.target.value })} />
-      <select className="user-form-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-        <option value="team_lead">Тимлид</option>
-        <option value="admin">Админ</option>
-      </select>
-      <input type="password" placeholder="пароль" value={form.password}
-        onChange={(e) => setForm({ ...form, password: e.target.value })} />
+    <form className="inline-form settings-form" onSubmit={submit}>
+      <label className="settings-field">
+        <span>Ник</span>
+        <input placeholder="ник" value={form.nick} autoCapitalize="none"
+          onChange={(e) => setForm({ ...form, nick: e.target.value })} />
+      </label>
+      <label className="settings-field">
+        <span>Имя</span>
+        <input placeholder="имя" value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      </label>
+      <label className="settings-field">
+        <span>Ник Telegram</span>
+        <input className="user-form-telegram" placeholder="@telegram" value={form.telegram} autoCapitalize="none"
+          onChange={(e) => setForm({ ...form, telegram: e.target.value })} />
+      </label>
+      <label className="settings-field">
+        <span>Роль</span>
+        <select className="user-form-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <option value="team_lead">Тимлид</option>
+          <option value="admin">Админ</option>
+        </select>
+      </label>
+      <label className="settings-field">
+        <span>Пароль</span>
+        <input type="password" placeholder="пароль" value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })} />
+      </label>
       <button className="btn-primary" type="submit"><Plus size={16} /> Добавить</button>
     </form>
   );
@@ -325,24 +346,33 @@ function ManualVolunteerForm({ onDone }) {
   };
 
   return (
-    <form className="inline-form volunteer-manual-form" onSubmit={submit}>
-      <input
-        placeholder="имя"
-        value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })}
-      />
-      <input
-        placeholder="ник"
-        value={form.nick}
-        autoCapitalize="none"
-        onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
-      />
-      <input
-        placeholder="@telegram"
-        value={form.telegram}
-        autoCapitalize="none"
-        onChange={(e) => setForm({ ...form, telegram: e.target.value })}
-      />
+    <form className="inline-form volunteer-manual-form settings-form" onSubmit={submit}>
+      <label className="settings-field">
+        <span>Имя</span>
+        <input
+          placeholder="имя"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+      </label>
+      <label className="settings-field">
+        <span>Ник</span>
+        <input
+          placeholder="ник"
+          value={form.nick}
+          autoCapitalize="none"
+          onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
+        />
+      </label>
+      <label className="settings-field">
+        <span>Ник Telegram</span>
+        <input
+          placeholder="@telegram"
+          value={form.telegram}
+          autoCapitalize="none"
+          onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+        />
+      </label>
       <button className="btn-primary" type="submit"><Plus size={16} /> Добавить вручную</button>
     </form>
   );
@@ -380,19 +410,31 @@ function StaffUserRow({ user, onSaved, onDeleted, canDelete }) {
             <span className="u-avatar">
               {user.avatar_url ? <AuthenticatedImage src={user.avatar_url} alt={user.name || user.nick} /> : (user.nick || '??').slice(0, 2).toUpperCase()}
             </span>
-            <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
+            <label className="settings-field">
+              <span>Ник</span>
+              <input value={form.nick} onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })} />
+            </label>
           </div>
           <div className="u-name-cell">
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <label className="settings-field">
+              <span>Имя</span>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </label>
           </div>
           <div className="u-telegram-cell">
-            <input value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@telegram" />
+            <label className="settings-field">
+              <span>Ник Telegram</span>
+              <input value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@telegram" />
+            </label>
           </div>
           <div className="u-role-cell">
             <span className={`u-role role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
           </div>
           <div className="u-actions">
-            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="новый пароль" />
+            <label className="settings-field">
+              <span>Новый пароль</span>
+              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="новый пароль" />
+            </label>
             <button className="btn-mini primary" type="button" onClick={save}>Сохранить</button>
             <button className="btn-mini" type="button" onClick={() => setEditing(false)}>Отмена</button>
           </div>
@@ -515,11 +557,14 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
     <tr>
       <td>
         {editing ? (
-          <input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="sys-vol-input"
-          />
+          <label className="settings-field">
+            <span>Имя</span>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="sys-vol-input"
+            />
+          </label>
         ) : (
           <div className="sys-vol-person">
             <span className="u-avatar">
@@ -531,11 +576,14 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
       </td>
       <td className="nick-cell">
         {editing ? (
-          <input
-            value={form.nick}
-            onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
-            className="sys-vol-input sys-vol-input-mono"
-          />
+          <label className="settings-field">
+            <span>Ник</span>
+            <input
+              value={form.nick}
+              onChange={(e) => setForm({ ...form, nick: e.target.value.replace(/^@+/, '') })}
+              className="sys-vol-input sys-vol-input-mono"
+            />
+          </label>
         ) : (
           <button type="button" className="sys-vol-nick-button" onClick={copyNick} title="Скопировать школьный ник">
             {copied ? 'Скопировано' : `@${volunteer.nick}`}
@@ -544,12 +592,15 @@ function SystemVolunteerRow({ volunteer, onSaved }) {
       </td>
       <td>
         {editing ? (
-          <input
-            value={form.telegram}
-            onChange={(e) => setForm({ ...form, telegram: e.target.value })}
-            className="sys-vol-input sys-vol-input-mono"
-            placeholder="@telegram"
-          />
+          <label className="settings-field">
+            <span>Ник Telegram</span>
+            <input
+              value={form.telegram}
+              onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+              className="sys-vol-input sys-vol-input-mono"
+              placeholder="@telegram"
+            />
+          </label>
         ) : (
           volunteer.telegram
             ? <a href={tgLink(volunteer.telegram)} target="_blank" rel="noreferrer" className="tg-link">

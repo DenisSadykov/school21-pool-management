@@ -3,50 +3,84 @@ export const API_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV ==
 const REQUEST_TIMEOUT_MS = 15000;
 export const SESSION_INVALIDATED_EVENT = 'app:session-invalidated';
 
-export function getToken() {
+let memorySession = { token: null, user: null };
+let memoryOnly = false;
+let sessionVersion = 0;
+
+function readSession() {
+  // A failed write may leave an old or partial stored session behind. A failed
+  // logout may leave credentials behind too; never read those back into memory.
+  if (memoryOnly) return memorySession;
+
+  let token;
+  let storedUser;
   try {
-    return localStorage.getItem('token');
+    token = localStorage.getItem('token');
+    storedUser = localStorage.getItem('user');
   } catch (error) {
-    return null;
+    // Unavailable storage is not evidence that the cached session is invalid.
+    return memorySession;
   }
+
+  let user;
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null;
+  } catch (error) {
+    // A broken cached session must never block the app before login renders.
+    clearSession();
+    return memorySession;
+  }
+
+  if (token !== memorySession.token) sessionVersion += 1;
+  memorySession = { token, user };
+  return memorySession;
+}
+
+export function getToken() {
+  return readSession().token;
 }
 
 export function getUser() {
-  try {
-    const u = localStorage.getItem('user');
-    if (!u) return null;
-    return JSON.parse(u);
-  } catch (error) {
-    // A broken cached session must never block the app before login renders.
+  return readSession().user;
+}
+
+function removeStoredSession() {
+  let removed = true;
+  // Attempt each key independently so one blocked removal cannot skip the other.
+  for (const key of ['token', 'user']) {
     try {
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-    } catch (storageError) {
-      /* storage can be unavailable in private browsing */
+      localStorage.removeItem(key);
+    } catch (error) {
+      removed = false;
     }
-    return null;
   }
+  return removed;
 }
 
 export function setSession(token, user) {
+  sessionVersion += 1;
+  memorySession = { token, user };
+  memoryOnly = true;
   try {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
+    memoryOnly = false;
   } catch (error) {
-    /* the current in-memory session can still be used */
+    // Discard partial persistence while keeping the complete session in memory.
+    removeStoredSession();
   }
 }
 
 export function clearSession() {
-  try {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-  } catch (error) {
-    /* storage can be unavailable in private browsing */
-  }
+  sessionVersion += 1;
+  memorySession = { token: null, user: null };
+  memoryOnly = !removeStoredSession();
 }
 
-function invalidateSession() {
+function invalidateSession(token, version) {
+  // An old/anonymous request cannot log out a newer session, even if a new login
+  // reused the same token. Read storage too so another tab's login is respected.
+  if (!token || getToken() !== token || sessionVersion !== version) return;
   clearSession();
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT));
@@ -70,6 +104,7 @@ export function isPoolsChangedStorageEvent(event) {
 async function request(path, { method = 'GET', body } = {}) {
   const headers = {};
   const token = getToken();
+  const version = sessionVersion;
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
@@ -116,7 +151,7 @@ async function request(path, { method = 'GET', body } = {}) {
   }
 
   if (res.status === 401) {
-    invalidateSession();
+    invalidateSession(token, version);
     throw new Error((data && data.error) || 'Сессия истекла. Войди заново.');
   }
   if (!res.ok) {
@@ -128,6 +163,7 @@ async function request(path, { method = 'GET', body } = {}) {
 async function upload(path, formData) {
   const headers = {};
   const token = getToken();
+  const version = sessionVersion;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();
@@ -158,7 +194,7 @@ async function upload(path, formData) {
   }
 
   if (res.status === 401) {
-    invalidateSession();
+    invalidateSession(token, version);
     throw new Error((data && data.error) || 'Сессия истекла. Войди заново.');
   }
   if (!res.ok) {
@@ -170,6 +206,7 @@ async function upload(path, formData) {
 async function download(path) {
   const headers = {};
   const token = getToken();
+  const version = sessionVersion;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();
@@ -186,7 +223,7 @@ async function download(path) {
     window.clearTimeout(timeoutId);
   }
   if (res.status === 401) {
-    invalidateSession();
+    invalidateSession(token, version);
     throw new Error('Сессия истекла. Войди заново.');
   }
   if (!res.ok) {

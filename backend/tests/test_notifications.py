@@ -287,6 +287,7 @@ def test_create_broadcast_creates_events_and_skips_unlinked_users(client, factor
 def test_failed_immediate_delivery_returns_event_to_retry_queue(factories, db_session, monkeypatch):
     admin = factories.user('admin', role='admin', password='secret123', telegram='@admin')
     pool = factories.pool('Active pool', active=True)
+    factories.assign(admin, pool, pool_role='responsible_admin')
     event = app_module.NotificationEvent(
         type='penalty_admin_block',
         priority='urgent',

@@ -76,6 +76,17 @@ function formatWeekday(iso) {
     .toUpperCase();
 }
 
+function formatDayFill(blocks) {
+  if (blocks.length === 0) return 'Нет смен';
+  const limited = blocks.filter((block) => block.capacity != null);
+  const unlimited = blocks.filter((block) => block.capacity == null);
+  const assigned = (items) => items.reduce((sum, block) => sum + (block.count || 0), 0);
+  const capacity = limited.reduce((sum, block) => sum + block.capacity, 0);
+  if (unlimited.length === 0) return `${assigned(limited)}/${capacity}`;
+  if (limited.length === 0) return `${assigned(unlimited)} · без лимита`;
+  return `${assigned(limited)}/${capacity} + ${assigned(unlimited)} без лимита`;
+}
+
 function Schedule({ user }) {
   const [data, setData] = useState({ pool: null, days: [] });
   const [volunteers, setVolunteers] = useState([]);
@@ -319,8 +330,6 @@ function Schedule({ user }) {
               const isExam = day.blocks.some((block) => block.label === 'EXAM');
               const weekdayIndex = new Date(`${day.date}T00:00:00`).getDay();
               const isMonday = weekdayIndex === 1;
-              const dayAssigned = day.blocks.reduce((sum, block) => sum + (block.count || 0), 0);
-              const dayCapacity = day.blocks.reduce((sum, block) => sum + (block.capacity || 0), 0);
 
               return (
                 <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''}`}>
@@ -332,7 +341,7 @@ function Schedule({ user }) {
                     {isExam && <span className="day-header-badge">Экзамен</span>}
                     {isStaff && (
                       <span className="day-fill">
-                        {dayAssigned}/{dayCapacity}
+                        {formatDayFill(day.blocks)}
                       </span>
                     )}
                   </header>
@@ -373,8 +382,6 @@ function Schedule({ user }) {
                     const isExam = day.blocks.some((block) => block.label === 'EXAM');
                     const weekdayIndex = new Date(`${day.date}T00:00:00`).getDay();
                     const isMonday = weekdayIndex === 1;
-                    const dayAssigned = day.blocks.reduce((sum, block) => sum + (block.count || 0), 0);
-                    const dayCapacity = day.blocks.reduce((sum, block) => sum + (block.capacity || 0), 0);
 
                     return (
                       <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''}`}>
@@ -385,7 +392,7 @@ function Schedule({ user }) {
                           {isExam && <span className="day-header-badge">Экзамен</span>}
                           {isStaff && (
                             <span className="day-fill">
-                              {dayAssigned}/{dayCapacity}
+                              {formatDayFill(day.blocks)}
                             </span>
                           )}
                         </header>
