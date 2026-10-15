@@ -2376,7 +2376,9 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
 
 
 def queue_notification_dispatch(events):
-    """Ask Postgres to start delivery after commit without blocking the UI request."""
+    """Use legacy serverless pg_net dispatch; VM delivery is handled by its timer."""
+    if not _env_flag('VERCEL'):
+        return None
     event_ids = sorted({event.id for event in events if event and event.id})
     if (
         not event_ids
@@ -2410,7 +2412,10 @@ def queue_notification_dispatch(events):
         return request_id
     except Exception as exc:
         db.session.rollback()
-        app.logger.warning('Could not queue immediate Telegram dispatch: %s', exc)
+        app.logger.warning(
+            'Could not queue immediate Telegram dispatch (%s)',
+            type(exc).__name__,
+        )
         return None
 
 
