@@ -3,6 +3,7 @@ import hmac
 import json
 import time
 from datetime import timedelta
+from pathlib import Path
 from urllib.parse import urlencode
 
 import pytest
@@ -47,6 +48,76 @@ def start(client, penalty, headers):
     response = client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=headers, json={'draft_token': token})
     assert response.status_code == 200, response.get_json()
     return response.get_json(), token
+
+
+def test_catalog_preserves_only_the_supplied_task_column(client, workoff):
+    _, _, _, headers = workoff
+    payload = client.get(ROOT, headers=headers).get_json()
+    catalog = payload['catalog']
+    source = json.loads(Path(__file__).parents[1].joinpath('penalty_tasks.source.json').read_text())
+    assert len(catalog) == source['count'] == 142
+    assert payload['temporary_catalog'] is False
+    assert len({item['id'] for item in catalog}) == 142
+    assert hashlib.sha256('\n'.join(item['description'] for item in catalog).encode()).hexdigest() == source['text_sha256']
+    for item in catalog:
+        assert set(item) == {'id', 'title', 'description', 'estimated_minutes'}
+        assert item['id'] == 'listed-' + hashlib.sha256(item['description'].encode()).hexdigest()[:16]
+        assert item['estimated_minutes'] is None
+        assert 0 < len(item['title']) <= 60
+
+
+def test_text_only_task_does_not_invent_a_duration_or_change_hours(client, workoff, db_session):
+    _, _, penalty, headers = workoff
+    first, _ = start(client, penalty, headers)
+    task = first['penalty']['session']['current_task']
+    assert task['estimated_minutes'] is None
+    stored = db_session.get(platform.PenaltyWorkoffTask, task['id'])
+    assert stored.estimated_minutes == 120  # Existing DB compatibility/session ceiling.
+    assert stored.description == task['description']
+    assert first['penalty']['total_hours'] == 2
+    assert first['penalty']['completed_hours'] == 0
+
+
+@pytest.mark.parametrize('remaining', [15, 1800])
+def test_text_only_tasks_can_follow_each_other_without_resetting_the_timer(client, workoff, db_session, remaining):
+    _, _, penalty, headers = workoff
+    first, _ = start(client, penalty, headers)
+    session = db_session.get(platform.PenaltyWorkoffSession, first['penalty']['session']['id'])
+    now = platform._utcnow()
+    session.started_at = now - timedelta(seconds=7200 - remaining)
+    session.ends_at = now + timedelta(seconds=remaining)
+    db_session.commit()
+    deadline = session.ends_at
+    response = client.post(f'{ROOT}/penalties/{penalty.id}/task-action', headers=headers, json={
+        'action': 'complete', 'task_id': first['penalty']['session']['current_task']['id'],
+        'request_id': 'synthetic-listed-next-task',
+    })
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['no_tasks_available'] is False
+    assert payload['penalty']['session']['current_task']['estimated_minutes'] is None
+    assert payload['penalty']['session']['current_task']['id'] != first['penalty']['session']['current_task']['id']
+    assert db_session.get(platform.PenaltyWorkoffSession, session.id).ends_at == deadline
+    assert payload['penalty']['workoff_status'] == 'in_workoff'
+
+
+def test_existing_task_history_survives_catalog_replacement(client, workoff, db_session):
+    _, _, penalty, headers = workoff
+    first, _ = start(client, penalty, headers)
+    task = db_session.get(platform.PenaltyWorkoffTask, first['penalty']['session']['current_task']['id'])
+    task.task_key, task.title, task.description, task.estimated_minutes = 'common-area', 'Прежнее задание', 'Сохранённый текст прежнего задания.', 15
+    db_session.commit()
+    state = client.get(f'{ROOT}/penalties/{penalty.id}', headers=headers).get_json()
+    assert state['penalty']['session']['current_task']['description'] == 'Сохранённый текст прежнего задания.'
+    assert state['penalty']['session']['current_task']['estimated_minutes'] == 15
+    response = client.post(f'{ROOT}/penalties/{penalty.id}/task-action', headers=headers, json={
+        'action': 'replace', 'task_id': task.id, 'request_id': 'synthetic-retired-task-replace',
+    })
+    history = response.get_json()['penalty']['session']['tasks']
+    assert response.status_code == 200
+    assert history[0]['description'] == 'Сохранённый текст прежнего задания.'
+    assert history[0]['title'] == 'Прежнее задание'
+    assert history[1]['task_key'].startswith('listed-')
 
 
 def test_telegram_hmac_validation():
