@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Brush, Map, Milestone, Package, Monitor, Users, Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil } from 'lucide-react';
+import { Brush, Map, Milestone, Package, Monitor, Users, Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil, Volume2, VolumeX } from 'lucide-react';
 import { initializeMiniApp, operationId } from '../miniapp/client';
 import MiniAppNav from '../miniapp/MiniAppNav';
 import { playHaptic } from '../miniapp/haptics';
+import { createRouletteSound, readRouletteSoundEnabled, saveRouletteSoundEnabled } from '../miniapp/rouletteSound';
 import useTheme from '../hooks/useTheme';
 import '../styles/PenaltyMiniApp.css';
 
@@ -21,7 +22,7 @@ export function formatCountdown(seconds) {
     .map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
+export function Roulette({ catalog, selected, spinning, pupilSelected, sdk, onTick }) {
   const [rolling, setRolling] = useState(0);
   useEffect(() => {
     if (!spinning || !catalog.length) return undefined;
@@ -31,10 +32,13 @@ export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
     const timer = window.setInterval(() => {
       setRolling((value) => value + 1);
       // Gentle, spaced ticks, bounded even while the network is slow.
-      if (++ticks % 2 === 0 && Date.now() - started < 1100) playHaptic(sdk, 'selectionChanged');
+      if (++ticks % 2 === 0 && Date.now() - started < 1100) {
+        playHaptic(sdk, 'selectionChanged');
+        onTick?.();
+      }
     }, 85);
     return () => window.clearInterval(timer);
-  }, [spinning, catalog.length, sdk]);
+  }, [spinning, catalog.length, sdk, onTick]);
   const index = spinning ? rolling % Math.max(1, catalog.length)
     : Math.max(0, catalog.findIndex((item) => item.id === (selected?.task_key || selected?.id)));
   const center = spinning ? catalog[index] : selected;
@@ -62,6 +66,9 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [soundEnabled, setSoundEnabled] = useState(readRouletteSoundEnabled);
+  const soundRef = useRef(null);
+  if (!soundRef.current) soundRef.current = createRouletteSound(soundEnabled);
   useTheme();
   const [now, setNow] = useState(Date.now());
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -82,6 +89,28 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const mutationVersion = useRef(0);
   const finishTriggerRef = useRef(null);
   selectedRef.current = selectedId;
+
+  useEffect(() => {
+    const sound = soundRef.current;
+    const silenceHidden = () => { if (document.visibilityState === 'hidden') sound.stop(); };
+    document.addEventListener('visibilitychange', silenceHidden);
+    return () => { document.removeEventListener('visibilitychange', silenceHidden); sound.dispose(); };
+  }, []);
+
+  useEffect(() => { soundRef.current.stop(); }, [view]);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    soundRef.current.setEnabled(next);
+    if (next) soundRef.current.prepare();
+    setSoundEnabled(next);
+    saveRouletteSoundEnabled(next);
+  };
+
+  const soundControl = <button type="button" className="pm-sound-toggle" role="switch" aria-label="Звук рулетки" aria-checked={soundEnabled}
+    title={soundEnabled ? 'Выключить звук рулетки' : 'Включить звук рулетки'} onClick={toggleSound}>
+    {soundEnabled ? <Volume2 size={20} aria-hidden="true" /> : <VolumeX size={20} aria-hidden="true" />}
+  </button>;
 
   const setClock = useCallback((serverNow) => {
     if (!serverNow) return;
@@ -203,17 +232,21 @@ export default function PenaltyMiniApp({ renderPlatform }) {
 
   const spin = useCallback(async (id, exclude = []) => {
     if (!id || busyRef.current || !requestRef.current) return;
+    soundRef.current.stop();
+    soundRef.current.prepare();
     busyRef.current = true;
     setBusy('spin'); setError(''); setNotice('');
     try {
       const response = await requestRef.current(`/penalties/${id}/spin`, { exclude_keys: exclude });
       await animate();
-      if (!alive.current || selectedRef.current !== id) return;
+      if (!alive.current || selectedRef.current !== id) { soundRef.current.stop(); return; }
       setClock(response.server_now);
       setDraft(response);
       excludedRef.current = [...new Set([...exclude, response.task.id])];
       playHaptic(sdkRef.current, 'impactOccurred', 'light');
+      soundRef.current.result();
     } catch (failure) {
+      soundRef.current.stop();
       if (alive.current && selectedRef.current === id) setError(failure.message);
       if (failure.status === 409) await refresh(id).catch(() => {});
     } finally {
@@ -233,6 +266,8 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const runAction = async (action) => {
     const id = selectedRef.current;
     if (!id || busyRef.current) return;
+    const choosesTask = action === 'complete' || action === 'replace';
+    if (choosesTask) { soundRef.current.stop(); soundRef.current.prepare(); }
     busyRef.current = true; setBusy(action); setError(''); setNotice('');
     try {
       const penalty = penalties.find((item) => String(item.id) === id);
@@ -255,7 +290,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
         response = await requestRef.current(`/penalties/${id}/task-action`, operation);
         await animate();
       }
-      if (!alive.current || selectedRef.current !== id) return;
+      if (!alive.current || selectedRef.current !== id) { soundRef.current.stop(); return; }
       updatePenalty(response); setDraft(null); operationRef.current = null; customDraftRef.current = null;
       setConfirmFinish(false);
       setNotice(action === 'commit' ? 'Задание зафиксировано. Отработка началась.'
@@ -263,7 +298,9 @@ export default function PenaltyMiniApp({ renderPlatform }) {
           : response.no_tasks_available ? 'Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.'
             : action === 'complete' ? 'Готово! Выдано следующее задание. Таймер продолжается.' : 'Задание заменено. Таймер продолжается.');
       playHaptic(sdkRef.current, 'notificationOccurred', 'success');
+      if (choosesTask && response.penalty.session?.current_task && !response.no_tasks_available) soundRef.current.result();
     } catch (failure) {
+      soundRef.current.stop();
       if (alive.current) setError(failure.message);
       if (failure.code === 'draft_expired') customDraftRef.current = null;
       // A lost POST response is not proof of failure. Refresh authoritative state.
@@ -338,13 +375,13 @@ export default function PenaltyMiniApp({ renderPlatform }) {
             {penalty?.total_hours > 2 && <p className="pm-hours-note">Всего {penalty.total_hours} ч · зачтено {penalty.completed_hours} ч. Один этап — 2 часа.</p>}
             {legacyExpired && <div className="pm-state"><p>Эта отработка началась до выдачи задания в мини-апе. Её таймер сохранён.</p><a href={`/miniapp/platform#/penalties?status=in_workoff&student=${encodeURIComponent(penalty.student_name)}`}>Подтвердить в разделе «Штрафы»</a></div>}
             {!completed && !legacyExpired && <>
-              {!session && <div className="pm-task-modes" role="group" aria-label="Способ выбора задания">
+              {!session && <div className="pm-task-tools"><div className="pm-task-modes" role="group" aria-label="Способ выбора задания">
                 <button type="button" aria-pressed={taskMode === 'random'} disabled={Boolean(busy)} onClick={() => setTaskMode('random')}><Shuffle size={17} />Рулетка</button>
                 <button type="button" aria-pressed={taskMode === 'custom'} disabled={Boolean(busy)} onClick={() => setTaskMode('custom')}><Pencil size={17} />Своё задание</button>
-              </div>}
+              </div>{soundControl}</div>}
               {session || taskMode === 'random' ? <>
-              <h2 className="pm-section-label">{session ? 'Текущее задание' : draft ? 'Выпало задание' : 'Выбор задания'}</h2>
-              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} />
+              <div className={`pm-reel-heading${session ? ' pm-reel-heading-active' : ''}`}><h2 className="pm-section-label">{session ? 'Текущее задание' : draft ? 'Выпало задание' : 'Выбор задания'}</h2>{session && soundControl}</div>
+              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} onTick={soundRef.current.tick} />
               </> : <label className="pm-custom-task"><span>Как ученик отработает пенальти</span>
                 <textarea value={customText} disabled={!penalty || Boolean(busy)} maxLength={1000} rows={3} placeholder="Опиши свою идею задания…" onChange={(event) => { setCustomText(event.target.value); customDraftRef.current = null; }} />
                 <small>Сохранится в истории · общий срок — 2 часа</small>
