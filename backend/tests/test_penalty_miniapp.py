@@ -90,6 +90,84 @@ def test_same_username_without_numeric_link_cannot_log_in(client, workoff, db_se
     assert client.post(f'{ROOT}/auth', json={'init_data': signed_init()}).status_code == 403
 
 
+def telegram_headers(client, user, db_session):
+    db_session.add(platform.TelegramAccount(user_id=user.id, telegram_username='test_user',
+                                           telegram_user_id='712345', is_linked=True))
+    db_session.commit()
+    login = client.post(f'{ROOT}/auth', json={'init_data': signed_init()})
+    assert login.status_code == 200
+    return {'Authorization': 'MiniApp ' + login.get_json()['token']}
+
+
+def test_platform_exchange_uses_linked_user_and_live_permissions(client, workoff, db_session):
+    user, _, _, _ = workoff
+    headers = telegram_headers(client, user, db_session)
+    response = client.post(f'{ROOT}/platform-session', headers=headers,
+                           json={'id': 999, 'role': 'admin', 'telegram_id': 999})
+    assert response.status_code == 200
+    assert response.headers['Cache-Control'] == 'no-store'
+    payload = response.get_json()
+    assert payload['user']['id'] == user.id
+    assert payload['user']['role'] == 'volunteer'
+    full_headers = {'Authorization': 'Bearer ' + payload['token']}
+    me = client.get('/api/auth/me', headers=full_headers)
+    assert me.status_code == 200
+    assert me.get_json()['id'] == user.id
+    assert client.get('/api/notifications/overview', headers=full_headers).status_code == 403
+    assert platform.serializer.loads(payload['token'])['telegram_id'] == 712345
+
+
+@pytest.mark.parametrize('change', ['unlink', 'relink', 'password', 'deactivate', 'membership'])
+def test_platform_exchange_rechecks_revocation(client, workoff, db_session, change):
+    user, pool, _, _ = workoff
+    headers = telegram_headers(client, user, db_session)
+    if change == 'unlink':
+        platform.TelegramAccount.query.filter_by(user_id=user.id).one().is_linked = False
+    elif change == 'relink':
+        platform.TelegramAccount.query.filter_by(user_id=user.id).one().telegram_user_id = '999999'
+    elif change == 'password':
+        user.password_hash = 'changed-credential-digest'
+    elif change == 'deactivate':
+        user.active = False
+    else:
+        platform.PoolVolunteer.query.filter_by(user_id=user.id, pool_id=pool.id).delete()
+    db_session.commit()
+    assert client.post(f'{ROOT}/platform-session', headers=headers, json={}).status_code in {401, 403}
+
+
+@pytest.mark.parametrize('change', ['unlink', 'relink', 'password', 'deactivate'])
+def test_telegram_platform_session_remains_revocable(client, workoff, db_session, change):
+    user, _, _, _ = workoff
+    headers = telegram_headers(client, user, db_session)
+    token = client.post(f'{ROOT}/platform-session', headers=headers, json={}).get_json()['token']
+    if change == 'unlink':
+        platform.TelegramAccount.query.filter_by(user_id=user.id).one().is_linked = False
+    elif change == 'relink':
+        platform.TelegramAccount.query.filter_by(user_id=user.id).one().telegram_user_id = '999999'
+    elif change == 'password':
+        user.password_hash = 'changed-credential-digest'
+    else:
+        user.active = False
+    db_session.commit()
+    assert client.get('/api/auth/me', headers={'Authorization': 'Bearer ' + token}).status_code == 401
+
+
+def test_platform_exchange_rejects_anonymous_forged_and_ordinary_bearer(client, workoff):
+    _, _, _, headers = workoff
+    assert client.post(f'{ROOT}/platform-session', json={}).status_code == 401
+    assert client.post(f'{ROOT}/platform-session', json={}, headers={'Authorization': 'MiniApp forged'}).status_code == 401
+    assert client.post(f'{ROOT}/platform-session', json={}, headers=headers).status_code == 401
+
+
+def test_platform_exchange_does_not_bypass_first_password_change(client, workoff, db_session, monkeypatch):
+    user, _, _, _ = workoff
+    headers = telegram_headers(client, user, db_session)
+    monkeypatch.setattr(platform, 'must_change_password', lambda current: True)
+    response = client.post(f'{ROOT}/platform-session', headers=headers, json={})
+    assert response.status_code == 403
+    assert response.get_json()['code'] == 'password_change_required'
+
+
 def test_telegram_login_requires_valid_signature(client, workoff):
     response = client.post(f'{ROOT}/auth', json={'init_data': signed_init().replace('Synthetic', 'Fake')})
     assert response.status_code == 401
@@ -120,6 +198,28 @@ def test_bootstrap_is_private_and_current_pool_only(client, workoff, factories, 
     assert client.get(f'{ROOT}/penalties/{old.id}', headers=headers).status_code == 404
 
 
+def test_roulette_numbers_restart_per_pool_and_include_completed_records(client, workoff, factories, db_session):
+    _, pool, first, headers = workoff
+    previous_pool = factories.pool('Previous numbered pool')
+    db_session.add(platform.StudentPenalty(id=100, student_name='old_peer', pool_id=previous_pool.id))
+    first.workoff_status = 'done'
+    second = platform.StudentPenalty(id=101, student_name='current_peer', pool_id=pool.id, workoff_status='pending')
+    db_session.add(second)
+    db_session.commit()
+    data = client.get(ROOT, headers=headers).get_json()['penalties']
+    assert [(p['id'], p['pool_number']) for p in data] == [(101, 2)]
+    assert client.get(f'{ROOT}/penalties/101', headers=headers).get_json()['penalty']['pool_number'] == 2
+    pool.active = False
+    db_session.commit()
+    new_pool = factories.pool('New numbered pool', active=True)
+    user = workoff[0]
+    factories.assign(user, new_pool)
+    db_session.add(platform.StudentPenalty(id=102, student_name='new_peer', pool_id=new_pool.id, workoff_status='pending'))
+    db_session.commit()
+    data = client.get(ROOT, headers=headers).get_json()['penalties']
+    assert [(p['id'], p['pool_number']) for p in data] == [(102, 1)]
+
+
 def test_preview_and_reroll_do_not_change_penalty_or_start_timer(client, workoff, db_session):
     _, pool, penalty, headers = workoff
     response = client.post(f'{ROOT}/penalties/{penalty.id}/spin', headers=headers, json={})
@@ -132,6 +232,75 @@ def test_preview_and_reroll_do_not_change_penalty_or_start_timer(client, workoff
     assert penalty.pool_id == pool.id
     assert platform.PenaltyWorkoffSession.query.count() == 0
     assert platform.StudentPenalty.query.count() == 1
+
+
+def test_custom_task_is_only_started_on_commit_and_retries_are_idempotent(client, workoff, db_session):
+    user, pool, penalty, headers = workoff
+    description = 'Помочь подготовить аудиторию\nНе трогать личные вещи.'
+    preview = client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', headers=headers,
+                          json={'description': description, 'hours': 0, 'status': 'completed'})
+    assert preview.status_code == 200
+    assert platform.PenaltyWorkoffSession.query.count() == 0
+    assert penalty.workoff_status == 'pending'
+    token = preview.get_json()['draft_token']
+    committed = client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=headers, json={'draft_token': token})
+    assert committed.status_code == 200
+    data = committed.get_json()['penalty']
+    assert data['pool_id'] == pool.id
+    assert data['workoff_status'] == 'in_workoff'
+    assert data['session']['duration_seconds'] == 7200
+    task = data['session']['current_task']
+    assert task['description'] == description
+    assert task['assigned_by_nick'] == user.nick
+    assert task['task_key'].startswith('custom-')
+    repeated = client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=headers, json={'draft_token': token})
+    assert repeated.get_json()['duplicate'] is True
+    assert platform.PenaltyWorkoffTask.query.count() == 1
+    assert repeated.get_json()['penalty']['session']['ends_at'] == data['session']['ends_at']
+    assert client.post(f'{ROOT}/penalties/{penalty.id}/finish', headers=headers,
+                       json={'session_id': data['session']['id']}).status_code == 409
+
+
+@pytest.mark.parametrize('description', [None, '', '  ', 'x', 'x' * 1001, [], 123])
+def test_custom_task_rejects_invalid_text_without_writes(client, workoff, description):
+    _, _, penalty, headers = workoff
+    response = client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', headers=headers,
+                           json={'description': description})
+    assert response.status_code == 400
+    assert platform.PenaltyWorkoffTask.query.count() == 0
+
+
+def test_custom_preview_is_private_and_cannot_replace_live_task(client, workoff, factories, auth_headers):
+    _, pool, penalty, headers = workoff
+    assert client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', json={'description': 'Моя идея'}).status_code == 401
+    draft = client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', headers=headers,
+                        json={'description': 'Моя идея'}).get_json()['draft_token']
+    other = factories.user('other_custom_volunteer')
+    factories.assign(other, pool)
+    assert client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=auth_headers(other),
+                       json={'draft_token': draft}).status_code == 403
+    started, _ = start(client, penalty, headers)
+    assert client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', headers=headers,
+                       json={'description': 'Моя новая идея'}).status_code == 409
+    assert client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=headers,
+                       json={'draft_token': draft}).status_code == 409
+    assert platform.PenaltyWorkoffTask.query.count() == 1
+
+
+def test_custom_task_preserves_existing_legacy_timer(client, workoff, db_session):
+    _, _, penalty, headers = workoff
+    penalty.workoff_status = 'in_workoff'
+    penalty.date_worked_off = platform._utcnow() - timedelta(minutes=40)
+    db_session.commit()
+    expected_end = penalty.date_worked_off + timedelta(hours=2)
+    preview = client.post(f'{ROOT}/penalties/{penalty.id}/custom-preview', headers=headers,
+                          json={'description': 'Помочь с навигацией'})
+    assert preview.status_code == 200
+    assert platform.PenaltyWorkoffSession.query.count() == 0
+    response = client.post(f'{ROOT}/penalties/{penalty.id}/commit', headers=headers,
+                           json={'draft_token': preview.get_json()['draft_token']})
+    assert response.status_code == 200
+    assert platform.PenaltyWorkoffSession.query.one().ends_at == expected_end
 
 
 def test_confirmation_starts_once_and_repeat_does_not_reset_time(client, workoff, db_session):

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Brush, Map, Milestone, Package, Monitor, Users, Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X } from 'lucide-react';
+import { Brush, Map, Milestone, Package, Monitor, Users, Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil } from 'lucide-react';
 import { initializeMiniApp, operationId } from '../miniapp/client';
 import MiniAppNav from '../miniapp/MiniAppNav';
+import { playHaptic } from '../miniapp/haptics';
 import useTheme from '../hooks/useTheme';
 import '../styles/PenaltyMiniApp.css';
 
@@ -20,24 +21,30 @@ export function formatCountdown(seconds) {
     .map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-function Roulette({ catalog, selected, spinning }) {
+export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
   const [rolling, setRolling] = useState(0);
   useEffect(() => {
     if (!spinning || !catalog.length) return undefined;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
-    const timer = window.setInterval(() => setRolling((value) => value + 1), 85);
+    let ticks = 0;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setRolling((value) => value + 1);
+      // Gentle, spaced ticks, bounded even while the network is slow.
+      if (++ticks % 2 === 0 && Date.now() - started < 1100) playHaptic(sdk, 'selectionChanged');
+    }, 85);
     return () => window.clearInterval(timer);
-  }, [spinning, catalog.length]);
+  }, [spinning, catalog.length, sdk]);
   const index = spinning ? rolling % Math.max(1, catalog.length)
     : Math.max(0, catalog.findIndex((item) => item.id === (selected?.task_key || selected?.id)));
   const center = spinning ? catalog[index] : selected;
-  const previous = catalog[(index - 1 + catalog.length) % Math.max(1, catalog.length)];
-  const next = catalog[(index + 1) % Math.max(1, catalog.length)];
+  const previous = (spinning || selected) && catalog[(index - 1 + catalog.length) % Math.max(1, catalog.length)];
+  const next = (spinning || selected) && catalog[(index + 1) % Math.max(1, catalog.length)];
   return (
     <div className={`pm-reel${spinning ? ' pm-reel-spinning' : ''}`} aria-busy={spinning} data-testid="task-reel">
-      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><TaskIcon task={previous} /><span>{previous?.title || 'Выбираем задание'}</span></div>
+      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><TaskIcon task={previous} /><span>{previous?.title || 'Случайный выбор'}</span></div>
       <div className="pm-reel-row pm-reel-selected" aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
-        <TaskIcon task={center} /><span>{center?.title || (spinning ? 'Крутим рулетку…' : 'Выбери ученика')}</span>
+        <TaskIcon task={center} /><span>{center?.title || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
       </div>
       <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><TaskIcon task={next} /><span>{next?.title || 'Случайное задание'}</span></div>
     </div>
@@ -50,6 +57,8 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const [penalties, setPenalties] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState(null);
+  const [taskMode, setTaskMode] = useState('random');
+  const [customText, setCustomText] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -68,6 +77,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const offsetRef = useRef(0);
   const excludedRef = useRef([]);
   const operationRef = useRef(null);
+  const customDraftRef = useRef(null);
   const generationRef = useRef(0);
   const mutationVersion = useRef(0);
   const finishTriggerRef = useRef(null);
@@ -97,7 +107,8 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     const current = () => alive.current && generationRef.current === generation;
     setPhase('loading');
     setError('');
-    initializeMiniApp().then(async ({ request: call, sdk }) => {
+    setDraft(null); customDraftRef.current = null;
+    initializeMiniApp({ isCurrent: current }).then(async ({ request: call, sdk }) => {
       if (!current()) return;
       requestRef.current = call;
       sdkRef.current = sdk;
@@ -112,8 +123,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
       setWorkers(data.penalties.filter((item) => item.workoff_status === 'in_workoff'));
       setClock(data.server_now);
       const requested = new URLSearchParams(window.location.search).get('penalty');
-      const initial = data.penalties.find((item) => String(item.id) === requested)
-        || data.penalties.find((item) => item.workoff_status === 'pending') || data.penalties[0];
+      const initial = data.penalties.find((item) => String(item.id) === requested);
       setSelectedId(initial ? String(initial.id) : '');
       setPhase('ready');
     }).catch((failure) => {
@@ -167,7 +177,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     try {
       const response = await requestRef.current(`/penalties/${worker.id}`);
       if (!alive.current) return;
-      updatePenalty(response); setDraft(null); setSelectedId(String(worker.id)); setView('issue');
+      updatePenalty(response); selectPupil(String(worker.id)); setView('issue');
       window.scrollTo({ top: 0, behavior: 'instant' });
     } catch (failure) { if (alive.current) setError(failure.message); }
     finally { busyRef.current = false; if (alive.current) setBusy(''); }
@@ -191,7 +201,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   }, []);
 
   const spin = useCallback(async (id, exclude = []) => {
-    if (busyRef.current || !requestRef.current) return;
+    if (!id || busyRef.current || !requestRef.current) return;
     busyRef.current = true;
     setBusy('spin'); setError(''); setNotice('');
     try {
@@ -201,7 +211,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
       setClock(response.server_now);
       setDraft(response);
       excludedRef.current = [...new Set([...exclude, response.task.id])];
-      sdkRef.current?.HapticFeedback?.selectionChanged?.();
+      playHaptic(sdkRef.current, 'impactOccurred', 'light');
     } catch (failure) {
       if (alive.current && selectedRef.current === id) setError(failure.message);
       if (failure.status === 409) await refresh(id).catch(() => {});
@@ -211,15 +221,13 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     }
   }, [refresh, setClock, animate]);
 
-  useEffect(() => {
-    if (phase !== 'ready' || !selectedId) return;
-    setDraft(null); setError(''); setNotice(''); excludedRef.current = []; operationRef.current = null;
-    const penalty = penalties.find((item) => String(item.id) === selectedId);
-    if (penalty && OPEN.includes(penalty.workoff_status) && penalty.session?.status !== 'active'
-      && (!penalty.legacy_ends_at || Date.parse(penalty.legacy_ends_at) > Date.now() + offsetRef.current)) spin(selectedId);
-    // Selection starts a preview once; polling must never re-roll a candidate.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, phase]);
+  const selectPupil = (id) => {
+    // Selection only changes the pupil; no preview or timer starts implicitly.
+    selectedRef.current = id;
+    setSelectedId(id); setDraft(null); setError(''); setNotice('');
+    setCustomText(''); customDraftRef.current = null;
+    excludedRef.current = []; operationRef.current = null;
+  };
 
   const runAction = async (action) => {
     const id = selectedRef.current;
@@ -229,7 +237,12 @@ export default function PenaltyMiniApp({ renderPlatform }) {
       const penalty = penalties.find((item) => String(item.id) === id);
       let response;
       if (action === 'commit') {
-        response = await requestRef.current(`/penalties/${id}/commit`, { draft_token: draft.draft_token });
+        let candidate = draft;
+        if (taskMode === 'custom') {
+          if (!customDraftRef.current) customDraftRef.current = await requestRef.current(`/penalties/${id}/custom-preview`, { description: customText.trim() });
+          candidate = customDraftRef.current;
+        }
+        response = await requestRef.current(`/penalties/${id}/commit`, { draft_token: candidate.draft_token });
       } else if (action === 'finish') {
         response = await requestRef.current(`/penalties/${id}/finish`, { session_id: penalty.session.id });
       } else {
@@ -242,15 +255,16 @@ export default function PenaltyMiniApp({ renderPlatform }) {
         await animate();
       }
       if (!alive.current || selectedRef.current !== id) return;
-      updatePenalty(response); setDraft(null); operationRef.current = null;
+      updatePenalty(response); setDraft(null); operationRef.current = null; customDraftRef.current = null;
       setConfirmFinish(false);
       setNotice(action === 'commit' ? 'Задание зафиксировано. Отработка началась.'
         : action === 'finish' ? (response.remaining_hours > 0 ? `Зачтено 2 часа. Осталось отработать ${response.remaining_hours} ч.` : 'Отработка подтверждена. Ожидаем разблокировки.')
           : response.no_tasks_available ? 'Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.'
             : action === 'complete' ? 'Готово! Выдано следующее задание. Таймер продолжается.' : 'Задание заменено. Таймер продолжается.');
-      sdkRef.current?.HapticFeedback?.notificationOccurred?.('success');
+      playHaptic(sdkRef.current, 'notificationOccurred', 'success');
     } catch (failure) {
       if (alive.current) setError(failure.message);
+      if (failure.code === 'draft_expired') customDraftRef.current = null;
       // A lost POST response is not proof of failure. Refresh authoritative state.
       await refresh(id).catch(() => {});
     } finally {
@@ -262,6 +276,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
   const penalty = penalties.find((item) => String(item.id) === selectedId);
   const session = penalty?.session?.status === 'active' ? penalty.session : null;
   const activeTask = session?.current_task;
+  const customActiveTask = activeTask?.task_key?.startsWith('custom-');
   const endsAt = session?.ends_at || penalty?.legacy_ends_at;
   const remaining = endsAt ? Math.max(0, (Date.parse(endsAt) - now) / 1000) : 7200;
   const legacyExpired = !session && Boolean(penalty?.legacy_ends_at) && remaining === 0;
@@ -280,13 +295,13 @@ export default function PenaltyMiniApp({ renderPlatform }) {
 
   // Mount the real platform, not an iframe or an external browser. Keep this
   // component alive so its scoped Telegram credential and task preview survive.
-  if (view === 'platform' && renderPlatform) return renderPlatform(navigateView);
+  if (view === 'platform' && renderPlatform && phase === 'ready') return renderPlatform(navigateView);
 
   return (
     <main className={`penalty-miniapp${session && view === 'issue' ? ' pm-running' : ''}${view === 'working' ? ' pm-working-view' : ''}`}>
       <div className="pm-content">
         <header className="pm-header">
-          {view === 'issue' ? <><h1>Выдаватель<br />пенальти</h1><img src="/penalty-miniapp-hero.webp" alt="Два нарисованных персонажа: бородатый в фиолетовой футболке и улыбающийся" width="350" height="250" /></>
+          {view !== 'working' ? <><h1>Выдаватель пенальти</h1><img src="/penalty-miniapp-hero.webp" alt="Два нарисованных персонажа: бородатый в фиолетовой футболке и улыбающийся" width="350" height="250" /></>
             : <h1>Отрабатывают сейчас</h1>}
         </header>
         {phase === 'loading' && <p className="pm-state" role="status">Подключаемся к платформе…</p>}
@@ -305,11 +320,12 @@ export default function PenaltyMiniApp({ renderPlatform }) {
             })}</ul>}
         </section>}
         {phase === 'ready' && view === 'issue' && penalties.length === 0 && <section className="pm-state"><h2>Пока нет пенальти для отработки</h2><p>Здесь появятся ученики с уже выданными пенальти активного бассейна.</p><a href="/miniapp/platform#/penalties">Открыть раздел «Штрафы»</a></section>}
-        {phase === 'ready' && view === 'issue' && penalty && <>
+        {phase === 'ready' && view === 'issue' && penalties.length > 0 && <>
           <section className="pm-controls" aria-label="Выдача задания">
             <label className="pm-student-row"><span>Кому выдаём</span><span className="pm-select-wrap">
-              <select aria-label="Кому выдаём" value={selectedId} disabled={Boolean(busy)} onChange={(event) => setSelectedId(event.target.value)}>
-                {penalties.map((item) => <option key={item.id} value={item.id}>@{item.student_name.replace(/^@/, '')}{penalties.filter((p) => p.student_name === item.student_name).length > 1 ? ` · пенальти №${item.id}` : ''}</option>)}
+              <select aria-label="Кому выдаём" value={selectedId} disabled={Boolean(busy)} onChange={(event) => selectPupil(event.target.value)}>
+                <option value="">Выбери ученика</option>
+                {penalties.map((item) => <option key={item.id} value={item.id}>@{item.student_name.replace(/^@/, '')}{item.pool_number ? ` · пенальти №${item.pool_number}` : ''}</option>)}
               </select><ChevronRight size={21} aria-hidden="true" />
             </span></label>
             <div className={`pm-duration${endsAt ? ' pm-duration-active' : ''}`}>
@@ -318,17 +334,26 @@ export default function PenaltyMiniApp({ renderPlatform }) {
                 <p>{endsAt ? remaining > 0 ? 'Осталось из 2 часов' : 'Время вышло — нужно подтверждение'
                   : completed ? 'Разблокировку подтверждает ответственный' : 'Таймер начнётся после фиксации'}</p></div>
             </div>
-            {penalty.total_hours > 2 && <p className="pm-hours-note">Всего {penalty.total_hours} ч · зачтено {penalty.completed_hours} ч. Один этап — 2 часа.</p>}
+            {penalty?.total_hours > 2 && <p className="pm-hours-note">Всего {penalty.total_hours} ч · зачтено {penalty.completed_hours} ч. Один этап — 2 часа.</p>}
             {legacyExpired && <div className="pm-state"><p>Эта отработка началась до выдачи задания в мини-апе. Её таймер сохранён.</p><a href={`/miniapp/platform#/penalties?status=in_workoff&student=${encodeURIComponent(penalty.student_name)}`}>Подтвердить в разделе «Штрафы»</a></div>}
             {!completed && !legacyExpired && <>
-              <h2 className="pm-section-label">{session ? 'Текущее задание' : 'Выпало задание'}</h2>
-              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} />
-              {session && activeTask && <div className="pm-task-description"><p>{activeTask.description}</p><span>Примерно {activeTask.estimated_minutes} минут · не длительность всей отработки</span></div>}
+              {!session && <div className="pm-task-modes" role="group" aria-label="Способ выбора задания">
+                <button type="button" aria-pressed={taskMode === 'random'} disabled={Boolean(busy)} onClick={() => setTaskMode('random')}><Shuffle size={17} />Рулетка</button>
+                <button type="button" aria-pressed={taskMode === 'custom'} disabled={Boolean(busy)} onClick={() => setTaskMode('custom')}><Pencil size={17} />Своё задание</button>
+              </div>}
+              {session || taskMode === 'random' ? <>
+              <h2 className="pm-section-label">{session ? 'Текущее задание' : draft ? 'Выпало задание' : 'Выбор задания'}</h2>
+              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} />
+              </> : <label className="pm-custom-task"><span>Как ученик отработает пенальти</span>
+                <textarea value={customText} disabled={!penalty || Boolean(busy)} maxLength={1000} rows={3} placeholder="Опиши свою идею задания…" onChange={(event) => { setCustomText(event.target.value); customDraftRef.current = null; }} />
+                <small>Сохранится в истории · общий срок — 2 часа</small>
+              </label>}
+              {session && activeTask && <div className="pm-task-description"><p>{activeTask.description}</p><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки`}</span></div>}
               {session && !activeTask && <p className="pm-task-description">Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.</p>}
               <div className="pm-actions">
                 {!session && <>
-                  <button type="button" className="pm-secondary" disabled={Boolean(busy)} onClick={() => spin(selectedId, excludedRef.current.length >= catalog.length ? [] : excludedRef.current)}><Shuffle size={23} />{busy === 'spin' ? 'Крутим рулетку…' : 'Выдать другое'}</button>
-                  <button type="button" className="pm-primary" disabled={!draft || Boolean(busy)} onClick={() => runAction('commit')}><Check size={23} />{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}</button>
+                  {taskMode === 'random' && <button type="button" className="pm-secondary" disabled={!canStart || Boolean(busy)} onClick={() => spin(selectedId, excludedRef.current.length >= catalog.length ? [] : excludedRef.current)}><Shuffle size={23} />{busy === 'spin' ? 'Крутим рулетку…' : draft ? 'Выбрать другое' : 'Выбрать'}</button>}
+                  <button type="button" className="pm-primary" disabled={!canStart || (taskMode === 'custom' ? customText.trim().length < 3 : !draft) || Boolean(busy)} onClick={() => runAction('commit')}><Check size={23} />{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}</button>
                 </>}
                 {session && remaining > 0 && activeTask && <>
                   <button type="button" className="pm-secondary" disabled={Boolean(busy)} onClick={() => runAction('replace')}><Shuffle size={22} />Не подходит — заменить</button>
