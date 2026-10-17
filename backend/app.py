@@ -836,7 +836,39 @@ def _download_telegram_photo_bytes(account):
         return None, None
     import requests
 
-    file_info = telegram_get('getFile', {'file_id': account.photo_file_id})
+    try:
+        file_info = telegram_get('getFile', {'file_id': account.photo_file_id})
+    except requests.HTTPError as original_error:
+        if (
+            original_error.response is None
+            or original_error.response.status_code != 400
+            or not account.telegram_user_id
+        ):
+            raise
+        photos = telegram_get('getUserProfilePhotos', {
+            'user_id': account.telegram_user_id, 'limit': 1,
+        })
+        if not isinstance(photos, dict):
+            raise original_error
+        photo_sets = photos.get('photos')
+        total = photos.get('total_count')
+        if type(total) is not int or total < 0 or not isinstance(photo_sets, list):
+            raise original_error
+        if total == 0 and not photo_sets:
+            return None, None
+        if total == 0 or not photo_sets or not isinstance(photo_sets[0], list) or not photo_sets[0]:
+            raise original_error
+        latest_photo = photo_sets[0][-1]
+        fresh_file_id = latest_photo.get('file_id') if isinstance(latest_photo, dict) else None
+        if (
+            not isinstance(fresh_file_id, str)
+            or not fresh_file_id.strip()
+            or fresh_file_id == account.photo_file_id
+        ):
+            raise original_error
+        file_info = telegram_get('getFile', {'file_id': fresh_file_id})
+        if not isinstance(file_info, dict) or not isinstance(file_info.get('file_path'), str) or not file_info['file_path']:
+            raise original_error
     file_path = (file_info or {}).get('file_path')
     if not file_path:
         return None, None
@@ -845,7 +877,6 @@ def _download_telegram_photo_bytes(account):
         return None, None
     response = requests.get(download_url, timeout=30)
     response.raise_for_status()
-    account.photo_url = file_path
     return response.content, response.headers.get('Content-Type') or 'image/jpeg'
 
 
@@ -918,6 +949,8 @@ def _telegram_bot_avatar_payload():
     download_url = _telegram_file_download_url(file_path)
     if not download_url:
         return None, None
+
+    import requests
 
     response = requests.get(download_url, timeout=30)
     response.raise_for_status()
@@ -2701,16 +2734,15 @@ def user_avatar(user_id):
         photo_bytes, content_type = _download_telegram_photo_bytes(account)
         if not photo_bytes:
             return jsonify({'error': 'Фото не найдено'}), 404
-        db.session.commit()
         return send_file(
             BytesIO(photo_bytes),
             mimetype=content_type or 'image/jpeg',
             max_age=60 * 60,
             download_name=f'user-{user.id}-avatar.jpg',
         )
-    except Exception as exc:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': f'Не удалось получить фото: {exc}'}), 502
+        return jsonify({'error': 'Не удалось получить фото'}), 502
 
 
 @app.route('/api/me/avatar', methods=['POST'])
