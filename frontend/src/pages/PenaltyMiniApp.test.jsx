@@ -3,10 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PenaltyMiniApp, { formatCountdown, Roulette } from './PenaltyMiniApp';
 import { playHaptic } from '../miniapp/haptics';
 import { initializeMiniApp, operationId } from '../miniapp/client';
-import { createRouletteSound } from '../miniapp/rouletteSound';
 
 jest.mock('../miniapp/client', () => ({ initializeMiniApp: jest.fn(), operationId: jest.fn() }));
-jest.mock('../miniapp/rouletteSound', () => ({ ...jest.requireActual('../miniapp/rouletteSound'), createRouletteSound: jest.fn() }));
 
 const catalog = [
   { id: 'common-area', title: 'Порядок в общей зоне', description: 'Не трогай личные вещи.', estimated_minutes: 15, icon: 'broom' },
@@ -16,14 +14,11 @@ const catalog = [
 let call;
 let penalty;
 let session;
-let sound;
 const response = () => ({ penalty: { ...penalty, session }, server_now: new Date().toISOString() });
 
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
-  sound = { prepare: jest.fn(), tick: jest.fn(), result: jest.fn(), stop: jest.fn(), setEnabled: jest.fn(), dispose: jest.fn() };
-  createRouletteSound.mockReturnValue(sound);
   window.matchMedia = jest.fn((query) => ({ matches: query.includes('reduced-motion'), addEventListener: jest.fn(), removeEventListener: jest.fn() }));
   penalty = { id: 1, student_name: 'demo_peer', total_hours: 2, completed_hours: 0, workoff_status: 'pending', session: null };
   session = null;
@@ -69,6 +64,24 @@ test('preview does not commit and controls have distinct names', async () => {
   expect(screen.getByLabelText('Кому выдаём')).toHaveValue('1');
   expect(screen.getByRole('button', { name: 'Выбрать другое' })).toBeEnabled();
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
+});
+
+test('roulette has no sound control or audio playback even with an old enabled preference', async () => {
+  localStorage.setItem('miniappRouletteSound', 'on');
+  const audioContext = jest.fn();
+  window.AudioContext = audioContext;
+  window.webkitAudioContext = audioContext;
+  try {
+    await ready();
+    expect(screen.queryByRole('switch', { name: 'Звук рулетки' })).not.toBeInTheDocument();
+    expect(audioContext).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать другое' }));
+    await waitFor(() => expect(call.mock.calls.filter(([path = '']) => path.endsWith('/spin'))).toHaveLength(2));
+    expect(audioContext).not.toHaveBeenCalled();
+  } finally {
+    delete window.AudioContext;
+    delete window.webkitAudioContext;
+  }
 });
 
 test('reroll only requests another preview', async () => {
@@ -267,133 +280,28 @@ test('reel has bounded gentle ticks only while spinning and cleans up on exit', 
   jest.useFakeTimers();
   window.matchMedia.mockReturnValue({ matches: false });
   const sdk = { HapticFeedback: { selectionChanged: jest.fn() } };
-  const onTick = jest.fn();
-  const { rerender, unmount } = render(<Roulette catalog={catalog} sdk={sdk} spinning={false} onTick={onTick} />);
+  const { rerender, unmount } = render(<Roulette catalog={catalog} sdk={sdk} spinning={false} />);
   act(() => jest.advanceTimersByTime(300));
   expect(sdk.HapticFeedback.selectionChanged).not.toHaveBeenCalled();
-  expect(onTick).not.toHaveBeenCalled();
-  rerender(<Roulette catalog={catalog} sdk={sdk} spinning onTick={onTick} />);
+  rerender(<Roulette catalog={catalog} sdk={sdk} spinning />);
   act(() => jest.advanceTimersByTime(1050));
   expect(sdk.HapticFeedback.selectionChanged).toHaveBeenCalledTimes(6);
-  expect(onTick).toHaveBeenCalledTimes(6);
   act(() => jest.advanceTimersByTime(2000));
   expect(sdk.HapticFeedback.selectionChanged).toHaveBeenCalledTimes(6);
-  expect(onTick).toHaveBeenCalledTimes(6);
   unmount();
   act(() => jest.advanceTimersByTime(2000));
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
 });
 
-test('sound only prepares on explicit selection and signals a successful preview', async () => {
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  expect(sound.prepare).not.toHaveBeenCalled();
-  expect(sound.result).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать' }));
-  expect(sound.prepare).toHaveBeenCalledTimes(1);
-  await waitFor(() => expect(sound.result).toHaveBeenCalledTimes(1));
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать другое' }));
-  await waitFor(() => expect(sound.result).toHaveBeenCalledTimes(2));
-});
-
-test('sound switch remembers mute and remains available while a selection is pending', async () => {
-  localStorage.setItem('miniappRouletteSound', 'off');
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  const toggle = screen.getByRole('switch', { name: 'Звук рулетки' });
-  expect(toggle).toHaveAttribute('aria-checked', 'false');
-  expect(createRouletteSound).toHaveBeenCalledWith(false);
-  fireEvent.click(toggle);
-  expect(sound.setEnabled).toHaveBeenLastCalledWith(true);
-  expect(localStorage.getItem('miniappRouletteSound')).toBe('on');
-  let resolve;
-  call.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать' }));
-  expect(toggle).toBeEnabled();
-  fireEvent.click(toggle);
-  expect(sound.setEnabled).toHaveBeenLastCalledWith(false);
-  expect(toggle).toHaveAttribute('aria-checked', 'false');
-  expect(localStorage.getItem('miniappRouletteSound')).toBe('off');
-  await act(async () => resolve({ task: catalog[0], draft_token: 'synthetic-draft' }));
-});
-
-test('selection errors never play the result signal', async () => {
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  call.mockRejectedValueOnce(new Error('Сервер недоступен'));
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Сервер недоступен');
-  expect(sound.result).not.toHaveBeenCalled();
-  expect(sound.stop).toHaveBeenCalled();
-});
-
-test.each(['Не подходит — заменить', 'Выполнено — следующее'])('existing task selection has sound: %s', async (name) => {
-  penalty.workoff_status = 'in_workoff'; session = activeSession();
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  fireEvent.click(screen.getByRole('button', { name }));
-  expect(sound.prepare).toHaveBeenCalledTimes(1);
-  await waitFor(() => expect(sound.result).toHaveBeenCalledTimes(1));
-});
-
-test('no result signal when there are no more tasks', async () => {
-  penalty.workoff_status = 'in_workoff'; session = activeSession();
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  call.mockImplementationOnce(async () => ({ ...response(), no_tasks_available: true }));
-  fireEvent.click(screen.getByRole('button', { name: 'Выполнено — следующее' }));
-  expect(await screen.findByRole('status')).toHaveTextContent('Подходящих заданий пока нет');
-  expect(sound.result).not.toHaveBeenCalled();
-});
-
-test('own assignment and fixation do not produce roulette audio', async () => {
-  render(<PenaltyMiniApp />);
-  await selectPupil();
-  fireEvent.click(screen.getByRole('button', { name: 'Своё задание' }));
-  fireEvent.change(screen.getByRole('textbox', { name: /Как ученик отработает/ }), { target: { value: 'Помочь с навигацией' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Зафиксировать пенальти' }));
-  await waitFor(() => expect(call).toHaveBeenCalledWith('/penalties/1/commit', expect.anything()));
-  expect(sound.prepare).not.toHaveBeenCalled();
-  expect(sound.result).not.toHaveBeenCalled();
-});
-
-test('hiding, navigating away, or unmounting silences audio', async () => {
-  const { unmount } = render(<PenaltyMiniApp />);
-  await selectPupil();
-  sound.stop.mockClear();
-  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-  fireEvent(document, new Event('visibilitychange'));
-  expect(sound.stop).toHaveBeenCalledTimes(1);
-  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-  fireEvent.click(screen.getByRole('link', { name: /Отрабатывают сейчас/ }));
-  expect(sound.stop).toHaveBeenCalledTimes(2);
-  unmount();
-  expect(sound.dispose).toHaveBeenCalledTimes(1);
-});
-
 test('reduced-motion disables rolling ticks and unsupported haptics never throw', () => {
   jest.useFakeTimers();
   const sdk = { HapticFeedback: { selectionChanged: jest.fn(), impactOccurred: () => { throw new Error('unsupported'); } } };
-  const onTick = jest.fn();
-  const { unmount } = render(<Roulette catalog={catalog} sdk={sdk} spinning onTick={onTick} />);
+  const { unmount } = render(<Roulette catalog={catalog} sdk={sdk} spinning />);
   act(() => jest.advanceTimersByTime(2000));
   expect(sdk.HapticFeedback.selectionChanged).not.toHaveBeenCalled();
-  expect(onTick).not.toHaveBeenCalled();
   expect(() => playHaptic(sdk, 'impactOccurred', 'light')).not.toThrow();
   expect(() => playHaptic(null, 'impactOccurred', 'light')).not.toThrow();
   unmount();
   jest.useRealTimers();
-});
-
-test('a preview arriving after unmount cannot play a result', async () => {
-  const { unmount } = render(<PenaltyMiniApp />);
-  await selectPupil();
-  let resolve;
-  call.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать' }));
-  unmount();
-  await act(async () => resolve({ task: catalog[0], draft_token: 'synthetic-draft' }));
-  expect(sound.dispose).toHaveBeenCalledTimes(1);
-  expect(sound.result).not.toHaveBeenCalled();
 });

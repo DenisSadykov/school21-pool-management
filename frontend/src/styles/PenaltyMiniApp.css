@@ -51,13 +51,6 @@
 @keyframes pm-reel-shift { from { transform: translateY(-5px); } to { transform: translateY(5px); } }
 .pm-actions { display: grid; gap: 8px; margin-top: 10px; }
 .pm-task-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.pm-task-tools { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin-top: 8px; }
-.pm-task-tools .pm-task-modes { margin-top: 0; }
-.penalty-miniapp .pm-sound-toggle { width: 44px; min-height: 44px; padding: 8px; border: 1px solid var(--pm-line); background: var(--pm-surface); color: var(--pm-muted); }
-.penalty-miniapp .pm-sound-toggle[aria-checked='true'] { color: var(--pm-link); }
-@media (hover: hover) and (pointer: fine) { .penalty-miniapp .pm-sound-toggle:hover { background: var(--bg-elevated); } }
-.pm-reel-heading-active { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
-.pm-reel-heading-active .pm-section-label { margin: 0; }
 .penalty-miniapp .pm-task-modes button { min-height: 44px; padding: 8px 4px; font-size: 13px; background: var(--pm-surface); color: var(--pm-muted); border: 1px solid var(--pm-line); }
 .penalty-miniapp .pm-task-modes button[aria-pressed='true'] { color: var(--pm-link); background: var(--pm-selected); border-color: var(--pm-link); }
 .pm-custom-task { display: grid; gap: 6px; margin-top: 10px; color: var(--pm-text); font-size: 14px; }
@@ -131,8 +124,8 @@
 .pm-worker-task { color: var(--pm-muted); font-size: 14px; font-weight: 400; }
 .pm-worker-open { display: inline-flex; align-items: center; gap: 4px; color: var(--pm-link); font-size: 12px; font-weight: 500; }
 @media (max-width: 360px) { .pm-student-row { gap: 5px; font-size: 14px; } .pm-header h1 { font-size: 20px; } .pm-reel-row { font-size: 14px; gap: 9px; padding-inline: 13px; } }
-@media (max-width: 360px) { .pm-task-tools .pm-task-modes svg { display: none; } }
 @media (max-height: 700px) { .pm-footer { display: none; } .pm-bottom-hint { font-size: 11px; } }
 @media (max-height: 600px) { .pm-header { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 8px; } .pm-header h1 { font-size: 19px; padding: 0; } .pm-header img { height: 40px; width: 56px; margin: 0; } .pm-duration { min-height: 48px; } .pm-reel-neighbor { min-height: 28px; padding-block: 3px; } .pm-section-label { margin-top: 6px; } .pm-actions { margin-top: 8px; } .pm-bottom-hint { display: none; } }
-@media (max-height: 600px) { .pm-task-tools { margin-top: 6px; } .pm-reel-heading:not(.pm-reel-heading-active) .pm-section-label { margin-bottom: 3px; } }
 @media (prefers-reduced-motion: reduce) { .penalty-miniapp *, .penalty-miniapp *::before, .penalty-miniapp *::after, .pm-bottom-nav * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+/* Keep the compact layout clear of the lifted dock without a sound control. */
+@media (max-height: 600px) { .pm-task-modes { margin-top: 6px; } .pm-section-label { margin-bottom: 3px; } }
