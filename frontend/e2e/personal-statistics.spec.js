@@ -1,5 +1,14 @@
 const { test, expect } = require('@playwright/test');
 
+async function expectTransparentChartTracks(page) {
+  const tracks = page.getByRole('list', { name: 'Часы по месяцам' }).locator('.personal-chart-track');
+  await expect(tracks).toHaveCount(12);
+  expect(await tracks.evaluateAll((elements) => elements.every((element) => {
+    const style = getComputedStyle(element);
+    return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none';
+  }))).toBe(true);
+}
+
 for (const width of [1280, 390]) {
   test(`personal cabinet and preserved settings work at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -12,6 +21,7 @@ for (const width of [1280, 390]) {
     await page.getByRole('button', { name: 'Личный кабинет', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Личный кабинет' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Ваш ритм' })).toBeVisible();
+    await expectTransparentChartTracks(page);
     await expect(page.getByRole('heading', { name: 'E2E Прошлый бассейн' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Маленькие победы' })).toHaveCount(0);
     await expect(page.getByRole('progressbar')).toHaveCount(0);
@@ -28,5 +38,9 @@ for (const width of [1280, 390]) {
     await page.getByRole('button', { name: 'Обзор', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Ваш ритм' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.locator('.navbar-user').click();
+    await page.getByRole('button', { name: 'Тёмная тема', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expectTransparentChartTracks(page);
   });
 }
