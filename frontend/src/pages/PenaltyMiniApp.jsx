@@ -1,19 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Brush, Map, Milestone, Package, Monitor, Users, Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil } from 'lucide-react';
+import { Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil } from 'lucide-react';
 import { initializeMiniApp, operationId } from '../miniapp/client';
 import MiniAppNav from '../miniapp/MiniAppNav';
 import { playHaptic } from '../miniapp/haptics';
 import useTheme from '../hooks/useTheme';
 import '../styles/PenaltyMiniApp.css';
 
-const ICONS = { broom: Brush, map: Map, sign: Milestone, box: Package, monitor: Monitor, users: Users };
 const TASK_STATES = { active: 'В работе', completed: 'Выполнено', unavailable: 'Не подошло', cancelled: 'Отменено' };
 const OPEN = ['pending', 'overdue', 'in_workoff'];
-
-function TaskIcon({ task, size = 23 }) {
-  const Icon = ICONS[task?.icon] || Package;
-  return <Icon size={size} strokeWidth={1.8} aria-hidden="true" />;
-}
 
 export function formatCountdown(seconds) {
   const value = Math.max(0, Math.ceil(seconds));
@@ -21,7 +15,7 @@ export function formatCountdown(seconds) {
     .map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
+export function Roulette({ catalog, selected, spinning, pupilSelected, sdk, previewDetails = false }) {
   const [rolling, setRolling] = useState(0);
   useEffect(() => {
     if (!spinning || !catalog.length) return undefined;
@@ -42,11 +36,16 @@ export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
   const next = (spinning || selected) && catalog[(index + 1) % Math.max(1, catalog.length)];
   return (
     <div className={`pm-reel${spinning ? ' pm-reel-spinning' : ''}`} aria-busy={spinning} data-testid="task-reel">
-      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><TaskIcon task={previous} /><span>{previous?.title || 'Случайный выбор'}</span></div>
-      <div className="pm-reel-row pm-reel-selected" aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
-        <TaskIcon task={center} /><span>{center?.title || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
-      </div>
-      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><TaskIcon task={next} /><span>{next?.title || 'Случайное задание'}</span></div>
+      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{previous?.title || 'Случайный выбор'}</span></div>
+      {previewDetails && center && !spinning ? <details className="pm-reel-details" key={center.id || center.task_key} aria-live="polite" aria-atomic="true">
+        <summary className="pm-reel-row pm-reel-selected" aria-label={`Читать задание целиком: ${center.title}`}>
+          <span className="pm-reel-title">{center.title}</span><span className="pm-reel-more">Читать</span>
+        </summary>
+        <p className="pm-reel-full-text">{center.description}</p>
+      </details> : <div className="pm-reel-row pm-reel-selected" aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
+        <span className="pm-reel-title">{center?.title || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
+      </div>}
+      <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{next?.title || 'Случайное задание'}</span></div>
     </div>
   );
 }
@@ -344,12 +343,12 @@ export default function PenaltyMiniApp({ renderPlatform }) {
               </div>}
               {session || taskMode === 'random' ? <>
               <h2 className="pm-section-label">{session ? 'Текущее задание' : draft ? 'Выпало задание' : 'Выбор задания'}</h2>
-              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} />
+              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} previewDetails={!session} />
               </> : <label className="pm-custom-task"><span>Как ученик отработает пенальти</span>
                 <textarea value={customText} disabled={!penalty || Boolean(busy)} maxLength={1000} rows={3} placeholder="Опиши свою идею задания…" onChange={(event) => { setCustomText(event.target.value); customDraftRef.current = null; }} />
                 <small>Сохранится в истории · общий срок — 2 часа</small>
               </label>}
-              {session && activeTask && <div className="pm-task-description"><p>{activeTask.description}</p><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки`}</span></div>}
+              {session && activeTask && <div className="pm-task-description"><p>{activeTask.description}</p><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : activeTask.estimated_minutes ? `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки` : 'Общий таймер отработки — 2 часа'}</span></div>}
               {session && !activeTask && <p className="pm-task-description">Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.</p>}
               <div className="pm-actions">
                 {!session && <>
@@ -370,7 +369,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
           {historyTasks.length > 0 && <details className="pm-history"><summary><History size={19} />История заданий · {historyTasks.length}</summary><ol>{historyTasks.map((task) => <li key={task.id}><strong>{task.title}</strong><span>{TASK_STATES[task.status]} · @{task.assigned_by_nick || 'волонтёр'}</span></li>)}</ol></details>}
         </>}
         {view === 'working' && error && <p className="pm-error" role="alert">{error}</p>}
-        <footer className="pm-footer"><a href="/miniapp/platform#/penalties">Штрафы на платформе</a><span>Задания пока тестовые</span></footer>
+        <footer className="pm-footer"><a href="/miniapp/platform#/penalties">Штрафы на платформе</a><span>Каталог заданий</span></footer>
       </div>
       {phase === 'ready' && <MiniAppNav view={view} busy={Boolean(busy)} count={workers.length} onNavigate={(next) => {
         if (next === 'platform' && !renderPlatform) return false;

@@ -66,6 +66,29 @@ test('preview does not commit and controls have distinct names', async () => {
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
 });
 
+test('full task text is readable before fixation without icons or extra requests', async () => {
+  const { container } = render(<PenaltyMiniApp />);
+  await preview();
+  expect(container.querySelector('[data-testid="task-reel"] svg')).toBeNull();
+  const details = screen.getByLabelText('Читать задание целиком: Порядок в общей зоне').closest('details');
+  expect(details).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByText('Читать'));
+  expect(details).toHaveAttribute('open');
+  expect(screen.getByText('Не трогай личные вещи.')).toBeVisible();
+  expect(call.mock.calls.filter(([path = '']) => path.endsWith('/spin'))).toHaveLength(1);
+  expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
+  expect(screen.queryByText('Задания пока тестовые')).not.toBeInTheDocument();
+});
+
+test('text-only catalog tasks show the shared timer without made-up minute estimates', async () => {
+  penalty.workoff_status = 'in_workoff'; session = activeSession();
+  session.current_task.estimated_minutes = null;
+  render(<PenaltyMiniApp />);
+  await selectPupil();
+  expect(screen.getByText('Общий таймер отработки — 2 часа')).toBeInTheDocument();
+  expect(screen.queryByText(/Примерно.*минут/)).not.toBeInTheDocument();
+});
+
 test('roulette has no sound control or audio playback even with an old enabled preference', async () => {
   localStorage.setItem('miniappRouletteSound', 'on');
   const audioContext = jest.fn();

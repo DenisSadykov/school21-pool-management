@@ -1,0 +1,10 @@
+{
+  "file": "penalty_tracker.xlsx",
+  "sheet": "Пенальти",
+  "column": "Задание",
+  "range": "B2:B143",
+  "count": 142,
+  "text_sha256": "ff3d406f8d83d30802dd1b448b8705fb6e7b2631d389ef434d024144fed4cff2",
+  "duration_estimates": "not_provided",
+  "workoff_session_minutes": 120
+}

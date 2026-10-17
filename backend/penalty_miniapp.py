@@ -75,7 +75,9 @@ def register_penalty_miniapp(app, db, context):
     if len(by_key) != len(catalog) or not catalog:
         raise RuntimeError('Каталог заданий должен быть непустым, с уникальными id')
     for item in catalog:
-        if not 0 < item['estimated_minutes'] <= 120 or not item['title'] or not item['description']:
+        estimate = item.get('estimated_minutes')
+        if ((estimate is not None and (type(estimate) is not int or not 0 < estimate <= 120))
+                or not item['title'] or not item['description']):
             raise RuntimeError('Некорректное задание пенальти')
 
     @app.errorhandler(MiniAppProblem)
@@ -163,7 +165,10 @@ def register_penalty_miniapp(app, db, context):
     def task_payload(task):
         return {
             'id': task.id, 'task_key': task.task_key, 'title': task.title,
-            'description': task.description, 'estimated_minutes': task.estimated_minutes,
+            'description': task.description,
+            # Text-only source tasks have no individual duration estimate. The
+            # prefix preserves this meaning in history even if a task is retired.
+            'estimated_minutes': None if task.task_key.startswith('listed-') else task.estimated_minutes,
             'icon': by_key.get(task.task_key, {}).get('icon', 'box'),
             'status': task.status, 'assigned_at': iso(task.assigned_at),
             'finished_at': iso(task.finished_at), 'assigned_by_nick': task.assigned_by_nick,
@@ -220,8 +225,8 @@ def register_penalty_miniapp(app, db, context):
         remaining = SESSION_SECONDS if not deadline else max(0, (deadline - now).total_seconds())
         if session:
             excluded.update(row.task_key for row in Task.query.filter_by(session_id=session.id).all())
-        return [item for item in catalog if item['id'] not in excluded
-                and item['estimated_minutes'] * 60 <= remaining]
+        return [item for item in catalog if remaining > 0 and item['id'] not in excluded
+                and (item.get('estimated_minutes') is None or item['estimated_minutes'] * 60 <= remaining)]
 
     def custom_candidate(description, key, deadline=None):
         if not isinstance(description, str) or not 3 <= len(description.strip()) <= 1000:
@@ -241,7 +246,10 @@ def register_penalty_miniapp(app, db, context):
     def assign_task(session, candidate, draft_id=None):
         task = Task(
             session_id=session.id, task_key=candidate['id'], title=candidate['title'],
-            description=candidate['description'], estimated_minutes=candidate['estimated_minutes'],
+            description=candidate['description'],
+            # Keep the existing non-null DB schema: 120 is the session ceiling,
+            # not a made-up estimate. task_payload exposes unknown estimates as null.
+            estimated_minutes=candidate.get('estimated_minutes') or SESSION_SECONDS // 60,
             assigned_by=g.user.id, assigned_by_nick=g.user.nick, draft_id=draft_id,
         )
         db.session.add(task)
@@ -309,7 +317,7 @@ def register_penalty_miniapp(app, db, context):
                 g.miniapp_tasks.setdefault(item.session_id, []).append(item)
         return jsonify({
             'user': {'nick': g.user.nick}, 'pool_id': g.miniapp_pool_id,
-            'catalog': catalog, 'temporary_catalog': True,
+            'catalog': catalog, 'temporary_catalog': False,
             'penalties': [penalty_payload(item) for item in penalties],
             'server_now': iso(context['_utcnow']()),
         })
