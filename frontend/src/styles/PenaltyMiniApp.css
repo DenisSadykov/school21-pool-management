@@ -1,5 +1,5 @@
 .penalty-miniapp, .pm-platform {
-  --pm-dock-bottom: max(10px, env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px));
+  --pm-dock-bottom: calc(5px + max(10px, env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px)));
   /* 64px dock + safe bottom offset + 8px clear space for the final control. */
   --pm-dock-clearance: calc(72px + var(--pm-dock-bottom));
 }
