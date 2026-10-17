@@ -15,7 +15,7 @@ export function formatCountdown(seconds) {
     .map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export function Roulette({ catalog, selected, spinning, pupilSelected, sdk, previewDetails = false }) {
+export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
   const [rolling, setRolling] = useState(0);
   useEffect(() => {
     if (!spinning || !catalog.length) return undefined;
@@ -37,14 +37,9 @@ export function Roulette({ catalog, selected, spinning, pupilSelected, sdk, prev
   return (
     <div className={`pm-reel${spinning ? ' pm-reel-spinning' : ''}`} aria-busy={spinning} data-testid="task-reel">
       <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{previous?.title || 'Случайный выбор'}</span></div>
-      {previewDetails && center && !spinning ? <details className="pm-reel-details" key={center.id || center.task_key} aria-live="polite" aria-atomic="true">
-        <summary className="pm-reel-row pm-reel-selected" aria-label={`Читать задание целиком: ${center.title}`}>
-          <span className="pm-reel-title">{center.title}</span><span className="pm-reel-more">Читать</span>
-        </summary>
-        <p className="pm-reel-full-text">{center.description}</p>
-      </details> : <div className="pm-reel-row pm-reel-selected" aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
-        <span className="pm-reel-title">{center?.title || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
-      </div>}
+      <div className={`pm-reel-row pm-reel-selected${center && !spinning ? ' pm-reel-result' : ''}`} aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
+        <span className="pm-reel-title">{(spinning ? center?.title : center?.description || center?.title) || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
+      </div>
       <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{next?.title || 'Случайное задание'}</span></div>
     </div>
   );
@@ -343,12 +338,12 @@ export default function PenaltyMiniApp({ renderPlatform }) {
               </div>}
               {session || taskMode === 'random' ? <>
               <h2 className="pm-section-label">{session ? 'Текущее задание' : draft ? 'Выпало задание' : 'Выбор задания'}</h2>
-              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} previewDetails={!session} />
+              <Roulette catalog={catalog} selected={selectedTask} spinning={rolling} pupilSelected={Boolean(penalty)} sdk={sdkRef.current} />
               </> : <label className="pm-custom-task"><span>Как ученик отработает пенальти</span>
                 <textarea value={customText} disabled={!penalty || Boolean(busy)} maxLength={1000} rows={3} placeholder="Опиши свою идею задания…" onChange={(event) => { setCustomText(event.target.value); customDraftRef.current = null; }} />
                 <small>Сохранится в истории · общий срок — 2 часа</small>
               </label>}
-              {session && activeTask && <div className="pm-task-description"><p>{activeTask.description}</p><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : activeTask.estimated_minutes ? `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки` : 'Общий таймер отработки — 2 часа'}</span></div>}
+              {session && activeTask && <div className="pm-task-description"><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : activeTask.estimated_minutes ? `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки` : 'Общий таймер отработки — 2 часа'}</span></div>}
               {session && !activeTask && <p className="pm-task-description">Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.</p>}
               <div className="pm-actions">
                 {!session && <>

@@ -66,18 +66,39 @@ test('preview does not commit and controls have distinct names', async () => {
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
 });
 
-test('full task text is readable before fixation without icons or extra requests', async () => {
+test('the result automatically shows full task text before fixation without icons or extra requests', async () => {
   const { container } = render(<PenaltyMiniApp />);
   await preview();
   expect(container.querySelector('[data-testid="task-reel"] svg')).toBeNull();
-  const details = screen.getByLabelText('Читать задание целиком: Порядок в общей зоне').closest('details');
-  expect(details).not.toHaveAttribute('open');
-  fireEvent.click(screen.getByText('Читать'));
-  expect(details).toHaveAttribute('open');
   expect(screen.getByText('Не трогай личные вещи.')).toBeVisible();
+  expect(screen.getByText('Не трогай личные вещи.').closest('.pm-reel-result')).not.toBeNull();
+  expect(container.querySelector('[data-testid="task-reel"] details')).toBeNull();
+  expect(screen.queryByText('Читать')).not.toBeInTheDocument();
   expect(call.mock.calls.filter(([path = '']) => path.endsWith('/spin'))).toHaveLength(1);
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
   expect(screen.queryByText('Задания пока тестовые')).not.toBeInTheDocument();
+});
+
+test('the center stays compact during a spin then expands the full result and its replacements', () => {
+  const { container, rerender } = render(<Roulette catalog={catalog} selected={catalog[0]} spinning />);
+  expect(container.querySelector('.pm-reel-result')).toBeNull();
+  expect(screen.queryByText(catalog[0].description)).not.toBeInTheDocument();
+  expect(container.querySelector('.pm-reel-selected')).toHaveAttribute('aria-live', 'off');
+  rerender(<Roulette catalog={catalog} selected={catalog[0]} spinning={false} />);
+  expect(container.querySelector('.pm-reel-result')).toHaveTextContent(catalog[0].description);
+  expect(container.querySelector('.pm-reel-result')).toHaveAttribute('aria-live', 'polite');
+  rerender(<Roulette catalog={catalog} selected={catalog[1]} spinning={false} />);
+  expect(container.querySelector('.pm-reel-result')).toHaveTextContent(catalog[1].description);
+  expect(screen.queryByText(catalog[0].description)).not.toBeInTheDocument();
+});
+
+test('an active custom task shows its complete text once in the selected card', async () => {
+  penalty.workoff_status = 'in_workoff'; session = activeSession();
+  session.current_task = { ...session.current_task, task_key: 'custom-idea', description: 'Подготовить аудиторию\nНе трогать личные вещи.' };
+  const { container } = render(<PenaltyMiniApp />);
+  await selectPupil();
+  expect(screen.getAllByText(/Подготовить аудиторию/)).toHaveLength(1);
+  expect(container.querySelector('.pm-reel-result')).toHaveTextContent('Подготовить аудиторию Не трогать личные вещи.');
 });
 
 test('text-only catalog tasks show the shared timer without made-up minute estimates', async () => {
