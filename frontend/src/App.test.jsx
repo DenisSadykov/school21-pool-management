@@ -41,6 +41,7 @@ const cachedUser = { id: 7, nick: 'tester', role: 'volunteer' };
 describe('App session refresh', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.history.replaceState(null, '', '/');
     getToken.mockReturnValue('saved-token');
     getUser.mockReturnValue(cachedUser);
   });
@@ -74,5 +75,26 @@ describe('App session refresh', () => {
     expect(screen.getByText('Дашборд')).toBeInTheDocument();
     expect(clearSession).not.toHaveBeenCalled();
     jest.useRealTimers();
+  });
+
+  it('opens the real platform in Telegram with hash routing and a return menu', async () => {
+    window.history.replaceState(null, '', '/miniapp/platform#/');
+    api.get.mockResolvedValue(cachedUser);
+    render(<App />);
+    expect(await screen.findByText('Дашборд')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Платформа' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Рулетка' })).toHaveAttribute('href', '/miniapp/penalties');
+    expect(screen.getByRole('link', { name: /Отрабатывают сейчас/ })).toHaveAttribute('href', '/miniapp/penalties?view=working');
+    expect(window.location.pathname).toBe('/miniapp/platform');
+  });
+
+  it('does not bypass platform login when opened in the miniapp', async () => {
+    window.history.replaceState(null, '', '/miniapp/platform#/');
+    getToken.mockReturnValue(null); getUser.mockReturnValue(null);
+    render(<App />);
+    expect(await screen.findByText('Вход')).toBeInTheDocument();
+    expect(screen.queryByText('Дашборд')).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/miniapp/platform');
+    expect(window.location.hash).toBe('#/login');
   });
 });

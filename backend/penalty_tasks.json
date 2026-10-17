@@ -1,0 +1,10 @@
+[
+  {"id":"common-area","title":"Порядок в общей зоне","estimated_minutes":15,"icon":"broom","description":"Приведи в порядок общие поверхности и материалы. Не трогай личные вещи."},
+  {"id":"navigation","title":"Помочь с навигацией","estimated_minutes":15,"icon":"map","description":"Подскажи гостям, где находятся нужные аудитории."},
+  {"id":"room-signs","title":"Проверить таблички","estimated_minutes":10,"icon":"sign","description":"Проверь видимость и актуальность табличек аудиторий, сообщи о неточностях."},
+  {"id":"shared-materials","title":"Разобрать общие материалы","estimated_minutes":15,"icon":"box","description":"Разложи согласованные общие материалы по местам."},
+  {"id":"workstation-report","title":"Проверить рабочие места","estimated_minutes":20,"icon":"monitor","description":"Запиши номера мест с видимыми неисправностями. Не входи в аккаунты и не меняй настройки техники."},
+  {"id":"meeting-space","title":"Подготовить место для встречи","estimated_minutes":20,"icon":"users","description":"Разложи материалы и проверь готовность пространства. Без подъёма тяжестей."},
+  {"id":"supplies","title":"Проверить расходники","estimated_minutes":10,"icon":"box","description":"Проверь общие расходные материалы и передай волонтёру список недостающего."},
+  {"id":"noticeboard","title":"Порядок на стенде","estimated_minutes":15,"icon":"sign","description":"Аккуратно размести согласованные объявления. Не снимай чужие материалы без разрешения."}
+]

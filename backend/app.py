@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from backup_metadata import managed_backup_status
+from penalty_miniapp import register_penalty_miniapp, cancel_workoff_sessions, delete_workoff_sessions
 
 def _env_flag(name, default='false'):
     return os.getenv(name, default).strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -546,6 +547,47 @@ class PenaltyHistory(db.Model):
     actor_name = db.Column(db.String(100))
     comment = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=_naive_utcnow)
+
+
+class PenaltyWorkoffSession(db.Model):
+    __tablename__ = 'penalty_workoff_sessions'
+    id = db.Column(db.Integer, primary_key=True)
+    penalty_id = db.Column(db.Integer, db.ForeignKey('student_penalties.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    started_at = db.Column(db.DateTime, nullable=False)
+    ends_at = db.Column(db.DateTime, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    started_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), index=True)
+    finished_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), index=True)
+    __table_args__ = (
+        db.CheckConstraint("status IN ('active', 'completed', 'cancelled')", name='ck_workoff_session_status'),
+        db.CheckConstraint('ends_at > started_at', name='ck_workoff_session_dates'),
+        db.Index('uq_workoff_active_penalty', 'penalty_id', unique=True,
+                 postgresql_where=db.text("status = 'active'"), sqlite_where=db.text("status = 'active'")),
+    )
+
+
+class PenaltyWorkoffTask(db.Model):
+    __tablename__ = 'penalty_workoff_tasks'
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('penalty_workoff_sessions.id', ondelete='CASCADE'), nullable=False, index=True)
+    task_key = db.Column(db.String(80), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    estimated_minutes = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    draft_id = db.Column(db.String(64), unique=True)
+    close_request_id = db.Column(db.String(64), unique=True)
+    assigned_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), index=True)
+    assigned_by_nick = db.Column(db.String(100))
+    assigned_at = db.Column(db.DateTime, nullable=False, default=_naive_utcnow)
+    finished_at = db.Column(db.DateTime)
+    __table_args__ = (
+        db.CheckConstraint("status IN ('active', 'completed', 'unavailable', 'cancelled')", name='ck_workoff_task_status'),
+        db.CheckConstraint('estimated_minutes > 0 AND estimated_minutes <= 120', name='ck_workoff_task_estimate'),
+        db.Index('uq_workoff_active_task', 'session_id', unique=True,
+                 postgresql_where=db.text("status = 'active'"), sqlite_where=db.text("status = 'active'")),
+    )
 
 
 class ActionLog(db.Model):
@@ -1102,6 +1144,7 @@ def telegram_sync_commands():
         {'command': 'myshifts', 'description': 'Посмотреть свои смены'},
         {'command': 'rules', 'description': 'Правила школы'},
         {'command': 'penalties', 'description': 'Ученики с нарушениями'},
+        {'command': 'workoff', 'description': 'Выдача пенальти · мини-ап'},
         {'command': 'responsibles', 'description': 'Ответственные за бассейн'},
         {'command': 'help', 'description': 'Помощь'},
     ]
@@ -1156,12 +1199,15 @@ def _tg_url(value):
 
 
 def _telegram_main_keyboard(user):
-    if not user or user.role == 'admin':
+    if not user:
+        return {'remove_keyboard': True}
+    rows = [[{'text': 'Мои смены'}]] if user.role != 'admin' else []
+    if _frontend_base_url().startswith('https://'):
+        rows.append([{'text': 'Выдача пенальти'}])
+    if not rows:
         return {'remove_keyboard': True}
     return {
-        'keyboard': [
-            [{'text': 'Мои смены'}],
-        ],
+        'keyboard': rows,
         'resize_keyboard': True,
         'persistent': True,
     }
@@ -1669,6 +1715,24 @@ def telegram_handle_message(message):
         return telegram_link_account(chat_id, tg_user)
     if text.startswith('/myshifts') or normalized_text == 'мои смены':
         return telegram_handle_my_shifts(chat_id, tg_user)
+    if text.startswith('/workoff') or normalized_text == 'выдача пенальти':
+        if chat.get('type', 'private') != 'private':
+            telegram_send_message(chat_id, 'Открой мини-ап в личном чате с ботом платформы.')
+            return {'ok': False, 'reason': 'private_chat_required'}
+        user = _telegram_user_from_tg(tg_user)
+        if not user or not _can_access_pool_id(user, active_pool_id()):
+            telegram_send_message(chat_id, 'Сначала привяжи аккаунт через /start и получи доступ к активному бассейну.')
+            return {'ok': False, 'reason': 'not_linked_or_no_pool'}
+        base = _frontend_base_url()
+        if not base.startswith('https://'):
+            telegram_send_message(chat_id, 'Мини-ап пока не настроен. Обратись к администратору.')
+            return {'ok': False, 'reason': 'miniapp_not_configured'}
+        telegram_send_message(chat_id, 'Выбери задание и зафиксируй начало отработки. Перекрутка не добавляет часы.',
+                              reply_markup={'inline_keyboard': [[{
+                                  'text': 'Выдача пенальти',
+                                  'web_app': {'url': f'{base}/miniapp/penalties'},
+                              }]]})
+        return {'ok': True, 'action': 'penalty_miniapp'}
     if text.startswith('/rules'):
         telegram_send_message(chat_id, f'Правила школы: {SCHOOL_RULES_URL}')
         return {'ok': True, 'action': 'rules'}
@@ -1725,7 +1789,7 @@ def build_notification_parse_mode(event):
     return payload.get('parse_mode')
 
 
-def _delete_related_penalty_messages(penalty_id, event_type, exclude_event_id=None):
+def _delete_related_penalty_messages(penalty_id, event_type, exclude_event_id=None, deferred=None):
     events = NotificationEvent.query.filter_by(
         source_entity='penalty',
         source_entity_id=penalty_id,
@@ -1741,6 +1805,9 @@ def _delete_related_penalty_messages(penalty_id, event_type, exclude_event_id=No
         for delivery in deliveries:
             if not delivery.telegram_chat_id or not delivery.message_id:
                 continue
+            if deferred is not None:
+                deferred.append((delivery.telegram_chat_id, delivery.message_id))
+                continue
             try:
                 telegram_delete_message(delivery.telegram_chat_id, delivery.message_id)
             except Exception:
@@ -1751,8 +1818,10 @@ def _set_penalty_status_from_bot(penalty, new_status, actor=None, comment=''):
     old_status = penalty.workoff_status
     old_hours = penalty.hours * penalty.multiplier
     penalty.workoff_status = new_status
-    if new_status == 'in_workoff':
+    if new_status == 'in_workoff' and old_status != 'in_workoff':
         penalty.date_worked_off = _utcnow()
+    if new_status != 'in_workoff':
+        cancel_workoff_sessions(db, PenaltyWorkoffSession, PenaltyWorkoffTask, penalty.id, _utcnow())
     if new_status in ('done', 'awaiting_unlock', 'not_worked_off'):
         penalty.date_worked_off = _utcnow()
     if new_status == 'pending':
@@ -1925,11 +1994,20 @@ def telegram_handle_callback(callback):
 
     account = _telegram_account_from_tg(tg_user)
     actor = db.session.get(User, account.user_id) if account else None
-    penalty = db.session.get(StudentPenalty, penalty_id)
-    if not penalty:
+    if actor:
+        actor = User.query.filter_by(id=actor.id).populate_existing().with_for_update().first()
+    _acquire_dedupe_lock('penalty-status', penalty_id)
+    def reject(reason, text):
+        db.session.rollback()
         if callback_id:
-            telegram_answer_callback(callback_id, 'Пенальти уже не найдено')
-        return {'ok': False, 'reason': 'penalty_not_found'}
+            telegram_answer_callback(callback_id, text)
+        return {'ok': False, 'reason': reason}
+
+    penalty = db.session.get(StudentPenalty, penalty_id)
+    if penalty:
+        db.session.refresh(penalty)
+    if not penalty:
+        return reject('penalty_not_found', 'Пенальти уже не найдено')
     event = db.session.get(NotificationEvent, event_id)
     current_pool_id = active_pool_id()
     if (
@@ -1941,9 +2019,7 @@ def telegram_handle_callback(callback):
         or penalty.pool_id != current_pool_id
         or event.pool_id != current_pool_id
     ):
-        if callback_id:
-            telegram_answer_callback(callback_id, 'Действие уже не относится к активному бассейну')
-        return {'ok': False, 'reason': 'inactive_pool_context'}
+        return reject('inactive_pool_context', 'Действие уже не относится к активному бассейну')
 
     expected_event_type = {
         'm': 'penalty_method_question',
@@ -1958,45 +2034,41 @@ def telegram_handle_callback(callback):
         or event.source_entity != 'penalty'
         or event.source_entity_id != penalty.id
     ):
-        if callback_id:
-            telegram_answer_callback(callback_id, 'Действие больше недоступно')
-        return {'ok': False, 'reason': 'invalid_event_context'}
+        return reject('invalid_event_context', 'Действие больше недоступно')
 
     immediate_events = []
+    deferred_deletions = []
+    reply_text = 'Готово'
 
     if question == 'm':
         event_type = 'penalty_method_question'
         if answer == 'y' and penalty.workoff_status in ('pending', 'overdue'):
             _set_penalty_status_from_bot(penalty, 'in_workoff', actor, 'Telegram: метод отработки выдан')
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Статус: отрабатывает')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
+            reply_text = 'Статус: отрабатывает'
         elif answer == 'n' and penalty.workoff_status in ('pending', 'overdue'):
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
             _queue_penalty_method_question(penalty, scheduled_for=_utcnow() + timedelta(minutes=5), suffix=f'retry-{int(time.time())}')
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Спросим ещё раз через 5 минут')
+            reply_text = 'Спросим ещё раз через 5 минут'
         else:
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Вопрос пропущен')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
+            reply_text = 'Вопрос пропущен'
     elif question == 'c':
         event_type = 'penalty_workoff_check'
         if answer == 'y' and penalty.workoff_status == 'in_workoff':
+            if PenaltyWorkoffSession.query.filter_by(penalty_id=penalty.id, status='active').first():
+                return reject('miniapp_session_active', 'Подтверди завершение в мини-апе «Выдача пенальти»')
             _set_penalty_status_from_bot(penalty, 'awaiting_unlock', actor, 'Telegram: пенальти отработан')
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
             immediate_events = _notify_admins_penalty_awaiting_unlock(penalty)
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Статус: ожидает разблокировки')
+            reply_text = 'Статус: ожидает разблокировки'
         elif answer == 'n' and penalty.workoff_status == 'in_workoff':
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
             _queue_penalty_workoff_check(penalty, scheduled_for=_utcnow() + timedelta(minutes=5), suffix=f'retry-{int(time.time())}')
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Спросим ещё раз через 5 минут')
+            reply_text = 'Спросим ещё раз через 5 минут'
         else:
-            _delete_related_penalty_messages(penalty.id, event_type, event_id)
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Вопрос пропущен')
+            _delete_related_penalty_messages(penalty.id, event_type, event_id, deferred=deferred_deletions)
+            reply_text = 'Вопрос пропущен'
     elif question == 'u':
         is_responsible = PoolVolunteer.query.filter(
             PoolVolunteer.pool_id == penalty.pool_id,
@@ -2004,9 +2076,7 @@ def telegram_handle_callback(callback):
             PoolVolunteer.pool_role.in_(['responsible_admin', 'responsible_team_lead']),
         ).first() is not None
         if not is_responsible:
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Только ответственный может подтвердить разблокировку')
-            return {'ok': False, 'reason': 'not_pool_responsible'}
+            return reject('not_pool_responsible', 'Только ответственный может подтвердить разблокировку')
         if answer == 'y' and penalty.workoff_status == 'awaiting_unlock':
             _set_penalty_status_from_bot(
                 penalty,
@@ -2014,16 +2084,22 @@ def telegram_handle_callback(callback):
                 actor,
                 'Telegram: ответственный подтвердил разблокировку',
             )
-            _delete_related_penalty_messages(penalty.id, 'penalty_admin_unlock')
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Статус на платформе: разблокирован')
+            _delete_related_penalty_messages(penalty.id, 'penalty_admin_unlock', deferred=deferred_deletions)
+            reply_text = 'Статус на платформе: разблокирован'
         elif penalty.workoff_status == 'unlocked':
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Ученик уже отмечен разблокированным')
+            reply_text = 'Ученик уже отмечен разблокированным'
         else:
-            if callback_id:
-                telegram_answer_callback(callback_id, 'Пенальти уже изменилось, обнови данные')
+            reply_text = 'Пенальти уже изменилось, обнови данные'
     db.session.commit()
+    # Telegram latency must not hold user/advisory locks or roll back a status
+    # that was already confirmed. Cleanup is best-effort after the transaction.
+    for chat_id, message_id in set(deferred_deletions):
+        try:
+            telegram_delete_message(chat_id, message_id)
+        except Exception:
+            pass
+    if callback_id:
+        telegram_answer_callback(callback_id, reply_text)
     if immediate_events:
         queue_notification_dispatch(immediate_events)
     return {'ok': True}
@@ -2904,6 +2980,9 @@ def delete_user(user_id):
     DashboardNote.query.filter_by(author_id=user.id).delete()
     ActionLog.query.filter_by(actor_id=user.id).update({'actor_id': None})
     PenaltyHistory.query.filter_by(actor_id=user.id).update({'actor_id': None})
+    PenaltyWorkoffSession.query.filter_by(started_by=user.id).update({'started_by': None}, synchronize_session=False)
+    PenaltyWorkoffSession.query.filter_by(finished_by=user.id).update({'finished_by': None}, synchronize_session=False)
+    PenaltyWorkoffTask.query.filter_by(assigned_by=user.id).update({'assigned_by': None}, synchronize_session=False)
     ScheduleGeneration.query.filter_by(created_by=user.id).update({'created_by': None})
     Signup.query.filter_by(user_id=user.id).delete()
     db.session.delete(user)
@@ -3069,6 +3148,7 @@ def delete_pool(pool_id):
             StudentNote.query.filter(StudentNote.student_id.in_(student_ids)).update(
                 {'student_id': None}, synchronize_session=False)
         if penalty_ids:
+            delete_workoff_sessions(db, PenaltyWorkoffSession, PenaltyWorkoffTask, penalty_ids)
             PenaltyHistory.query.filter(PenaltyHistory.penalty_id.in_(penalty_ids)).delete(synchronize_session=False)
         if notification_ids:
             NotificationDelivery.query.filter(NotificationDelivery.notification_id.in_(notification_ids)).delete(synchronize_session=False)
@@ -7024,6 +7104,8 @@ def update_penalty_status(penalty_id):
     db.session.refresh(penalty)
     old_status = penalty.workoff_status
     old_hours = penalty.hours * penalty.multiplier
+    if new_status in ('awaiting_unlock', 'done') and PenaltyWorkoffSession.query.filter_by(penalty_id=penalty.id, status='active').first():
+        return jsonify({'error': 'Подтверди двухчасовую отработку в мини-апе «Выдача пенальти»'}), 409
     critical_events = []
     if new_status == old_status and requested_total_hours is None:
         db.session.commit()
@@ -7050,8 +7132,10 @@ def update_penalty_status(penalty_id):
         penalty.multiplier *= 2
     if new_status == 'pending' and old_status == 'overdue' and penalty.multiplier > 1:
         penalty.multiplier = max(1, penalty.multiplier // 2)
-    if new_status == 'in_workoff':
+    if new_status == 'in_workoff' and old_status != 'in_workoff':
         penalty.date_worked_off = _utcnow()
+    if new_status != 'in_workoff':
+        cancel_workoff_sessions(db, PenaltyWorkoffSession, PenaltyWorkoffTask, penalty.id, _utcnow())
     if new_status in ('done', 'awaiting_unlock', 'not_worked_off'):
         penalty.date_worked_off = _utcnow()
     if new_status == 'pending':
@@ -7106,8 +7190,13 @@ def delete_penalty(penalty_id):
         return error
     if not _can_access_pool_id(g.user, penalty.pool_id):
         return jsonify({'error': 'У тебя нет доступа к этому бассейну'}), 403
+    _acquire_dedupe_lock('penalty-status', penalty.id)
+    penalty = StudentPenalty.query.filter_by(id=penalty_id).populate_existing().with_for_update().first()
+    if not penalty:
+        return jsonify({'error': 'Пенальти уже удалено'}), 404
     student_name = penalty.student_name
     _cancel_pending_notifications('penalty', penalty.id)
+    delete_workoff_sessions(db, PenaltyWorkoffSession, PenaltyWorkoffTask, [penalty.id])
     PenaltyHistory.query.filter_by(penalty_id=penalty.id).delete(synchronize_session=False)
     log_action(
         'delete',
@@ -8669,6 +8758,8 @@ def sync_telegram_commands_on_startup():
     except Exception as exc:
         app.logger.warning('Telegram commands sync skipped: %s', exc)
 
+
+register_penalty_miniapp(app, db, globals())
 
 validate_runtime_config()
 
