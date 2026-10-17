@@ -107,7 +107,8 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     const current = () => alive.current && generationRef.current === generation;
     setPhase('loading');
     setError('');
-    setDraft(null); customDraftRef.current = null;
+    setDraft(null); setNotice(''); setSelectedId(''); setCustomText('');
+    customDraftRef.current = null; excludedRef.current = []; operationRef.current = null;
     initializeMiniApp({ isCurrent: current }).then(async ({ request: call, sdk }) => {
       if (!current()) return;
       requestRef.current = call;
