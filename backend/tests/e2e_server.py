@@ -238,13 +238,44 @@ def seed_data():
         app_module.db.session.commit()
 
 
+def seed_miniapp_fixtures():
+    """Opt-in fictional states for visual QA; never enabled by the production app."""
+    with app_module.app.app_context():
+        pool = app_module.Pool.query.filter_by(active=True).one()
+        volunteer = app_module.User.query.filter_by(nick='odessabu').one()
+        now = app_module._utcnow()
+        for nick, expired in [('demo_peer', False), ('demo_elapsed', True), ('demo_long_nickname_for_mobile', False)]:
+            student = app_module.Student(nick=nick, name='Вымышленный ученик для проверки', pool_id=pool.id)
+            app_module.db.session.add(student)
+            app_module.db.session.flush()
+            penalty = app_module.StudentPenalty(student_id=student.id, student_name=nick, pool_id=pool.id,
+                                                volunteer_id=volunteer.id, hours=2, multiplier=1,
+                                                workoff_status='in_workoff' if expired else 'pending',
+                                                date_worked_off=now - timedelta(hours=3) if expired else None)
+            app_module.db.session.add(penalty)
+            app_module.db.session.flush()
+            if expired:
+                session = app_module.PenaltyWorkoffSession(penalty_id=penalty.id, status='active', started_by=volunteer.id,
+                                                          started_at=now - timedelta(hours=3), ends_at=now - timedelta(hours=1))
+                app_module.db.session.add(session)
+                app_module.db.session.flush()
+                app_module.db.session.add(app_module.PenaltyWorkoffTask(
+                    session_id=session.id, task_key='common-area', title='Порядок в общей зоне',
+                    description='Тестовая отработка с истёкшим временем.', estimated_minutes=15,
+                    status='active', assigned_by=volunteer.id, assigned_by_nick=volunteer.nick))
+        app_module.db.session.commit()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Run isolated backend server for Playwright E2E tests.')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=5052)
+    parser.add_argument('--miniapp-fixtures', action='store_true')
     args = parser.parse_args()
 
     seed_data()
+    if args.miniapp_fixtures:
+        seed_miniapp_fixtures()
     app_module.app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
 
 

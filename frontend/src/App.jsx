@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -23,6 +23,8 @@ import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import PoolInvite from './pages/PoolInvite';
+import PenaltyMiniApp from './pages/PenaltyMiniApp';
+import MiniAppNav from './miniapp/MiniAppNav';
 import PasswordChange from './components/PasswordChange';
 import ThemeToggle from './components/ThemeToggle';
 import {
@@ -42,6 +44,12 @@ import './styles/theme.css';
 const ACCENT_SCHEMES = new Set(['cobalt', 'jade', 'amber']);
 
 function App() {
+  if (window.location.pathname === '/miniapp/penalties') return <PenaltyMiniApp renderPlatform={(onNavigate) => <PlatformApp embedded onMiniAppNavigate={onNavigate} />} />;
+  if (window.location.pathname === '/miniapp/platform') return <PlatformApp embedded />;
+  return <PlatformApp />;
+}
+
+function PlatformApp({ embedded = false, onMiniAppNavigate }) {
   const [user, setUser] = React.useState(null);
   const [loading, setLoading] = React.useState(() => Boolean(getToken()));
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
@@ -143,8 +151,11 @@ function App() {
     };
   }, []);
 
+  const Router = embedded ? HashRouter : BrowserRouter;
+  const Container = embedded ? 'div' : React.Fragment;
   return (
-    <BrowserRouter>
+    <Container {...(embedded ? { className: 'pm-platform' } : {})}>
+    <Router>
       <AppRoutes
         user={user}
         setUser={setUser}
@@ -156,7 +167,9 @@ function App() {
         onThemeToggle={toggleTheme}
       />
       <ToastContainer position="bottom-right" autoClose={3000} theme={theme} />
-    </BrowserRouter>
+    </Router>
+    {embedded && <MiniAppNav view="platform" onNavigate={onMiniAppNavigate} />}
+    </Container>
   );
 }
 
