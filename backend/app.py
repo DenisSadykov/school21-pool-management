@@ -2529,9 +2529,12 @@ def _credential_version(user):
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
 
-def make_token(user):
-    return serializer.dumps({'id': user.id, 'role': user.role,
-                             'credential_version': _credential_version(user)})
+def make_token(user, telegram_id=None):
+    payload = {'id': user.id, 'role': user.role,
+               'credential_version': _credential_version(user)}
+    if telegram_id is not None:
+        payload['telegram_id'] = telegram_id
+    return serializer.dumps(payload)
 
 
 def _pool_membership_for_user(user, pool_id=None):
@@ -2627,6 +2630,13 @@ def load_user_from_request():
     user = db.session.get(User, data.get('id'))
     if not user or not user.active or data.get('credential_version') != _credential_version(user):
         return None
+    if 'telegram_id' in data:
+        telegram_id = data['telegram_id']
+        if type(telegram_id) is not int or not 0 < telegram_id < 2 ** 53:
+            return None
+        account = _telegram_account_from_tg({'id': telegram_id})
+        if not account or account.user_id != user.id:
+            return None
     return user
 
 

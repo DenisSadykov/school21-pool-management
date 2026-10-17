@@ -1,4 +1,4 @@
-import { API_URL, getToken } from '../api';
+import { API_URL, getToken, setSession } from '../api';
 
 let sdkPromise;
 
@@ -46,14 +46,22 @@ export function createMiniAppClient(authorization) {
   };
 }
 
-export async function initializeMiniApp() {
+export async function initializeMiniApp({ isCurrent = () => true } = {}) {
   let sdk = window.Telegram?.WebApp;
   const fromTelegram = new URLSearchParams(window.location.hash.slice(1)).has('tgWebAppData');
   if (!sdk && fromTelegram) sdk = await loadTelegramSdk();
   if (sdk?.initData) {
     const login = await createMiniAppClient()('/auth', { init_data: sdk.initData });
+    const request = createMiniAppClient(`MiniApp ${login.token}`);
+    const session = await request('/platform-session', {});
+    if (!session.token || !Number.isInteger(session.user?.id) || session.user.id <= 0 || session.user.id !== login.user?.id) {
+      throw new Error('Не удалось подтвердить аккаунт платформы. Открой мини-ап заново.');
+    }
+    // The server checks the stable Telegram binding and current platform rights.
+    // Set this before mounting the platform, never reuse a different cached user.
+    if (isCurrent()) setSession(session.token, session.user);
     // Keep the scoped credential in memory, never in URLs or persistent storage.
-    return { request: createMiniAppClient(`MiniApp ${login.token}`), sdk };
+    return { request, sdk };
   }
   const token = getToken();
   if (token) return { request: createMiniAppClient(`Bearer ${token}`), sdk: null };

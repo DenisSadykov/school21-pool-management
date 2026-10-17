@@ -6,6 +6,7 @@ assignments only; assigned tasks retain snapshots of their original wording.
 import hashlib
 import hmac
 import json
+import math
 import secrets
 import time
 from datetime import timedelta
@@ -99,6 +100,7 @@ def register_penalty_miniapp(app, db, context):
             if (not user or not user.active or not account or account.user_id != user.id
                     or payload['credential_version'] != context['_credential_version'](user)):
                 return None
+            g.miniapp_telegram_id = payload['telegram_id']
             return user
         except (BadSignature, KeyError, TypeError, ValueError):
             return None
@@ -106,6 +108,8 @@ def register_penalty_miniapp(app, db, context):
     def require_access(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            for key in ('miniapp_telegram_id', 'miniapp_penalty_numbers', 'miniapp_sessions', 'miniapp_tasks'):
+                g.pop(key, None)
             user = request_user()
             if not user:
                 raise MiniAppProblem('Войди на платформу или открой мини-ап из привязанного Telegram', 401, 'unauthorized')
@@ -184,12 +188,18 @@ def register_penalty_miniapp(app, db, context):
         return Session.query.filter_by(penalty_id=penalty.id, status='completed').count() * 2
 
     def penalty_payload(penalty):
+        if not hasattr(g, 'miniapp_penalty_numbers'):
+            # Display positions are pool-local, independent of open/completed
+            # status. Internal IDs remain global for links, history and locking.
+            g.miniapp_penalty_numbers = {row.id: number for number, row in enumerate(
+                db.session.query(Penalty.id).filter_by(pool_id=g.miniapp_pool_id).order_by(Penalty.id).all(), 1)}
         session = current_session(penalty)
         sessions = (g.miniapp_sessions.get(penalty.id, []) if hasattr(g, 'miniapp_sessions')
                     else Session.query.filter_by(penalty_id=penalty.id).order_by(Session.id.desc()).all())
         latest = session or next(iter(sessions), None)
         return {
-            'id': penalty.id, 'student_id': penalty.student_id, 'student_name': penalty.student_name,
+            'id': penalty.id, 'pool_number': g.miniapp_penalty_numbers.get(penalty.id),
+            'student_id': penalty.student_id, 'student_name': penalty.student_name,
             'description': penalty.description or '', 'pool_id': penalty.pool_id,
             'total_hours': penalty.hours * penalty.multiplier,
             'completed_hours': completed_hours(penalty),
@@ -212,6 +222,16 @@ def register_penalty_miniapp(app, db, context):
             excluded.update(row.task_key for row in Task.query.filter_by(session_id=session.id).all())
         return [item for item in catalog if item['id'] not in excluded
                 and item['estimated_minutes'] * 60 <= remaining]
+
+    def custom_candidate(description, key, deadline=None):
+        if not isinstance(description, str) or not 3 <= len(description.strip()) <= 1000:
+            raise MiniAppProblem('Опиши своё задание: от 3 до 1000 символов')
+        remaining = SESSION_SECONDS if not deadline else (deadline - context['_utcnow']()).total_seconds()
+        if remaining <= 0:
+            raise MiniAppProblem('Время отработки истекло. Подтверди её завершение', 409, 'session_elapsed')
+        description = description.strip()
+        return {'id': key, 'title': description.splitlines()[0][:100], 'description': description,
+                'estimated_minutes': min(120, max(1, math.ceil(remaining / 60))), 'icon': 'box'}
 
     def legacy_deadline(penalty, session):
         if not session and penalty.workoff_status == 'in_workoff' and penalty.date_worked_off:
@@ -252,7 +272,26 @@ def register_penalty_miniapp(app, db, context):
             'id': user.id, 'telegram_id': telegram_user['id'],
             'credential_version': context['_credential_version'](user),
         })
-        return jsonify({'token': token, 'user': context['_session_user_dict'](user)})
+        response = jsonify({'token': token, 'user': context['_session_user_dict'](user)})
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @app.post('/api/penalty-miniapp/platform-session')
+    @require_access
+    def penalty_miniapp_platform_session():
+        # Only an already verified Mini App identity can exchange credentials.
+        # Neither a supplied username nor a client-supplied role is trusted.
+        telegram_id = getattr(g, 'miniapp_telegram_id', None)
+        if type(telegram_id) is not int or not 0 < telegram_id < 2 ** 53:
+            raise MiniAppProblem('Открой мини-ап из привязанного Telegram', 401, 'telegram_required')
+        payload = {
+            'token': context['make_token'](g.user, telegram_id=telegram_id),
+            'user': context['_session_user_dict'](g.user),
+        }
+        db.session.commit()  # Release the user lock before sending the response.
+        response = jsonify(payload)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @app.get('/api/penalty-miniapp')
     @require_access
@@ -344,7 +383,11 @@ def register_penalty_miniapp(app, db, context):
             raise MiniAppProblem('Другой волонтёр уже начал отработку. Обнови данные', 409, 'session_changed')
         if session and current_task(session):
             raise MiniAppProblem('Задание уже выдано. Обнови данные', 409, 'task_active')
-        candidate = next((item for item in eligible_tasks(session, legacy_deadline=legacy_deadline(penalty, session)) if item['id'] == draft.get('task_key')), None)
+        if draft.get('custom_description') is not None:
+            candidate = custom_candidate(draft['custom_description'], draft['task_key'],
+                                         session.ends_at if session else legacy_deadline(penalty, session))
+        else:
+            candidate = next((item for item in eligible_tasks(session, legacy_deadline=legacy_deadline(penalty, session)) if item['id'] == draft.get('task_key')), None)
         if not candidate:
             raise MiniAppProblem('Это задание больше не подходит. Прокрути ещё раз', 409, 'task_unavailable')
         if not session:
@@ -367,6 +410,23 @@ def register_penalty_miniapp(app, db, context):
         except IntegrityError as error:
             db.session.rollback()
             raise MiniAppProblem('Данные уже изменились. Обнови отработку', 409, 'session_changed') from error
+
+    @app.post('/api/penalty-miniapp/penalties/<int:penalty_id>/custom-preview')
+    @require_access
+    def penalty_miniapp_custom_preview(penalty_id):
+        penalty = get_penalty(penalty_id)
+        ensure_open(penalty)
+        session = current_session(penalty)
+        if session and current_task(session):
+            raise MiniAppProblem('Сначала заверши или замени текущее задание', 409, 'task_active')
+        candidate = custom_candidate(body().get('description'), 'custom-' + secrets.token_hex(16),
+                                     session.ends_at if session else legacy_deadline(penalty, session))
+        token = draft_signer.dumps({
+            'id': secrets.token_hex(16), 'user_id': g.user.id, 'pool_id': penalty.pool_id,
+            'penalty_id': penalty.id, 'task_key': candidate['id'],
+            'custom_description': candidate['description'], 'session_id': session.id if session else None,
+        })
+        return jsonify({'task': candidate, 'draft_token': token, 'server_now': iso(context['_utcnow']())})
 
     @app.post('/api/penalty-miniapp/penalties/<int:penalty_id>/task-action')
     @require_access
