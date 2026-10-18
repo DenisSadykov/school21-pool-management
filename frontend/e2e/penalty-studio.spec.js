@@ -27,7 +27,15 @@ for (const theme of ['light', 'dark']) {
         return route.fulfill({ json: { catalog: [task], penalties: [penalty], server_now: new Date().toISOString() } });
       });
       await page.goto('/miniapp/penalties');
-      await page.getByLabel('Кому выдаём').selectOption('9001');
+      const pupilSelect = page.getByLabel('Кому выдаём');
+      await pupilSelect.waitFor({ state: 'visible' });
+      await page.keyboard.press('Tab');
+      await expect(pupilSelect).toBeFocused();
+      await expect(pupilSelect).toHaveCSS('outline-style', 'none');
+      await expect(page.locator('.pm-select-wrap')).toHaveCSS('outline-style', 'solid');
+      await expect(page.locator('.pm-select-wrap')).toHaveCSS('outline-width', '2px');
+      await expect(page.locator('.pm-select-wrap')).toHaveCSS('border-radius', '30px');
+      await pupilSelect.selectOption('9001');
       const commit = page.getByRole('button', { name: 'Зафиксировать пенальти' });
       await expect(commit).toBeDisabled();
       await page.getByRole('button', { name: 'Выбрать', exact: true }).click();
