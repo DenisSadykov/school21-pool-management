@@ -1,3 +1,79 @@
+# Penalty Mini App — lilac studio QA, 2026-10-18
+
+final result: passed
+
+## Current selected visual truth
+
+The owner selected the first displayed image from the second ideation set,
+then explicitly removed only the SCHOOL21 wordmark. That choice supersedes
+the platform-like composition documented in the historical report below.
+
+Source: `/Users/denissadykov/.codex/generated_images/01a01870-c8de-7fc3-ad92-f26e9ef45cef/exec-71cf2ff5-445c-4271-b8b9-b7ec701018f7.png`.
+Source pixels: 853 × 1844; normalized to 390 × 844 CSS pixels for comparison.
+Implementation: `http://127.0.0.1:3005/miniapp/penalties`.
+IAB screenshot: `/tmp/penalty-studio-light-390-final.png`, 390 × 844, density 1.
+Same state: synthetic selected pupil, preview of «Порядок на стенде», no running
+timer and no committed penalty. Browser/device chrome is excluded.
+Combined comparison: `/tmp/penalty-studio-comparison-final.png`, source left,
+implementation right, opened together in one image. Full-view typography and
+controls are readable at this scale; no extra focused crop was necessary.
+
+## Required fidelity surfaces
+
+- Typography: locally bundled open-source Oswald Bold for the two-line feature
+  heading; bold system sans for task titles; readable 15px instructions. Cyrillic
+  is supplied by the full official font file, with OFL included. Long live task
+  titles and instructions wrap without truncation. Display-font optical weight
+  differs slightly from the generated mock, a nonblocking P3 refinement.
+- Layout: cream page, mascot beside the heading, pupil pill, paper ticket,
+  separate duration, violet fixation action and flat three-destination menu.
+  The latest 390 × 844 capture keeps the action and its explanatory hint above
+  navigation. Longer actual catalog tasks scroll with reserved menu clearance.
+  The wordmark removal is intentional; pupil options retain their pool numbers.
+- Colors: cream #faf7f1, violet #5830d6, pale lilac paper and dark ink. Dark mode
+  uses a violet-black canvas while retaining dark text on the light paper.
+  Keyboard focus on paper controls has an explicit dark-violet outline.
+- Images: actual supplied character WebP, contained without cropping; independent
+  ImageGen paper-ticket raster (780 × 800, alpha WebP, approximately 98KB).
+  Nine-slice border-image preserves paper edges around variable-length content.
+  No placeholder images, CSS-drawn illustration, or handwritten SVG substitutes.
+  Existing Lucide stroke icons match the source's simple icon family.
+- Copy: approved heading, no SCHOOL21 wordmark; separate random selection and
+  fixation; complete task instructions; «Таймер начнётся после фиксации».
+  «Выбрать другое» retains the established accessible action name. No new rules,
+  penalty records, permissions, notifications, or automatic timer completion.
+
+## Comparison history
+
+1. P2: initial ticket spacing pushed the helper under the persistent menu.
+   Evidence: `/tmp/penalty-studio-comparison-before.png`. Reduced paper padding,
+   header/ticket gaps and duration margin, without reducing tap targets.
+2. P2: initial Google CSS download did not give the intended Cyrillic rendering.
+   Replaced it with the full official Oswald font; no external font request at runtime.
+3. Recaptured final IAB screenshot at the top of the document, re-opened combined
+   source/implementation comparison. Primary action and helper are unobscured.
+   No actionable P0/P1/P2 differences remain. Residual P3: exact generated font
+   weight and decorative pencil-stroke placement are not pixel-identical.
+
+## Interaction / verification
+
+IAB: isolated login, pupil selection, random preview, own-task tab and text input.
+The first visual fixture omitted the single-penalty polling response and caused
+a fixture-only console error; the local fixture and automated fixture were
+corrected, without changing production fetching or error handling.
+Automated unit coverage retains signed preview/commit, replacement without timer
+reset, confirmation after expiry, roles and navigation. New e2e coverage exercises
+320/390px in both themes, full task copy, no wordmark, no auto-commit, explicit
+commit and working-list navigation. All data is isolated and synthetic.
+
+Backend: 404 passed. Frontend: 192 passed, 23 suites; production build passed.
+Infra: 55 passed. E2e: final full rerun after the contrast/focus correction:
+26 passed (23.3s), unchanged worker/retry/timeout settings. A pre-existing timestamp-at-collection
+test failed on a slow run; relative signatures are now built at execution time,
+with every rejection assertion unchanged. No application backend was changed.
+
+## Historical report (superseded visual direction)
+
 # Penalty Mini App — implementation QA, 2026-10-17
 
 final result: passed

@@ -66,6 +66,16 @@ test('preview does not commit and controls have distinct names', async () => {
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
 });
 
+test('the lilac studio keeps the task title and full instructions, without a school wordmark', async () => {
+  const { container } = render(<PenaltyMiniApp />);
+  await preview();
+  expect(container.querySelector('.pm-header')).not.toHaveTextContent(/school\s*21/i);
+  expect(container.querySelector('.pm-task-paper .pm-task-title')).toHaveTextContent(catalog[0].title);
+  expect(container.querySelector('.pm-task-paper .pm-task-copy')).toHaveTextContent(catalog[0].description);
+  expect(screen.getByText('Таймер начнётся после фиксации')).toBeVisible();
+  expect(container.querySelectorAll('.pm-primary')).toHaveLength(1);
+});
+
 test('the result automatically shows full task text before fixation without icons or extra requests', async () => {
   const { container } = render(<PenaltyMiniApp />);
   await preview();

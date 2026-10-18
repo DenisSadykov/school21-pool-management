@@ -1,0 +1,79 @@
+@font-face {
+  font-family: 'Penalty Display';
+  src: url('../assets/oswald-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Local identity only: the embedded platform keeps its existing theme. */
+.penalty-miniapp {
+  --pm-bg: #faf7f1;
+  --pm-surface: #fffcf7;
+  --pm-text: #1e142d;
+  --pm-muted: #665d73;
+  --pm-blue: #5830d6;
+  --pm-link: #5325d0;
+  --pm-button-text: #fff;
+  --pm-selected: #e9ddfc;
+  --pm-line: #ded5e6;
+  --pm-dock-bottom: 0px;
+  --pm-dock-clearance: calc(90px + max(8px, env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px)));
+  padding: max(24px, env(safe-area-inset-top), var(--tg-content-safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right)) var(--pm-dock-clearance) max(20px, env(safe-area-inset-left));
+  font-size: 15px;
+}
+.penalty-miniapp .pm-content { max-width: 430px; }
+.penalty-miniapp .pm-header { position: relative; display: flex; align-items: center; min-height: 122px; padding: 0; margin: 0 0 12px; text-align: left; background: none; border: 0; }
+.penalty-miniapp .pm-header h1 { position: relative; z-index: 1; width: 67%; padding: 0; font-family: 'Penalty Display', 'Arial Narrow', sans-serif; font-size: clamp(36px, 12.2vw, 55px); font-weight: 700; letter-spacing: -1.9px; line-height: 1.04; }
+.penalty-miniapp .pm-header h1 span { display: block; color: var(--pm-link); }
+.penalty-miniapp .pm-header img { position: absolute; right: -13px; top: 3px; width: 43%; height: 139px; margin: 0; object-fit: contain; }
+.penalty-miniapp .pm-controls { display: flex; flex-direction: column; }
+.penalty-miniapp .pm-student-row { order: 0; display: grid; justify-content: stretch; gap: 8px; padding: 0; border: 0; background: none; font-size: 15px; font-weight: 600; }
+.penalty-miniapp .pm-select-wrap { justify-content: flex-start; gap: 10px; background: var(--pm-selected); border-radius: 30px; padding: 0 16px; min-height: 48px; color: var(--pm-text); }
+.penalty-miniapp .pm-select-wrap select { max-width: none; text-align: left; height: 48px; color: var(--pm-text); font-size: 18px; font-weight: 650; }
+.penalty-miniapp .pm-select-wrap option { background: var(--pm-surface); color: var(--pm-text); }
+.penalty-miniapp .pm-task-paper { order: 1; margin-top: 20px; padding: 18px 19px 10px; border: 12px solid transparent; border-image: url('../assets/penalty-ticket.webp') 80 fill / 24px / 9px stretch; min-width: 0; color: #1e142d; }
+.penalty-miniapp .pm-task-modes { display: grid; grid-template-columns: 1fr 1.13fr; gap: 0; margin: 0 0 20px; border-radius: 28px; background: #f6f0ff; }
+.penalty-miniapp .pm-task-modes button { min-height: 44px; padding: 8px 7px; border-radius: 26px; border: 0; font-size: 13px; gap: 6px; background: none; color: #564569; }
+.penalty-miniapp .pm-task-modes button[aria-pressed='true'] { background: #5830d6; color: #fff; border: 0; }
+.penalty-miniapp .pm-section-label { margin: 0 0 8px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #594b6e; }
+.penalty-miniapp .pm-reel { border: 0; border-radius: 0; padding: 0; background: transparent; }
+.penalty-miniapp .pm-reel-neighbor { display: none; }
+.penalty-miniapp .pm-reel-selected { display: block; padding: 0; background: none; border: 0; color: #1e142d; }
+.penalty-miniapp .pm-reel-title { white-space: normal; overflow: visible; }
+.penalty-miniapp .pm-task-title { display: block; max-width: 245px; font-size: clamp(30px, 10.2vw, 44px); font-weight: 800; line-height: 1.08; letter-spacing: -1.3px; overflow-wrap: anywhere; }
+.penalty-miniapp .pm-task-copy { display: block; margin-top: 13px; color: #58496c; font-size: 15px; line-height: 1.45; font-weight: 400; white-space: pre-wrap; }
+.penalty-miniapp .pm-reel-spinning .pm-reel-neighbor { display: flex; padding: 6px 0; font-size: 12px; color: #665477; }
+.penalty-miniapp .pm-reel-spinning .pm-task-title { font-size: 25px; }
+.penalty-miniapp .pm-shuffle { justify-content: flex-start; margin-top: 14px; padding: 11px 0 0; min-height: 44px; width: 100%; border: 0; border-top: 1px dashed #b9a1df; border-radius: 0; color: #5325d0; background: none; font-size: 15px; }
+.penalty-miniapp .pm-shuffle:hover:not(:disabled) { background: none; color: #351397; }
+.penalty-miniapp .pm-duration { order: 2; margin: 18px 0 0; padding: 0; border: 0; background: none; gap: 14px; }
+.penalty-miniapp .pm-duration > svg { box-sizing: content-box; padding: 13px; background: var(--pm-selected); border-radius: 50%; color: var(--pm-muted); }
+.penalty-miniapp .pm-duration strong { font-size: 26px; letter-spacing: -.6px; font-weight: 800; }
+.penalty-miniapp .pm-duration p { font-size: 13px; }
+.penalty-miniapp .pm-hours-note { order: 2; }
+.penalty-miniapp .pm-actions { order: 3; margin-top: 18px; }
+.penalty-miniapp .pm-primary { min-height: 55px; border-radius: 18px; padding: 13px 15px; font-size: 15px; font-weight: 600; }
+.penalty-miniapp .pm-primary > .lucide-arrow-right { margin-left: auto; }
+.penalty-miniapp .pm-primary:hover:not(:disabled) { background: #4320af; }
+.penalty-miniapp .pm-bottom-hint { order: 4; margin: 12px 0 0; font-size: 12px; display: block; }
+.penalty-miniapp .pm-footer { display: none; }
+.penalty-miniapp .pm-custom-task { margin: 0; color: #1e142d; }
+.penalty-miniapp .pm-custom-task textarea { background: #faf6ff; color: #1e142d; border-color: #ad94cf; border-radius: 12px; min-height: 150px; }
+.penalty-miniapp .pm-custom-task small, .penalty-miniapp .pm-task-description span { color: #59496d; }
+.penalty-miniapp .pm-task-paper :is(button, textarea):focus-visible { outline: 3px solid #5325d0; outline-offset: 3px; }
+.penalty-miniapp .pm-bottom-nav { max-width: 470px; width: 100%; border-radius: 0; border-top: 1px solid var(--pm-line); padding: 8px 14px max(8px, env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px)); box-shadow: none; background: var(--pm-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.penalty-miniapp .pm-bottom-nav a { border-radius: 0; font-size: 10px; min-height: 54px; border-bottom: 2px solid transparent; }
+.penalty-miniapp .pm-bottom-nav a[aria-current='page'] { background: none; border-color: var(--pm-link); }
+.penalty-miniapp .pm-working-list, .penalty-miniapp .pm-state, .penalty-miniapp .pm-history, .penalty-miniapp .pm-dialog { border-radius: 16px; }
+.penalty-miniapp.pm-working-view .pm-header { min-height: auto; padding: 10px 0 20px; }
+.penalty-miniapp.pm-working-view .pm-header h1 { width: 100%; font-family: inherit; font-size: 30px; line-height: 1.1; letter-spacing: -1px; }
+[data-theme='dark'] .penalty-miniapp { --pm-bg: #191420; --pm-surface: #241c2e; --pm-text: #fbf6ff; --pm-muted: #c5b6d3; --pm-link: #c7a6ff; --pm-selected: #39254f; --pm-line: #493754; }
+[data-theme='dark'] .penalty-miniapp .pm-select-wrap { color: #fbf6ff; }
+@media (min-width: 700px) { .penalty-miniapp { padding-top: 35px; } }
+@media (max-width: 360px) {
+  .penalty-miniapp { padding-inline: 16px; }
+  .penalty-miniapp .pm-header { min-height: 114px; }
+  .penalty-miniapp .pm-header img { height: 120px; }
+  .penalty-miniapp .pm-task-paper { padding: 18px 8px 10px; }
+  .penalty-miniapp .pm-task-modes button { font-size: 12px; }
+}
