@@ -3,11 +3,19 @@ import { api, getToken, setSession } from '../api';
 import AuthenticatedImage from '../components/AuthenticatedImage';
 import PasswordChange from '../components/PasswordChange';
 import PersonalStatistics from '../components/PersonalStatistics';
+import PersonalAchievements from '../components/PersonalAchievements';
+import { useSearchParams } from 'react-router-dom';
 import '../styles/Pages.css';
 import '../styles/Profile.css';
 
 function Profile({ user, setUser }) {
-  const [section, setSection] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = ['achievements', 'details', 'security'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const setSection = (value) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (value === 'overview') next.delete('tab'); else next.set('tab', value);
+    return next;
+  });
   const [form, setForm] = useState({
     name: '',
     nick: '',
@@ -68,7 +76,7 @@ function Profile({ user, setUser }) {
       <div className="personal-cabinet-heading"><h1>Личный кабинет</h1>
         <p>Ваша история участия, статистика и настройки аккаунта.</p></div>
       <nav className="personal-cabinet-tabs" aria-label="Разделы личного кабинета">
-        {[['overview', 'Обзор'], ['details', 'Личные данные'], ['security', 'Безопасность']].map(([key, title]) =>
+        {[['overview', 'Обзор'], ['achievements', 'Ачивки'], ['details', 'Личные данные'], ['security', 'Безопасность']].map(([key, title]) =>
           <button key={key} type="button" className={section === key ? 'selected' : ''}
             aria-current={section === key ? 'page' : undefined} onClick={() => setSection(key)}>{title}</button>)}
       </nav>
@@ -78,6 +86,7 @@ function Profile({ user, setUser }) {
         </div>
       )}
       {section === 'overview' && <PersonalStatistics userId={user?.id} />}
+      {section === 'achievements' && <PersonalAchievements key={user?.id} userId={user?.id} />}
       <div hidden={section !== 'details'}>
       <section className="manage-section" aria-label="Личные данные">
         <div className="profile-header">

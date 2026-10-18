@@ -29,7 +29,8 @@ jest.mock('./pages/Admin', () => () => null);
 jest.mock('./pages/MyTribe', () => () => null);
 jest.mock('./pages/TribeScripts', () => () => null);
 jest.mock('./pages/GroupReviews', () => () => null);
-jest.mock('./pages/Login', () => () => <div>Вход</div>);
+jest.mock('./pages/Login', () => ({ __esModule: true, default: () => <div>Вход</div>,
+  safeInternalPath: jest.requireActual('./pages/Login').safeInternalPath }));
 jest.mock('./pages/ExamBrief', () => () => null);
 jest.mock('./pages/Notifications', () => () => null);
 jest.mock('./pages/Profile', () => () => null);

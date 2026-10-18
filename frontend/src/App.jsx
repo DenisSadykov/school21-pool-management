@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -18,7 +18,7 @@ import Admin from './pages/Admin';
 import MyTribe from './pages/MyTribe';
 import TribeScripts from './pages/TribeScripts';
 import GroupReviews from './pages/GroupReviews';
-import Login from './pages/Login';
+import Login, { safeInternalPath } from './pages/Login';
 import ExamBrief from './pages/ExamBrief';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
@@ -183,6 +183,7 @@ function AppRoutes({
   theme,
   onThemeToggle,
 }) {
+  const location = useLocation();
   if (loading) {
     return <Loader text="Загрузка..." fullscreen />;
   }
@@ -194,7 +195,7 @@ function AppRoutes({
         <Routes>
           <Route path="/login" element={<Login setUser={setUser} />} />
           <Route path="/join/:token" element={<PoolInvite user={null} setUser={setUser} />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />} />
         </Routes>
       </>
     );
@@ -210,7 +211,7 @@ function AppRoutes({
 
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/login" element={<Navigate to={safeInternalPath(location.state?.from)} replace />} />
       <Route path="/join/:token" element={<PoolInvite user={user} setUser={setUser} />} />
       <Route
         path="*"

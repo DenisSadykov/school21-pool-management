@@ -1,0 +1,30 @@
+.personal-awards-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 20px; }
+.personal-awards-heading h2 { font-size: 1.1rem; margin: 0; }
+.personal-awards-count, .achievement-date { color: var(--text-secondary); font-size: .85rem; }
+.personal-awards-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.personal-awards-grid > li { min-width: 0; }
+.personal-award { width: 100%; height: 100%; display: flex; flex-direction: column; padding: 0; text-align: left; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; cursor: pointer; font: inherit; }
+.personal-award:hover { background: var(--bg-hover); border-color: var(--accent); }
+.personal-award:focus-visible, .achievement-viewer-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.personal-award-image { position: relative; width: 100%; aspect-ratio: 1; padding: 16px; display: grid; place-items: center; }
+.personal-award-image img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.personal-award-expand { position: absolute; bottom: 12px; right: 12px; background: var(--bg-card); color: var(--accent); border-radius: 6px; padding: 6px; display: flex; }
+.personal-award-copy { display: grid; gap: 8px; padding: 4px 20px 20px; width: 100%; }
+.personal-award-title { font-size: 1rem; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.achievement-image-state { color: var(--text-secondary); padding: 20px; text-align: center; font-size: .85rem; }
+.achievement-state { padding: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; display: grid; justify-items: start; gap: 12px; }
+.achievement-state h2, .achievement-state h3 { margin: 0; font-size: 1rem; }
+.achievement-state p { color: var(--text-secondary); margin: 0; }
+.achievement-viewer { padding: 0; margin: auto; width: min(760px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+.achievement-viewer::backdrop { background: var(--overlay); }
+.achievement-viewer-body { position: relative; padding: 60px 24px 24px; }
+.achievement-viewer-close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--text-primary); background: var(--bg-hover); cursor: pointer; }
+.achievement-viewer-close:hover { background: var(--accent-muted); }
+.achievement-viewer-image { display: grid; place-items: center; min-height: 180px; margin-bottom: 24px; }
+.achievement-viewer-image img { width: 100%; max-height: 65dvh; object-fit: contain; }
+.achievement-viewer h2 { font-size: 1.2rem; line-height: 1.5; overflow-wrap: anywhere; margin: 0 0 8px; }
+.achievement-viewer .achievement-date { margin: 0; }
+@media (max-width: 480px) {
+  .personal-awards-grid { gap: 16px; }
+  .achievement-viewer-body { padding: 60px 16px 20px; }
+}
