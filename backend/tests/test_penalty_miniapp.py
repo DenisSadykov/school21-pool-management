@@ -124,15 +124,17 @@ def test_telegram_hmac_validation():
     assert validate_telegram_init_data(signed_init(), 'synthetic-bot-token')['id'] == 712345
 
 
-@pytest.mark.parametrize('raw', [
-    'bad-query', signed_init() + '&auth_date=123', signed_init().replace('Synthetic', 'Intruder'),
-    signed_init(auth_date=str(int(time.time()) - INIT_DATA_MAX_AGE - 5)),
-    signed_init(auth_date=str(int(time.time()) + 90)),
-    signed_init(user=json.dumps({'id': '712345'})),
-    signed_init(user=json.dumps({'id': True})),
-    signed_init(user=json.dumps({'id': 712345, 'is_bot': True})),
+@pytest.mark.parametrize('make_raw', [
+    lambda: 'bad-query', lambda: signed_init() + '&auth_date=123', lambda: signed_init().replace('Synthetic', 'Intruder'),
+    lambda: signed_init(auth_date=str(int(time.time()) - INIT_DATA_MAX_AGE - 5)),
+    lambda: signed_init(auth_date=str(int(time.time()) + 90)),
+    lambda: signed_init(user=json.dumps({'id': '712345'})),
+    lambda: signed_init(user=json.dumps({'id': True})),
+    lambda: signed_init(user=json.dumps({'id': 712345, 'is_bot': True})),
 ])
-def test_telegram_rejects_tampered_stale_duplicate_or_invalid_identity(raw):
+def test_telegram_rejects_tampered_stale_duplicate_or_invalid_identity(make_raw):
+    # Build relative timestamps at execution, not during collection of a long suite.
+    raw = make_raw()
     with pytest.raises(ValueError):
         validate_telegram_init_data(raw, 'synthetic-bot-token')
 
