@@ -35,6 +35,14 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator('.pm-task-title')).toHaveText(task.title);
       await expect(page.locator('.pm-task-copy')).toHaveText(task.description);
       await expect(page.locator('.pm-header')).not.toContainText(/school\s*21/i);
+      await expect(commit).toHaveCSS('background-color', 'rgb(25, 91, 234)');
+      const centered = async (button) => {
+        const box = await button.boundingBox();
+        const label = await button.locator('.pm-button-label').boundingBox();
+        expect(Math.abs((box.x + box.width / 2) - (label.x + label.width / 2))).toBeLessThan(1);
+        expect(Math.abs((box.y + box.height / 2) - (label.y + label.height / 2))).toBeLessThan(1);
+      };
+      await centered(commit);
       expect(commits).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.evaluate(() => document.fonts.ready);
@@ -43,6 +51,7 @@ for (const theme of ['light', 'dark']) {
       await expect(page.getByText('Смена задания не обнуляет таймер')).toBeVisible();
       expect(commits).toBe(1);
       await expect(page.getByRole('button', { name: 'Выполнено — следующее' })).toBeEnabled();
+      await centered(page.getByRole('button', { name: 'Выполнено — следующее' }));
       await page.getByRole('link', { name: /Отрабатывают сейчас/ }).click();
       await expect(page.getByRole('heading', { name: 'Отрабатывают сейчас' })).toBeVisible();
     });

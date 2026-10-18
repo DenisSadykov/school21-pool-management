@@ -300,7 +300,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     <main className={`penalty-miniapp${session && view === 'issue' ? ' pm-running' : ''}${view === 'working' ? ' pm-working-view' : ''}`}>
       <div className="pm-content">
         <header className="pm-header">
-          {view !== 'working' ? <><h1>Выдаватель <span>пенальти</span></h1><img src="/penalty-miniapp-hero.webp" alt="Два нарисованных персонажа: бородатый в фиолетовой футболке и улыбающийся" width="350" height="250" /></>
+          {view !== 'working' ? <><h1>Выдаватель <span>пенальти</span></h1><img src="/penalty-miniapp-hero-blue.webp" alt="Два нарисованных персонажа: бородатый в синей футболке и улыбающийся" width="350" height="250" /></>
             : <h1>Отрабатывают сейчас</h1>}
         </header>
         {phase === 'loading' && <p className="pm-state" role="status">Подключаемся к платформе…</p>}
@@ -356,10 +356,10 @@ export default function PenaltyMiniApp({ renderPlatform }) {
               </div>
               <div className="pm-actions">
                 {!session && <>
-                  <button type="button" className="pm-primary" disabled={!canStart || (taskMode === 'custom' ? customText.trim().length < 3 : !draft) || Boolean(busy)} onClick={() => runAction('commit')}><Check size={23} />{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}<ArrowRight size={23} aria-hidden="true" /></button>
+                  <button type="button" className="pm-primary" disabled={!canStart || (taskMode === 'custom' ? customText.trim().length < 3 : !draft) || Boolean(busy)} onClick={() => runAction('commit')}><span className="pm-button-label"><Check size={23} aria-hidden="true" /><span>{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}</span></span><ArrowRight size={23} aria-hidden="true" /></button>
                 </>}
                 {session && remaining > 0 && activeTask && <>
-                  <button type="button" className="pm-primary" disabled={Boolean(busy)} onClick={() => runAction('complete')}><Check size={22} />{busy === 'complete' ? 'Выдаём следующее…' : 'Выполнено — следующее'}</button>
+                  <button type="button" className="pm-primary" disabled={Boolean(busy)} onClick={() => runAction('complete')}><span className="pm-button-label"><Check size={22} aria-hidden="true" /><span>{busy === 'complete' ? 'Выдаём следующее…' : 'Выполнено — следующее'}</span></span></button>
                 </>}
                 {session && remaining === 0 && <button ref={finishTriggerRef} type="button" className="pm-primary" disabled={Boolean(busy)} onClick={() => setConfirmFinish(true)}><Check size={22} />Подтвердить 2 часа отработки</button>}
               </div>
