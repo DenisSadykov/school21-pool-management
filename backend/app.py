@@ -878,7 +878,39 @@ def _download_telegram_photo_bytes(account):
         return None, None
     import requests
 
-    file_info = telegram_get('getFile', {'file_id': account.photo_file_id})
+    try:
+        file_info = telegram_get('getFile', {'file_id': account.photo_file_id})
+    except requests.HTTPError as original_error:
+        if (
+            original_error.response is None
+            or original_error.response.status_code != 400
+            or not account.telegram_user_id
+        ):
+            raise
+        photos = telegram_get('getUserProfilePhotos', {
+            'user_id': account.telegram_user_id, 'limit': 1,
+        })
+        if not isinstance(photos, dict):
+            raise original_error
+        photo_sets = photos.get('photos')
+        total = photos.get('total_count')
+        if type(total) is not int or total < 0 or not isinstance(photo_sets, list):
+            raise original_error
+        if total == 0 and not photo_sets:
+            return None, None
+        if total == 0 or not photo_sets or not isinstance(photo_sets[0], list) or not photo_sets[0]:
+            raise original_error
+        latest_photo = photo_sets[0][-1]
+        fresh_file_id = latest_photo.get('file_id') if isinstance(latest_photo, dict) else None
+        if (
+            not isinstance(fresh_file_id, str)
+            or not fresh_file_id.strip()
+            or fresh_file_id == account.photo_file_id
+        ):
+            raise original_error
+        file_info = telegram_get('getFile', {'file_id': fresh_file_id})
+        if not isinstance(file_info, dict) or not isinstance(file_info.get('file_path'), str) or not file_info['file_path']:
+            raise original_error
     file_path = (file_info or {}).get('file_path')
     if not file_path:
         return None, None
@@ -887,7 +919,6 @@ def _download_telegram_photo_bytes(account):
         return None, None
     response = requests.get(download_url, timeout=30)
     response.raise_for_status()
-    account.photo_url = file_path
     return response.content, response.headers.get('Content-Type') or 'image/jpeg'
 
 
@@ -960,6 +991,8 @@ def _telegram_bot_avatar_payload():
     download_url = _telegram_file_download_url(file_path)
     if not download_url:
         return None, None
+
+    import requests
 
     response = requests.get(download_url, timeout=30)
     response.raise_for_status()
@@ -1080,36 +1113,73 @@ def _linked_users_for_pool(pool_id):
     } for user, account in rows]
 
 
-def telegram_api(method, payload=None):
+def _redact_telegram_error_value(value):
+    """Hide legacy credential-bearing URLs in responses without editing rows."""
+    if isinstance(value, str):
+        if re.search(r'api\.telegram\.org/(?:file/)?bot', value, flags=re.IGNORECASE):
+            return 'Ошибка Telegram API (подробности скрыты)'
+        return value
+    if isinstance(value, list):
+        return [_redact_telegram_error_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_telegram_error_value(item) for key, item in value.items()}
+    return value
+
+
+def _telegram_request(http_method, method, payload):
     if not TELEGRAM_BOT_TOKEN:
         raise RuntimeError('TELEGRAM_BOT_TOKEN не задан')
     import requests
-    response = requests.post(
-        f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
-        json=payload or {},
-        timeout=TELEGRAM_API_TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not data.get('ok'):
-        raise RuntimeError(f'Telegram API error in {method}: {data}')
-    return data.get('result')
+
+    # requests errors contain the full URL (and therefore the bot token).
+    # Only a safe category/status may reach delivery errors, logs or clients.
+    try:
+        request = requests.get if http_method == 'GET' else requests.post
+        arguments = {'params': payload} if http_method == 'GET' else {'json': payload}
+        response = request(
+            f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
+            timeout=TELEGRAM_API_TIMEOUT,
+            **arguments,
+        )
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        # Avatar recovery needs HTTP 400. Do not retain the original response
+        # body, URL or request, which can also contain credentials/user data.
+        safe_response = None
+        status = exc.response.status_code if exc.response is not None else None
+        if isinstance(status, int) and not isinstance(status, bool):
+            safe_response = requests.Response()
+            safe_response.status_code = status
+        message = 'Telegram API HTTP request failed'
+        if safe_response is not None:
+            message += f' (HTTP {status})'
+        raise requests.HTTPError(message, response=safe_response) from None
+    except requests.Timeout as exc:
+        raise type(exc)('Telegram API request timed out') from None
+    except requests.ConnectionError as exc:
+        raise type(exc)('Telegram API connection failed') from None
+    except requests.RequestException as exc:
+        raise type(exc)('Telegram API request failed') from None
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise RuntimeError('Telegram API returned invalid JSON') from None
+    if not isinstance(data, dict) or not isinstance(data.get('ok'), bool):
+        raise RuntimeError('Telegram API returned an invalid response')
+    if not data['ok']:
+        raise RuntimeError('Telegram API reported failure')
+    if 'result' not in data:
+        raise RuntimeError('Telegram API returned an invalid response')
+    return data['result']
+
+
+def telegram_api(method, payload=None):
+    return _telegram_request('POST', method, payload or {})
 
 
 def telegram_get(method, params=None):
-    if not TELEGRAM_BOT_TOKEN:
-        raise RuntimeError('TELEGRAM_BOT_TOKEN не задан')
-    import requests
-    response = requests.get(
-        f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}',
-        params=params or {},
-        timeout=TELEGRAM_API_TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not data.get('ok'):
-        raise RuntimeError(f'Telegram API error in {method}: {data}')
-    return data.get('result')
+    return _telegram_request('GET', method, params or {})
 
 
 def telegram_is_quiet_hours(now=None):
@@ -2787,16 +2857,15 @@ def user_avatar(user_id):
         photo_bytes, content_type = _download_telegram_photo_bytes(account)
         if not photo_bytes:
             return jsonify({'error': 'Фото не найдено'}), 404
-        db.session.commit()
         return send_file(
             BytesIO(photo_bytes),
             mimetype=content_type or 'image/jpeg',
             max_age=60 * 60,
             download_name=f'user-{user.id}-avatar.jpg',
         )
-    except Exception as exc:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': f'Не удалось получить фото: {exc}'}), 502
+        return jsonify({'error': 'Не удалось получить фото'}), 502
 
 
 @app.route('/api/me/avatar', methods=['POST'])
@@ -5684,7 +5753,7 @@ def notifications_overview():
             'user_id': delivery.user_id,
             'telegram_chat_id': delivery.telegram_chat_id,
             'delivery_status': delivery.delivery_status,
-            'error': delivery.error or '',
+            'error': _redact_telegram_error_value(delivery.error or ''),
             'message_id': delivery.message_id or '',
             'created_at': delivery.created_at.isoformat() if delivery.created_at else None,
         } for delivery in recent_deliveries],
@@ -5752,7 +5821,7 @@ def notifications_history():
             'deliveries': [{
                 'id': delivery.id,
                 'status': delivery.delivery_status,
-                'error': delivery.error or '',
+                'error': _redact_telegram_error_value(delivery.error or ''),
                 'message_id': delivery.message_id or '',
                 'created_at': delivery.created_at.isoformat() if delivery.created_at else None,
             } for delivery in deliveries],
@@ -7964,7 +8033,7 @@ def action_log():
         'entity': row.entity,
         'entity_id': row.entity_id,
         'description': row.description or '',
-        'payload': json.loads(row.payload or '{}'),
+        'payload': _redact_telegram_error_value(json.loads(row.payload or '{}')),
         'created_at': row.created_at.isoformat(),
     } for row in rows])
 
