@@ -1,3 +1,31 @@
+# Penalty Mini App — compact task title / pill navigation, 2026-10-18
+
+final result: passed
+
+Owner requested only a smaller bold task title and restoration of the former
+floating pill-shaped bottom menu. The blue/orange world, body text, task copy,
+button alignment and business behavior stay unchanged.
+
+- `.pm-task-title`: `clamp(24px, 6.5vw, 28px)` replaces 33–44px rendered size;
+  weight800 retained, tracking -.6px keeps the smaller role readable. The
+  separate page masthead, labels and 15px instructions are unchanged.
+- Removed only the flat-nav overrides: original 32px outer pill, 27px selected
+  destination, side gutters, lifted safe-area offset and translucent surface
+  resume from `PenaltyMiniApp.css`. Existing three destinations and blue palette
+  are preserved. Content has bottom clearance and scrolls on shorter displays.
+- Stress fixture uses a full long hotkeys assignment, not a two-word title.
+  Batched review: light390 and dark320 captures in
+  `frontend/test-results/penalty-studio-penalty-studio-{theme}-{width}px-chromium/preview.png`.
+  Full task text is present, no horizontal overflow; the primary action remains
+  reachable by scrolling. No extra visual correction needed after that review.
+- Existing e2e cases now assert font24–28px, retained800 weight,32/27px pill
+  radii and floating side gutters, along with centered buttons and explicit
+  commitment. All26 e2e passed (11.5s),192 unit tests and build passed.
+  Impeccable type assessment and final mechanical scan were clean.
+- No new fonts/assets, API changes, production data edits or timer changes.
+
+## Historical approved revision
+
 # Penalty Mini App — blue/orange revision QA, 2026-10-18
 
 final result: passed

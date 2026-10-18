@@ -10,7 +10,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByLabel('Пароль', { exact: true }).fill('secret123');
       await page.getByRole('button', { name: 'Войти', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
-      const task = { id: 'notice-board', title: 'Порядок на стенде', description: 'Обновить объявления и привести стенд в порядок.' };
+      const task = { id: 'notice-board', title: 'Собрать подборку из 20 полезных горячих клавиш для разработчиков', description: 'Собрать подборку из 20 полезных горячих клавиш для разработчиков и оформить памятку.' };
       const penalty = { id: 9001, student_name: 'demo_peer', total_hours: 2, completed_hours: 0, workoff_status: 'pending', session: null };
       let commits = 0;
       await page.route('**/api/penalty-miniapp**', (route) => {
@@ -34,6 +34,15 @@ for (const theme of ['light', 'dark']) {
       await expect(commit).toBeEnabled();
       await expect(page.locator('.pm-task-title')).toHaveText(task.title);
       await expect(page.locator('.pm-task-copy')).toHaveText(task.description);
+      const titleSize = await page.locator('.pm-task-title').evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+      expect(titleSize).toBeGreaterThanOrEqual(24);
+      expect(titleSize).toBeLessThanOrEqual(28);
+      await expect(page.locator('.pm-task-title')).toHaveCSS('font-weight', '800');
+      await expect(page.locator('.pm-bottom-nav')).toHaveCSS('border-top-left-radius', '32px');
+      await expect(page.locator('.pm-bottom-nav a').first()).toHaveCSS('border-top-left-radius', '27px');
+      const dock = await page.locator('.pm-bottom-nav').boundingBox();
+      expect(dock.x).toBeGreaterThan(0);
+      expect(dock.width).toBeLessThan(width);
       await expect(page.locator('.pm-header')).not.toContainText(/school\s*21/i);
       await expect(commit).toHaveCSS('background-color', 'rgb(25, 91, 234)');
       const centered = async (button) => {
