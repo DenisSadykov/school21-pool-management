@@ -66,7 +66,7 @@ test('preview does not commit and controls have distinct names', async () => {
   expect(call.mock.calls.some(([path = '']) => path.endsWith('/commit'))).toBe(false);
 });
 
-test('the lilac studio keeps the task title and full instructions, without a school wordmark', async () => {
+test('the studio keeps the task title and full instructions, without a school wordmark', async () => {
   const { container } = render(<PenaltyMiniApp />);
   await preview();
   expect(container.querySelector('.pm-header')).not.toHaveTextContent(/school\s*21/i);

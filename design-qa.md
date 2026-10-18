@@ -1,3 +1,58 @@
+# Penalty Mini App — blue/orange revision QA, 2026-10-18
+
+final result: passed
+
+## Approved revision
+
+Owner approved the single blue/orange revision after choosing the paper-ticket
+composition. Current source visual truth:
+`/Users/denissadykov/.codex/generated_images/01a01870-c8de-7fc3-ad92-f26e9ef45cef/exec-ec166974-e626-475e-8e16-316751993f42.png`.
+853 × 1844 pixels normalized to 390 × 844 CSS pixels; no device chrome.
+IAB implementation: `/tmp/penalty-studio-blue-390.png`, 390 × 844, density 1.
+Combined input, opened and inspected:
+`/tmp/penalty-studio-blue-comparison.png` (source left, implementation right).
+Same synthetic pupil/task, preview not committed. Active-state evidence:
+`/tmp/penalty-studio-blue-active-390.png`.
+
+### Required fidelity surfaces
+
+- Fonts/typography: same local Cyrillic-capable Oswald display face and readable
+  body text; complete title/instructions wrap. Exact generated task-font weight
+  remains a P3 optical refinement, not a clipped/hidden text issue.
+- Spacing/layout: approved composition retained. Primary contents are one centered
+  icon/label group, trailing arrow independently positioned. At 320px the redundant
+  arrow hides rather than squeezing the text. IAB measured active-group horizontal
+  and vertical center differences: 0px / 0px. Automated checks require <1px for
+  both pending and active actions at 320/390px in both themes.
+- Colors/tokens: royal blue #195bea, icy blue paper, orange fold/pencil details,
+  peach clock surround, navy ink. Dark theme uses a navy canvas and readable
+  controls; ticket text stays dark on the pale paper. No purple UI accent remains.
+- Imagery: independently generated alpha WebP ticket 780 × 800 (91,768 bytes)
+  and faithfully recolored character art 1484 × 1060 (257,778 bytes). Existing
+  faces, poses and pencil treatment preserved. The first character draft had a
+  rectangular halo (P2); a targeted generation from the original removed it.
+  Final WebP inspected on black and in the actual app. Original purple character
+  file preserved, new code uses the new blue filename. No CSS/SVG fake artwork.
+- Copy/content: no SCHOOL21 wordmark; all action labels and two-hour-stage rules
+  retained. No new business functions, records, migrations, or messages.
+
+### Comparison history / checks
+
+1. Owner reported an off-center active action. New explicit label wrapper makes
+   the icon and text one unit independent of direct-child SVG margin rules.
+2. Character halo P2 fixed before final build; post-fix asset and IAB capture
+   reviewed. Blue/orange full-view comparison has no actionable P0/P1/P2 drift.
+   Important text/controls are readable at 390px in the combined input, so an
+   additional focused crop was unnecessary.
+3. IAB: preview, explicit commit and active timer; browser console: zero warnings
+   or errors. Isolated fixtures only. E2e also checks working-list navigation.
+
+Backend 404 passed (29.27s); frontend 192 passed; production build passed;
+infra 55 passed; mandatory full e2e 26 passed (11.1s), unchanged retries/workers/
+timeouts. Tests cover both themes and 320/390px; no production data was touched.
+
+## Historical reports (superseded colors)
+
 # Penalty Mini App — lilac studio QA, 2026-10-18
 
 final result: passed
