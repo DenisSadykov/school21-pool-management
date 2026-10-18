@@ -29,6 +29,7 @@
 .penalty-miniapp .pm-student-row { order: 0; display: grid; justify-content: stretch; gap: 8px; padding: 0; border: 0; background: none; font-size: 15px; font-weight: 600; }
 .penalty-miniapp .pm-select-wrap { justify-content: flex-start; gap: 10px; background: var(--pm-selected); border-radius: 30px; padding: 0 16px; min-height: 48px; color: var(--pm-text); }
 .penalty-miniapp .pm-select-wrap select { max-width: none; text-align: left; height: 48px; color: var(--pm-text); font-size: 18px; font-weight: 650; }
+.penalty-miniapp .pm-select-wrap select:focus { box-shadow: none; }
 .penalty-miniapp .pm-select-wrap select:focus-visible { border-radius: 30px; outline: 2px solid var(--pm-link); outline-offset: 2px; }
 @supports selector(:has(*)) {
   .penalty-miniapp .pm-select-wrap:has(select:focus-visible) { outline: 2px solid var(--pm-link); outline-offset: 3px; }

@@ -1,3 +1,22 @@
+# Penalty Mini App — single select focus indicator, 2026-10-18
+
+final result: passed
+
+Owner found a second rounded ring inside the pupil selector. Root cause is
+the global `theme.css select:focus` box-shadow, separate from the outline fixed
+in the previous revision. Suppress only this selector's focused box-shadow;
+retain the external wrapper outline and older-WebView outline fallback.
+
+- Added a computed `box-shadow: none` regression assertion to all four existing
+  light/dark 320/390 keyboard-focus cases. Save focused-state screenshots before
+  pupil selection, rather than relying only on later task-preview captures.
+- Batched light390/dark320 focus captures confirm one external ring, no inner
+  halo. No further visual correction needed. No unrelated styles changed.
+- 192 unit tests, production build and all 26 mandatory e2e tests passed (11.8s).
+  Impeccable detector has no findings. No API, data or business behavior changes.
+
+## Previous revision
+
 # Penalty Mini App — rounded select focus, 2026-10-18
 
 final result: passed
