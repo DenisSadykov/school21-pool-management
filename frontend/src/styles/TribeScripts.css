@@ -247,8 +247,11 @@
 }
 
 .script-date.today {
-  color: var(--accent);
-  font-weight: 650;
+  background: var(--accent);
+  color: var(--secondary);
+  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
 }
 
 .script-date.past {

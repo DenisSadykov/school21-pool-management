@@ -332,8 +332,8 @@ function Schedule({ user }) {
               const isMonday = weekdayIndex === 1;
 
               return (
-                <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''}`}>
-                  <header className={`day-section-header ${isExam ? 'exam-day' : ''} ${isToday ? 'today' : ''}`}>
+                <section key={day.date} className={`day-section ${isMonday ? 'week-break' : ''} ${isToday ? 'today' : ''}`}>
+                  <header aria-current={isToday ? 'date' : undefined} className={`day-section-header ${isExam ? 'exam-day' : ''} ${isToday ? 'today' : ''}`}>
                     <span className="day-section-title">
                       {isToday && <span className="day-today-label">Сегодня · </span>}
                       {formatWeekday(day.date)} {formatDay(day.date)}
@@ -429,10 +429,12 @@ function Schedule({ user }) {
                   {week.days.map((day) => (
                     <div
                       key={day.date}
+                      aria-current={day.date === currentDay ? 'date' : undefined}
                       className={`day-header ${day.blocks.some((block) => block.label === 'EXAM') ? 'exam-day' : ''} ${day.date === currentDay ? 'today' : ''}`}
                     >
                       <span className="day-header-left">
                         <span>{day.label}</span>
+                        {day.date === currentDay && <span className="day-header-today">Сегодня</span>}
                         {day.blocks.some((block) => block.label === 'EXAM') ? (
                           <span className="day-header-badge">Экзамен</span>
                         ) : null}
