@@ -1,3 +1,21 @@
+# Penalty Mini App — rounded select focus, 2026-10-18
+
+final result: passed
+
+Owner reported a rectangular focus ring inside the pupil pill. Keyboard focus
+now outlines the whole rounded wrapper, with a rounded native-select fallback
+for older WebViews. Pointer appearance, colors, selection and business behavior
+are unchanged. Focus remains visible rather than being removed.
+
+- E2E checks keyboard Tab focus, native outline suppression, the wrapper's 2px
+  outline and 30px radius in both themes at 320/390px.
+- Batched light390/dark320 visual review found no further correction necessary.
+- 192 frontend unit tests, production build and all 26 mandatory e2e tests
+  passed (11.8s); final Impeccable detector returned no findings.
+- No API, permissions, production data, timer, asset or font changes.
+
+## Previous revision
+
 # Penalty Mini App — compact task title / pill navigation, 2026-10-18
 
 final result: passed
