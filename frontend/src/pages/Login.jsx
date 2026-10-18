@@ -4,9 +4,10 @@ import { api, setSession } from '../api';
 import PasswordInput from '../components/PasswordInput';
 import '../styles/Login.css';
 
-function safeInternalPath(value) {
+export function safeInternalPath(value) {
   if (typeof value !== 'string') return '/';
   if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  if (value.split(/[?#]/, 1)[0] === '/login') return '/';
   return value;
 }
 

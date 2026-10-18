@@ -25,6 +25,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from backup_metadata import managed_backup_status
 from penalty_miniapp import register_penalty_miniapp, cancel_workoff_sessions, delete_workoff_sessions
+from achievement_schema import achievement_tables
+from manual_achievements import register_manual_achievements
 
 def _env_flag(name, default='false'):
     return os.getenv(name, default).strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -277,6 +279,18 @@ class User(db.Model):
             'has_password': bool(self.password_hash),
             'avatar_url': _avatar_url_for_user(self),
         }
+
+
+_achievement_catalog_table, _user_achievement_table = achievement_tables(db.metadata)
+
+
+class ManualAchievement(db.Model):
+    __table__ = _achievement_catalog_table
+    image_data = db.deferred(_achievement_catalog_table.c.image_data)
+
+
+class UserAchievement(db.Model):
+    __table__ = _user_achievement_table
 
 
 class Pool(db.Model):
@@ -2217,8 +2231,14 @@ def _queue_shift_change_notifications(block, target_user, action):
 def mark_delivery_failed(event, delivery, error_text):
     delivery.delivery_status = 'error'
     delivery.error = (error_text or '')[:500]
-    event.status = 'queued'
-    event.scheduled_for = _utcnow() + timedelta(minutes=5)
+    if event.type == 'manual_achievement_awarded':
+        # A timeout can mean Telegram accepted the message. Never blindly resend
+        # a one-off award notification; the grant itself remains durable.
+        event.status = 'error'
+        event.scheduled_for = None
+    else:
+        event.status = 'queued'
+        event.scheduled_for = _utcnow() + timedelta(minutes=5)
 
 
 def _schedule_daily_shift_notifications():
@@ -2364,6 +2384,15 @@ def _claim_pending_notification_ids(limit, event_ids=None):
     now = _utcnow()
     stale_before = now - timedelta(minutes=10)
     NotificationEvent.query.filter(
+        NotificationEvent.type == 'manual_achievement_awarded',
+        NotificationEvent.status == 'processing',
+        NotificationEvent.processing_started_at < stale_before,
+    ).update({
+        NotificationEvent.status: 'error',
+        NotificationEvent.processing_started_at: None,
+    }, synchronize_session=False)
+    NotificationEvent.query.filter(
+        NotificationEvent.type != 'manual_achievement_awarded',
         NotificationEvent.status == 'processing',
         NotificationEvent.processing_started_at < stale_before,
     ).update({
@@ -3040,6 +3069,9 @@ def delete_user(user_id):
     NotificationEvent.query.filter_by(recipient_user_id=user.id).delete()
     NotificationEvent.query.filter_by(created_by=user.id).update({'created_by': None})
     TelegramAccount.query.filter_by(user_id=user.id).delete()
+    UserAchievement.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    UserAchievement.query.filter_by(granted_by=user.id).update({'granted_by': None}, synchronize_session=False)
+    ManualAchievement.query.filter_by(created_by=user.id).update({'created_by': None}, synchronize_session=False)
     PoolVolunteer.query.filter_by(user_id=user.id).delete()
     RewardEvent.query.filter_by(user_id=user.id).delete(synchronize_session=False)
     RewardEvent.query.filter_by(created_by=user.id).update({'created_by': None}, synchronize_session=False)
@@ -8839,6 +8871,7 @@ def sync_telegram_commands_on_startup():
 
 
 register_penalty_miniapp(app, db, globals())
+register_manual_achievements(app, db, globals())
 
 validate_runtime_config()
 

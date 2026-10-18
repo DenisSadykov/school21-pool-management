@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import Profile from './Profile';
+import { MemoryRouter } from 'react-router-dom';
 import { api, getToken, setSession } from '../api';
 
 jest.mock('../api', () => ({
@@ -20,7 +21,7 @@ beforeEach(() => {
 
 function renderDetails() {
   const setUser = jest.fn();
-  const result = render(<Profile user={user} setUser={setUser} />);
+  const result = render(<MemoryRouter><Profile user={user} setUser={setUser} /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'Личные данные' }));
   return { ...result, setUser };
 }

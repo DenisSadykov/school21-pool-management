@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import Login from './Login';
+import Login, { safeInternalPath } from './Login';
 import { api, setSession } from '../api';
 
 jest.mock('../api', () => ({
@@ -27,6 +27,10 @@ function renderLogin(setUser = jest.fn(), initialEntries = ['/login']) {
 }
 
 describe('Login', () => {
+  it('preserves the achievement deep link but refuses a login loop', () => {
+    expect(safeInternalPath('/profile?tab=achievements')).toBe('/profile?tab=achievements');
+    expect(safeInternalPath('/login?tab=achievements')).toBe('/');
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
