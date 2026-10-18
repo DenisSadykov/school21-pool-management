@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Clock3, Shuffle, Check, ChevronRight, History, RefreshCw, X, Pencil } from 'lucide-react';
+import { Clock3, Shuffle, Check, ChevronRight, ChevronDown, History, RefreshCw, X, Pencil, User, ArrowRight } from 'lucide-react';
 import { initializeMiniApp, operationId } from '../miniapp/client';
 import MiniAppNav from '../miniapp/MiniAppNav';
 import { playHaptic } from '../miniapp/haptics';
 import useTheme from '../hooks/useTheme';
 import '../styles/PenaltyMiniApp.css';
+import '../styles/PenaltyStudio.css';
 
 const TASK_STATES = { active: 'В работе', completed: 'Выполнено', unavailable: 'Не подошло', cancelled: 'Отменено' };
 const OPEN = ['pending', 'overdue', 'in_workoff'];
@@ -38,7 +39,10 @@ export function Roulette({ catalog, selected, spinning, pupilSelected, sdk }) {
     <div className={`pm-reel${spinning ? ' pm-reel-spinning' : ''}`} aria-busy={spinning} data-testid="task-reel">
       <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{previous?.title || 'Случайный выбор'}</span></div>
       <div className={`pm-reel-row pm-reel-selected${center && !spinning ? ' pm-reel-result' : ''}`} aria-live={spinning ? 'off' : 'polite'} aria-atomic="true">
-        <span className="pm-reel-title">{(spinning ? center?.title : center?.description || center?.title) || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</span>
+        <div className="pm-reel-title">
+          <strong className="pm-task-title">{center?.title || (spinning ? 'Крутим рулетку…' : pupilSelected ? 'Нажми «Выбрать»' : 'Сначала выбери ученика')}</strong>
+          {!spinning && center?.description && center.description !== center.title && <span className="pm-task-copy">{center.description}</span>}
+        </div>
       </div>
       <div className="pm-reel-row pm-reel-neighbor" aria-hidden="true"><span className="pm-reel-title">{next?.title || 'Случайное задание'}</span></div>
     </div>
@@ -296,7 +300,7 @@ export default function PenaltyMiniApp({ renderPlatform }) {
     <main className={`penalty-miniapp${session && view === 'issue' ? ' pm-running' : ''}${view === 'working' ? ' pm-working-view' : ''}`}>
       <div className="pm-content">
         <header className="pm-header">
-          {view !== 'working' ? <><h1>Выдаватель пенальти</h1><img src="/penalty-miniapp-hero.webp" alt="Два нарисованных персонажа: бородатый в фиолетовой футболке и улыбающийся" width="350" height="250" /></>
+          {view !== 'working' ? <><h1>Выдаватель <span>пенальти</span></h1><img src="/penalty-miniapp-hero.webp" alt="Два нарисованных персонажа: бородатый в фиолетовой футболке и улыбающийся" width="350" height="250" /></>
             : <h1>Отрабатывают сейчас</h1>}
         </header>
         {phase === 'loading' && <p className="pm-state" role="status">Подключаемся к платформе…</p>}
@@ -318,20 +322,22 @@ export default function PenaltyMiniApp({ renderPlatform }) {
         {phase === 'ready' && view === 'issue' && penalties.length > 0 && <>
           <section className="pm-controls" aria-label="Выдача задания">
             <label className="pm-student-row"><span>Кому выдаём</span><span className="pm-select-wrap">
+              <User size={24} aria-hidden="true" />
               <select aria-label="Кому выдаём" value={selectedId} disabled={Boolean(busy)} onChange={(event) => selectPupil(event.target.value)}>
                 <option value="">Выбери ученика</option>
                 {penalties.map((item) => <option key={item.id} value={item.id}>@{item.student_name.replace(/^@/, '')}{item.pool_number ? ` · пенальти №${item.pool_number}` : ''}</option>)}
-              </select><ChevronRight size={21} aria-hidden="true" />
+              </select><ChevronDown size={21} aria-hidden="true" />
             </span></label>
             <div className={`pm-duration${endsAt ? ' pm-duration-active' : ''}`}>
               <Clock3 size={31} strokeWidth={1.6} aria-hidden="true" />
-              <div><strong>{endsAt ? formatCountdown(remaining) : completed ? 'Отработка подтверждена' : 'Отработка · 2 часа'}</strong>
+              <div><strong>{endsAt ? formatCountdown(remaining) : completed ? 'Отработка подтверждена' : '2 часа'}</strong>
                 <p>{endsAt ? remaining > 0 ? 'Осталось из 2 часов' : 'Время вышло — нужно подтверждение'
                   : completed ? 'Разблокировку подтверждает ответственный' : 'Таймер начнётся после фиксации'}</p></div>
             </div>
             {penalty?.total_hours > 2 && <p className="pm-hours-note">Всего {penalty.total_hours} ч · зачтено {penalty.completed_hours} ч. Один этап — 2 часа.</p>}
             {legacyExpired && <div className="pm-state"><p>Эта отработка началась до выдачи задания в мини-апе. Её таймер сохранён.</p><a href={`/miniapp/platform#/penalties?status=in_workoff&student=${encodeURIComponent(penalty.student_name)}`}>Подтвердить в разделе «Штрафы»</a></div>}
             {!completed && !legacyExpired && <>
+              <div className="pm-task-paper">
               {!session && <div className="pm-task-modes" role="group" aria-label="Способ выбора задания">
                 <button type="button" aria-pressed={taskMode === 'random'} disabled={Boolean(busy)} onClick={() => setTaskMode('random')}><Shuffle size={17} />Рулетка</button>
                 <button type="button" aria-pressed={taskMode === 'custom'} disabled={Boolean(busy)} onClick={() => setTaskMode('custom')}><Pencil size={17} />Своё задание</button>
@@ -345,13 +351,14 @@ export default function PenaltyMiniApp({ renderPlatform }) {
               </label>}
               {session && activeTask && <div className="pm-task-description"><span>{customActiveTask ? 'Своё задание волонтёра · общий таймер отработки' : activeTask.estimated_minutes ? `Примерно ${activeTask.estimated_minutes} минут · не длительность всей отработки` : 'Общий таймер отработки — 2 часа'}</span></div>}
               {session && !activeTask && <p className="pm-task-description">Подходящих заданий пока нет. Обратись к ответственному; таймер продолжается.</p>}
+              {!session && taskMode === 'random' && <button type="button" className="pm-secondary pm-shuffle" disabled={!canStart || Boolean(busy)} onClick={() => spin(selectedId, excludedRef.current.length >= catalog.length ? [] : excludedRef.current)}><Shuffle size={23} />{busy === 'spin' ? 'Крутим рулетку…' : draft ? 'Выбрать другое' : 'Выбрать'}</button>}
+              {session && remaining > 0 && activeTask && <button type="button" className="pm-secondary pm-shuffle" disabled={Boolean(busy)} onClick={() => runAction('replace')}><Shuffle size={22} />Не подходит — заменить</button>}
+              </div>
               <div className="pm-actions">
                 {!session && <>
-                  {taskMode === 'random' && <button type="button" className="pm-secondary" disabled={!canStart || Boolean(busy)} onClick={() => spin(selectedId, excludedRef.current.length >= catalog.length ? [] : excludedRef.current)}><Shuffle size={23} />{busy === 'spin' ? 'Крутим рулетку…' : draft ? 'Выбрать другое' : 'Выбрать'}</button>}
-                  <button type="button" className="pm-primary" disabled={!canStart || (taskMode === 'custom' ? customText.trim().length < 3 : !draft) || Boolean(busy)} onClick={() => runAction('commit')}><Check size={23} />{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}</button>
+                  <button type="button" className="pm-primary" disabled={!canStart || (taskMode === 'custom' ? customText.trim().length < 3 : !draft) || Boolean(busy)} onClick={() => runAction('commit')}><Check size={23} />{busy === 'commit' ? 'Фиксируем…' : 'Зафиксировать пенальти'}<ArrowRight size={23} aria-hidden="true" /></button>
                 </>}
                 {session && remaining > 0 && activeTask && <>
-                  <button type="button" className="pm-secondary" disabled={Boolean(busy)} onClick={() => runAction('replace')}><Shuffle size={22} />Не подходит — заменить</button>
                   <button type="button" className="pm-primary" disabled={Boolean(busy)} onClick={() => runAction('complete')}><Check size={22} />{busy === 'complete' ? 'Выдаём следующее…' : 'Выполнено — следующее'}</button>
                 </>}
                 {session && remaining === 0 && <button ref={finishTriggerRef} type="button" className="pm-primary" disabled={Boolean(busy)} onClick={() => setConfirmFinish(true)}><Check size={22} />Подтвердить 2 часа отработки</button>}
