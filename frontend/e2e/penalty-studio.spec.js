@@ -32,9 +32,11 @@ for (const theme of ['light', 'dark']) {
       await page.keyboard.press('Tab');
       await expect(pupilSelect).toBeFocused();
       await expect(pupilSelect).toHaveCSS('outline-style', 'none');
+      await expect(pupilSelect).toHaveCSS('box-shadow', 'none');
       await expect(page.locator('.pm-select-wrap')).toHaveCSS('outline-style', 'solid');
       await expect(page.locator('.pm-select-wrap')).toHaveCSS('outline-width', '2px');
       await expect(page.locator('.pm-select-wrap')).toHaveCSS('border-radius', '30px');
+      await page.screenshot({ path: testInfo.outputPath('keyboard-focus.png'), fullPage: false });
       await pupilSelect.selectOption('9001');
       const commit = page.getByRole('button', { name: 'Зафиксировать пенальти' });
       await expect(commit).toBeDisabled();
