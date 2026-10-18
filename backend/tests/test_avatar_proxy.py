@@ -392,3 +392,48 @@ def test_download_http_400_does_not_trigger_profile_refresh(
     assert_safe_avatar_error(client.get(route, headers=headers))
     assert calls == ['getFile']
     assert photo_metadata(account) == before
+
+
+def test_avatar_refresh_preserves_http_400_through_safe_telegram_wrapper(
+        client, factories, auth_headers, db_session, monkeypatch):
+    _, account, route, headers = user_avatar_request(client, factories, auth_headers, db_session)
+    before, calls, commits = photo_metadata(account), [], []
+
+    def response(payload=None, status=200):
+        import json
+        result = requests.Response()
+        result.status_code = status
+        result.url = 'https://api.telegram.org/bot' + SYNTHETIC_SECRET + '/getFile'
+        result._content = json.dumps(payload).encode('utf-8')
+        return result
+
+    def transport(url, **kwargs):
+        params = kwargs.get('params')
+        calls.append((url, params))
+        if url == PHOTO_URL:
+            result = response()
+            result._content = PNG_BYTES
+            result.headers['Content-Type'] = 'image/png'
+            return result
+        if url.endswith('/getFile') and params == {'file_id': 'synthetic-file-id'}:
+            return response({'ok': False, 'description': SYNTHETIC_SECRET}, 400)
+        if url.endswith('/getUserProfilePhotos'):
+            return response({'ok': True, 'result': {
+                'total_count': 1, 'photos': [[{'file_id': 'fresh-file-id'}]],
+            }})
+        assert url.endswith('/getFile') and params == {'file_id': 'fresh-file-id'}
+        return response({'ok': True, 'result': {'file_path': PHOTO_PATH}})
+
+    monkeypatch.setattr(requests, 'get', transport)
+    monkeypatch.setattr(db_session, 'commit', lambda: commits.append(True))
+    result = client.get(route, headers=headers)
+    assert result.status_code == 200
+    assert result.mimetype == 'image/png'
+    assert result.data == PNG_BYTES
+    assert len(calls) == 4
+    assert calls[0][1] == {'file_id': 'synthetic-file-id'}
+    assert calls[1][1] == {'user_id': '123', 'limit': 1}
+    assert calls[2][1] == {'file_id': 'fresh-file-id'}
+    assert calls[3] == (PHOTO_URL, None)
+    assert commits == []
+    assert photo_metadata(account) == before

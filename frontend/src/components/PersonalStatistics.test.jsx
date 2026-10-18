@@ -46,6 +46,18 @@ test('failure can be retried without hiding account settings', async () => {
   expect(api.get).toHaveBeenCalledTimes(2);
 });
 
+test('monthly bars preserve their scale, empty months, labels and accessible values', async () => {
+  show();
+  const activeMonth = await screen.findByRole('listitem', { name: 'сентябрь 2026 г.: 16 ч., смен: 4' });
+  const emptyMonth = screen.getByRole('listitem', { name: 'октябрь 2026 г.: 0 ч., смен: 0' });
+  expect(activeMonth.querySelector('.personal-chart-bar')).toHaveStyle({ height: '100%' });
+  expect(emptyMonth.querySelector('.personal-chart-bar')).toHaveStyle({ height: '0%' });
+  expect(activeMonth.querySelector('.personal-chart-value')).toHaveTextContent('16');
+  expect(emptyMonth.querySelector('.personal-chart-value')).toHaveTextContent('—');
+  expect(activeMonth.querySelector('.personal-chart-label')).toHaveTextContent('сент');
+  expect(emptyMonth.querySelector('.personal-chart-label')).toHaveTextContent('окт');
+});
+
 test('empty history never invents participation or rewards', async () => {
   api.get.mockResolvedValue({ ...payload, pools: [], achievements: [], monthly_activity: [],
     summary: { pools: 0, active_pools: 0, past_shifts: 0, upcoming_shifts: 0, past_hours: 0, coins: 0 } });

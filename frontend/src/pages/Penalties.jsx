@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AlertCircle, Plus, Check, X, Trash2, ExternalLink, Copy } from 'lucide-react';
+import { AlertCircle, Plus, Check, X, Trash2, ExternalLink, Copy, Shuffle } from 'lucide-react';
 import { api } from '../api';
 import Loader from '../components/Loader';
 import '../styles/Pages.css';
@@ -167,6 +167,7 @@ function Penalties({ user }) {
           </button>
         </div>
         <div className="penalties-header-actions">
+          <a className="btn-penalty-secondary" href="/miniapp/penalties"><Shuffle size={18} />Выдача пенальти</a>
           <a
             className="btn-penalty-secondary"
             href="https://applicant.21-school.ru/rules"

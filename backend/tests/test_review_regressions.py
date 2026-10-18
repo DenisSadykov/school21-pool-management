@@ -214,7 +214,7 @@ def test_existing_skip_buttons_remain_usable(factories, db_session, monkeypatch,
     db_session.commit()
     skipped = []
     monkeypatch.setattr(platform, 'telegram_answer_callback', lambda *a, **k: {})
-    monkeypatch.setattr(platform, '_delete_related_penalty_messages', lambda *a: skipped.append(a))
+    monkeypatch.setattr(platform, '_delete_related_penalty_messages', lambda *a, **k: skipped.append(a))
     result = platform.telegram_handle_callback({'id': 'skip', 'from': {'id': 777},
                                                 'data': f'p:{penalty.id}:{question}:s:{event.id}'})
     assert result['ok'] is True
