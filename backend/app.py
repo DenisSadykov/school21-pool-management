@@ -2228,12 +2228,30 @@ def _queue_shift_change_notifications(block, target_user, action):
         )
 
 
-def mark_delivery_failed(event, delivery, error_text):
+TELEGRAM_FORBIDDEN_DELIVERY_ERROR = 'Telegram API HTTP request failed (HTTP 403)'
+
+
+def _telegram_delivery_is_forbidden(error):
+    # Only transport metadata or our exact sanitized persisted error is trusted.
+    # Arbitrary provider/user text must not change the retry policy.
+    if isinstance(error, str):
+        return error == TELEGRAM_FORBIDDEN_DELIVERY_ERROR
+    import requests
+
+    return (
+        isinstance(error, requests.HTTPError)
+        and error.response is not None
+        and error.response.status_code == 403
+    )
+
+
+def mark_delivery_failed(event, delivery, error):
     delivery.delivery_status = 'error'
-    delivery.error = (error_text or '')[:500]
-    if event.type == 'manual_achievement_awarded':
+    delivery.error = str(error or '')[:500]
+    if event.type == 'manual_achievement_awarded' or _telegram_delivery_is_forbidden(error):
         # A timeout can mean Telegram accepted the message. Never blindly resend
-        # a one-off award notification; the grant itself remains durable.
+        # a one-off award notification. An explicit 403 needs intervention, not
+        # an endless five-minute loop. Preserve the error and account settings.
         event.status = 'error'
         event.scheduled_for = None
     else:
@@ -2494,6 +2512,21 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
             db.session.commit()
             continue
 
+        if delivery.delivery_status == 'error' and _telegram_delivery_is_forbidden(delivery.error):
+            # Older releases requeued explicit refusals. Stop those retries
+            # without making even one more send request after this upgrade.
+            mark_delivery_failed(event, delivery, delivery.error)
+            event.processing_started_at = None
+            log_action(
+                'delivery_error', 'notification_event', event.id,
+                'Автоматический повтор остановлен после отказа Telegram HTTP 403',
+                {'error': delivery.error, 'event_type': event.type,
+                 'reason': 'automatic_retry_stopped_forbidden'},
+            )
+            failed += 1
+            db.session.commit()
+            continue
+
         try:
             result = telegram_send_message(
                 account.telegram_chat_id,
@@ -2525,7 +2558,7 @@ def process_pending_notifications(limit=20, event_ids=None, schedule_events=True
             )
             sent += 1
         except Exception as exc:
-            mark_delivery_failed(event, delivery, str(exc))
+            mark_delivery_failed(event, delivery, exc)
             event.processing_started_at = None
             log_action(
                 'delivery_error',
