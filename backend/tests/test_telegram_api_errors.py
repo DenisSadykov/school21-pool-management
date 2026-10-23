@@ -74,7 +74,7 @@ def test_telegram_success_preserves_results_and_request_arguments(api_call, resu
     })]
 
 
-@pytest.mark.parametrize('status', [400, 401, 429, 500])
+@pytest.mark.parametrize('status', [400, 401, 403, 429, 500])
 def test_http_failure_preserves_only_status_without_sensitive_response(api_call, status):
     _, calls, install, invoke = api_call
     response = response_with_payload({'ok': False, 'description': PRIVATE_TEXT}, status)
