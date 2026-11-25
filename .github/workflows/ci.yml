@@ -222,7 +222,7 @@ jobs:
               -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$task_hosts_file" \
               -o ServerAliveInterval=15 -o ServerAliveCountMax=20 \
-              pool-deploy@31.77.148.136
+              pool-deploy@2.26.84.18
 
   legacy-status:
     name: Legacy CI Status
