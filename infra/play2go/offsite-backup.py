@@ -17,8 +17,11 @@ import uuid
 
 DEST = Path('/Users/denissadykov/school21-pool-management/backups/play2go-copy')
 REMOTE = '/opt/school21-pool-copy/secure/backups'
-HOST = 'root@31.77.148.136'
+HOST = 'root@2.26.84.18'
 OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
+           '-o', 'UseKeychain=yes', '-o', 'IdentitiesOnly=yes',
+           '-i', '/Users/denissadykov/.ssh/id_ed25519',
+           '-o', 'UserKnownHostsFile=/Users/denissadykov/.ssh/known_hosts_school21_pool',
            '-o', 'StrictHostKeyChecking=yes', '-o', 'ServerAliveInterval=15',
            '-o', 'ServerAliveCountMax=3']
 NAME = re.compile(r'(?:pool-\d{8}T\d{6}Z\.dump|config-\d{8}T\d{6}Z\.tar\.gz)', re.ASCII)
