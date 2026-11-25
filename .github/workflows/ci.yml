@@ -219,6 +219,7 @@ jobs:
           printf '%s\n' "$VM_KNOWN_HOSTS" > "$task_hosts_file"
           { printf '%s\n' "$GITHUB_SHA"; cat artifact/application.tar.gz; } | \
             ssh -T -i "$task_key_file" \
+              -o IdentitiesOnly=yes -o KexAlgorithms=curve25519-sha256 \
               -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$task_hosts_file" \
               -o ServerAliveInterval=15 -o ServerAliveCountMax=20 \
